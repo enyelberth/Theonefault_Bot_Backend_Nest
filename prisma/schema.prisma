@@ -1,0 +1,98 @@
+datasource db {
+  provider = "postgresql"  // Cambia según tu base de datos
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum WeekDay {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  email         String         @unique
+  password      String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  profile       Profile?       @relation(fields: [profileId], references: [id])
+  profileId     Int?           @unique
+  sessions      Session[]
+  notifications Notification[]
+  appointments  Appointment[]
+}
+
+model Profile {
+  id          Int      @id @default(autoincrement())
+  firstName   String
+  lastName    String
+  phone       String?
+  birthDate   DateTime?
+  address     String?
+  user        User?    @relation
+}
+
+model Session {
+  id          Int       @id @default(autoincrement())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      Int
+  token       String    @unique
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  userAgent   String?
+  ipAddress   String?
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      Int
+  title       String
+  message     String
+  read        Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+model Schedule {
+  id           Int           @id @default(autoincrement())
+  name         String
+  description  String?
+  availableDays AvailableDay[]
+  appointments Appointment[]
+}
+
+model AvailableDay {
+  id          Int       @id @default(autoincrement())
+  schedule    Schedule  @relation(fields: [scheduleId], references: [id])
+  scheduleId  Int
+  dayOfWeek   WeekDay
+  startTime   String    // Formato "HH:mm"
+  endTime     String    // Formato "HH:mm"
+}
+
+model Appointment {
+  id           Int       @id @default(autoincrement())
+  user         User      @relation(fields: [userId], references: [id])
+  userId       Int
+  schedule     Schedule  @relation(fields: [scheduleId], references: [id])
+  scheduleId   Int
+  date         DateTime
+  createdAt    DateTime  @default(now())
+  status       AppointmentStatus @default(PENDING)
+  notes        String?
+}
