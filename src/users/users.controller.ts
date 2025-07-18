@@ -1,11 +1,11 @@
 // src/users/users.controller.ts
 import { Controller, Get, Post, Delete, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
-//import { User } from '@prisma/client';
 import { User } from './entity/user.entity';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateUserDto } from './dto/createUser.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
+
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
