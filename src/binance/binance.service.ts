@@ -12,7 +12,6 @@ export class BinanceService {
     this.API_SECRET = process.env.BINANCE_API_SECRET || '';
   }
 
-  // Función síncrona para generar la firma HMAC SHA256
   sign(querystring: string): string {
     return crypto.createHmac('sha256', this.API_SECRET)
       .update(querystring)
@@ -23,7 +22,6 @@ export class BinanceService {
     const timestamp = Date.now().toString();
     const allParams = { ...params, timestamp };
 
-    // Construir query string correctamente (con valores string)
     const query = new URLSearchParams();
     for (const [key, val] of Object.entries(allParams)) {
       query.append(key, val.toString());
