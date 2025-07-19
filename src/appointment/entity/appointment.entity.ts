@@ -5,7 +5,7 @@ export class Appointment{
 
     @ApiProperty({ example: 1 })
     userId:number;
-    @ApiProperty({ example: 1 })
+    @ApiProperty({ example: 0 })
     scheduleId:number;
     @ApiProperty({ example: 'PENDING' })
     status:string;

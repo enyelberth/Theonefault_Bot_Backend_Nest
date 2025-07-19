@@ -12,6 +12,8 @@ export class ScheduleController {
     }
     @ApiBearerAuth('BearerAuth') // El nombre debe coincidir con el del DocumentBuilder
     @UseGuards(AuthGuard)
+    @Public()
+
     @Get()
     @ApiOperation({ summary: 'Obtener el cronograma' })
     @ApiResponse({ status: 200, description: 'Lista de cronogramas obtenidos correctamente.', type: [Schedule] })

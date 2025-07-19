@@ -5,6 +5,8 @@ import { User } from './entity/user.entity';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateUserDto } from './dto/createUser.dto';
 import { AuthGuard } from 'src/auth/auth.guard';
+import { Public } from 'src/auth/auth.guard';
+
 
 @ApiTags('users')
 @Controller('users')
@@ -27,7 +29,7 @@ export class UsersController {
 async findOne(@Param('email') email: string) {
     return  this.usersService.findOne(email);
   }
-
+   @Public()
    @Post()
    @ApiOperation({ summary: 'Crear un nuevo usuario' })
    @ApiResponse({ status: 201, description: 'Usuario creado correctamente.', type: User })

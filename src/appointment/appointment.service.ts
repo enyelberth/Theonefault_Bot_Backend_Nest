@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Appointment } from '@prisma/client';
-import { timeStamp } from 'console';
-import { promises } from 'dns';
 import { PrismaService } from 'prisma/prisma.service';
 
 @Injectable()
@@ -13,11 +11,11 @@ export class AppointmentService {
     async create(data: Appointment):Promise<any> {
         return this.prisma.appointment.create({ data: {
             createdAt: new Date(),
-            date: timeStamp(),
-            notes: data.notes,
-            scheduleId: data.scheduleId,
-            userId: data.userId,
-            status: data.status || 'PENDING', // Asignar un estado por defecto si no
+            date: new Date(),
+            notes: "Aa",
+            scheduleId: 0,
+            userId: 3,
+            status: 'PENDING', // Asignar un estado por defecto si no
         } });
         // Lógica para crear una cita
     }
