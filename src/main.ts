@@ -5,6 +5,9 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Activar CORS con configuración básica (permite todos los orígenes)
+  app.enableCors();
+
   const config = new DocumentBuilder()
     .setTitle('Theonefault API')
     .setDescription('Documentación API con theonefault')
@@ -18,7 +21,7 @@ async function bootstrap() {
         name: 'Authorization',
         in: 'header',
       },
-      'BearerAuth', // Nombre de la seguridad, debe coincidir con @ApiBearerAuth('BearerAuth')
+      'BearerAuth',
     )
     .build();
 
@@ -26,7 +29,7 @@ async function bootstrap() {
 
   SwaggerModule.setup('api', app, document, {
     swaggerOptions: {
-      persistAuthorization: true, // Mantener token después de ingresar
+      persistAuthorization: true,
     },
   });
 

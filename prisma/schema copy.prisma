@@ -68,6 +68,7 @@ model Notification {
   createdAt   DateTime  @default(now())
 }
 
+// Cronograma
 model Schedule {
   id           Int           @id @default(autoincrement())
   name         String
@@ -86,30 +87,23 @@ model AvailableDay {
   endTime     String    // Formato "HH:mm"
 }
 
-// Cita con relación a Cliente, Usuario, Servicios y Promoción
+// Cita con relación a Cliente y opcional a User
 model Appointment {
   id           Int               @id @default(autoincrement())
 
   user         User?             @relation(fields: [userId], references: [id])
   userId       Int?
 
-  client       Clients?          @relation(fields: [clientId], references: [id])
-  clientId     Int?
+  client       Clients           @relation(fields: [clientId], references: [id])
+  clientId     Int
 
   schedule     Schedule          @relation(fields: [scheduleId], references: [id])
   scheduleId   Int
-
-  // Relación con Promociones (una cita puede tener una promoción aplicada)
-  promotion    Promotions?       @relation(fields: [promotionId], references: [id])
-  promotionId  Int?
 
   date         DateTime
   createdAt    DateTime          @default(now())
   status       AppointmentStatus @default(PENDING)
   notes        String?
-
-  // Relación muchos a muchos con Services a través de AppointmentServices
-  appointmentServices AppointmentServices[]
 }
 
 model Clients {
@@ -136,7 +130,6 @@ model Services {
   updatedAt   DateTime          @updatedAt
 
   promotionServices PromotionServices[]
-  appointmentServices AppointmentServices[] // Nueva relación inversa
 }
 
 model Promotions {
@@ -150,7 +143,6 @@ model Promotions {
   updatedAt   DateTime          @updatedAt
 
   promotionServices PromotionServices[]
-  appointments      Appointment[]         // Nueva relación inversa
 }
 
 model PromotionServices {
@@ -161,15 +153,4 @@ model PromotionServices {
   service     Services          @relation(fields: [serviceId], references: [id])
 
   @@id([promotionId, serviceId])
-}
-
-// Nueva tabla intermedia para relacionar Appointment con Services
-model AppointmentServices {
-  appointmentId Int
-  serviceId     Int
-
-  appointment   Appointment       @relation(fields: [appointmentId], references: [id])
-  service       Services          @relation(fields: [serviceId], references: [id])
-
-  @@id([appointmentId, serviceId])
 }
