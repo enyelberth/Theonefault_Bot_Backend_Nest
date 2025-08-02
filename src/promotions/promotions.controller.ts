@@ -10,8 +10,20 @@ export class PromotionsController {
   constructor(private readonly promotionsService: PromotionsService) {}
   @Public()
   @Post()
-  create(@Body() createPromotionDto: CreatePromotionDto) {
-    return this.promotionsService.create(createPromotionDto);
+  async create(@Body() createPromotionDto: CreatePromotionDto) : Promise<any> {
+    return await this.promotionsService.create(createPromotionDto);
+  }
+  @Public()
+  @Post(':idPromotion/:idService')
+  addServicePromotion(
+    @Param('idPromotion') idPromotion: number,
+    @Param('idService') idService: number,) {
+    return this.promotionsService.addServicePromotion(idPromotion,idService);
+  }
+  @Public()
+  @Get('getServicePromotion/:id')
+  getServicePromotion(@Param('id') id:number) {
+    return this.promotionsService.getServicePromotion(id);
   }
   @Public()
   @Get()

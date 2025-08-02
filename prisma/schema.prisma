@@ -95,7 +95,7 @@ model Appointment {
 
   client       Clients?          @relation(fields: [clientId], references: [id])
   clientId     Int?
-
+  hora         Int?
   schedule     Schedule          @relation(fields: [scheduleId], references: [id])
   scheduleId   Int
 
