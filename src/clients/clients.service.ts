@@ -1,24 +1,27 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
-import { PrismaClient, Services } from '@prisma/client';
-import { Service } from 'src/service/entities/service.entity';
+import { PrismaService } from 'prisma/prisma.service';
+
 @Injectable()
 export class ClientsService {
-  constructor(private prisma: PrismaClient) {
-    this.prisma = new PrismaClient();
-  }
+  constructor(private readonly prisma: PrismaService) {}
+
   async create(createClientDto: CreateClientDto): Promise<any> {
-    return await this.prisma.clients.create({
-      data: {
-        name: createClientDto.name,
-        secondName: createClientDto.secondName,
-        email: createClientDto.email,
-        phone: createClientDto.phone,
-        address: createClientDto.address,
-        nickname: createClientDto.nickname,
-      },
-    });
+    try {
+      return await this.prisma.clients.create({
+        data: {
+          name: createClientDto.name,
+          secondName: createClientDto.secondName,
+          email: createClientDto.email,
+          phone: createClientDto.phone,
+          address: createClientDto.address,
+          nickname: createClientDto.nickname,
+        },
+      });
+    } catch (error) {
+      throw new InternalServerErrorException('Error al crear el cliente: ' + error.message);
+    }
   }
 
   async findAll(): Promise<any[]> {
@@ -26,16 +29,41 @@ export class ClientsService {
   }
 
   async findOne(id: number): Promise<any> {
-    return await this.prisma.clients.findUnique({
+    const client = await this.prisma.clients.findUnique({
       where: { id },
     });
+    if (!client) {
+      throw new NotFoundException(`Cliente con id ${id} no encontrado`);
+    }
+    return client;
   }
 
-  update(id: number, updateClientDto: UpdateClientDto) {
-    return `This action updates a #${id} client`;
+  async update(id: number, updateClientDto: UpdateClientDto): Promise<any> {
+    try {
+      const client = await this.prisma.clients.findUnique({ where: { id } });
+      if (!client) {
+        throw new NotFoundException(`Cliente con id ${id} no encontrado`);
+      }
+      return await this.prisma.clients.update({
+        where: { id },
+        data: updateClientDto,
+      });
+    } catch (error) {
+      throw new InternalServerErrorException('Error al actualizar el cliente: ' + error.message);
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} client`;
+  async remove(id: number): Promise<any> {
+    try {
+      const client = await this.prisma.clients.findUnique({ where: { id } });
+      if (!client) {
+        throw new NotFoundException(`Cliente con id ${id} no encontrado`);
+      }
+      return await this.prisma.clients.delete({
+        where: { id },
+      });
+    } catch (error) {
+      throw new InternalServerErrorException('Error al eliminar el cliente: ' + error.message);
+    }
   }
 }

@@ -18,12 +18,19 @@ export class PromotionsController {
   addServicePromotion(
     @Param('idPromotion') idPromotion: number,
     @Param('idService') idService: number,) {
-    return this.promotionsService.addServicePromotion(idPromotion,idService);
+    return this.promotionsService.addServiceToPromotion(idPromotion,idService);
   }
+  
+
   @Public()
   @Get('getServicePromotion/:id')
   getServicePromotion(@Param('id') id:number) {
     return this.promotionsService.getServicePromotion(id);
+  }
+  @Public()
+  @Get('getFinAllPromotionsService')
+  findAllWithServices() {
+    return this.promotionsService.findAllWithServices();
   }
   @Public()
   @Get()

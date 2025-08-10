@@ -21,38 +21,44 @@ export class PromotionsService {
       }
     });
   }
-  async addServicePromotion(idPromotion: number, idService: number) {
-    try {
-      console.log(typeof idPromotion)
 
-      const promotions = await this.findOne(Number(idPromotion));
-      const a = await this.moduleService.findOne(Number(idService));
-      console.log(promotions);
-      console.log(a);
-
-
-
-      //Promotions Validate 
-      if(promotions==null){
-        console.log("Promitions invalida")
-      }
-      if(a==null){
-        console.log("Promitions Valida")
-      }
-      return  await this.prisma.promotionServices.create({
-        data: {
-         promotionId: Number(idPromotion), 
-         serviceId: Number(idService), 
-        }
-      });
-      //console.log(promotionServices);
-
-
-    // Aquí va el código para añadir la promoción al servicio
-    } catch (error) {
-     console.error('Error al añadir la promoción al servicio:', error);
-    // Manejo del error que quieras implementar
+  async addServiceToPromotion(idPromotion: number, idService: number) {
+    // Verifica si la promoción existe
+    const promotion = await this.prisma.promotions.findUnique({
+      where: { id: Number(idPromotion) },
+    });
+    if (!promotion) {
+      return { message: 'El id de promotion no es válido.' };
     }
+
+    // Verifica si el servicio existe
+    const service = await this.prisma.services.findUnique({
+      where: { id: Number(idService) },
+    });
+    if (!service) {
+      return { message: 'El id de service no es válido.' };
+    }
+
+    // Verifica si la relación ya existe
+    const relation = await this.prisma.promotionServices.findFirst({
+      where: {
+        promotionId: Number(idPromotion),
+        serviceId: Number(idService),
+      },
+    });
+    if (relation) {
+      return { message: 'La relación entre la promoción y el servicio ya está registrada.' };
+    }
+
+    // Crea la relación en promotionServices
+    const result = await this.prisma.promotionServices.create({
+      data: {
+        promotionId: Number(idPromotion),
+        serviceId: Number(idService),
+      },
+    });
+
+    return { message: 'Relación creada exitosamente.', data: result };
   }
   async getServicePromotion(id:number){
     try{
@@ -83,6 +89,18 @@ export class PromotionsService {
 
   async findAll() {
     return await this.prisma.promotions.findMany();
+  }
+
+  async findAllWithServices() {
+    return await this.prisma.promotions.findMany({
+      include: {
+        promotionServices: {
+          include: {
+            service: true, // Asegúrate que la relación se llama 'service' en tu esquema Prisma
+          },
+        },
+      },
+    });
   }
 
   async findOne(id: number) {

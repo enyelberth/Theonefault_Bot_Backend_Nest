@@ -1,18 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, IsInt, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsOptional, MinLength } from 'class-validator';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'usuario@correo.com' })
+  @ApiProperty()
   @IsEmail()
   email: string;
 
-  @ApiProperty({ example: 'contraseña123' })
+  @ApiProperty()
   @IsString()
   @MinLength(6)
   password: string;
 
-  @ApiPropertyOptional({ description: 'ID del perfil asociado', example: 1 })
+  @ApiProperty()
+  @IsString()
+  username: string;
+
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsInt()
-  profileId: number;
+  profileId?: number;
 }

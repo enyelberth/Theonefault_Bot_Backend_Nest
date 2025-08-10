@@ -28,8 +28,7 @@ model User {
   id            Int            @id @default(autoincrement())
   email         String         @unique
   password      String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  username      String         // <-- Nuevo campo
   profile       Profile?       @relation(fields: [profileId], references: [id])
   profileId     Int?           @unique
   sessions      Session[]
