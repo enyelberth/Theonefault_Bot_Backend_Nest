@@ -38,6 +38,26 @@ export class ClientsService {
     return client;
   }
 
+  async findByEmail(email: string): Promise<any> {
+    const client = await this.prisma.clients.findUnique({
+      where: { email },
+    });
+    if (!client) {
+      throw new NotFoundException(`Cliente con email ${email} no encontrado`);
+    }
+    return client;
+  }
+
+  async findByPhone(phone: string): Promise<any> {
+    const client = await this.prisma.clients.findFirst({
+      where: { phone },
+    });
+    if (!client) {
+      throw new NotFoundException(`Cliente con teléfono ${phone} no encontrado`);
+    }
+    return client;
+  }
+
   async update(id: number, updateClientDto: UpdateClientDto): Promise<any> {
     try {
       const client = await this.prisma.clients.findUnique({ where: { id } });

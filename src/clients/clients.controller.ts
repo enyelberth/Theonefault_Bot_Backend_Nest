@@ -36,4 +36,16 @@ export class ClientsController {
   remove(@Param('id') id: string) {
     return this.clientsService.remove(+id);
   }
+
+  @Public()
+  @Get('email/:email')
+  async findByEmail(@Param('email') email: string) {
+    return this.clientsService.findByEmail(email);
+  }
+
+  @Public()
+  @Get('phone/:phone')
+  async findByPhone(@Param('phone') phone: string) {
+    return this.clientsService.findByPhone(phone);
+  }
 }
