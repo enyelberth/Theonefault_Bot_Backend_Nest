@@ -7,34 +7,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum WeekDay {
-  SUNDAY
-  MONDAY
-  TUESDAY
-  WEDNESDAY
-  THURSDAY
-  FRIDAY
-  SATURDAY
-}
-
-enum AppointmentStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-}
-
 model User {
   id            Int            @id @default(autoincrement())
   email         String         @unique
   password      String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  username      String
   profile       Profile?       @relation(fields: [profileId], references: [id])
   profileId     Int?           @unique
   sessions      Session[]
   notifications Notification[]
-  appointments  Appointment[]
+  accounts      Account[]
 }
 
 model Profile {
@@ -68,89 +50,66 @@ model Notification {
   createdAt   DateTime  @default(now())
 }
 
-// Cronograma
-model Schedule {
-  id           Int           @id @default(autoincrement())
-  name         String
-  description  String?
-  availableDays AvailableDay[]
-  appointments Appointment[]
-}
-
-// Días disponibles
-model AvailableDay {
-  id          Int       @id @default(autoincrement())
-  schedule    Schedule  @relation(fields: [scheduleId], references: [id])
-  scheduleId  Int
-  dayOfWeek   WeekDay
-  startTime   String    // Formato "HH:mm"
-  endTime     String    // Formato "HH:mm"
-}
-
-// Cita con relación a Cliente y opcional a User
-model Appointment {
-  id           Int               @id @default(autoincrement())
-
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       Int?
-
-  client       Clients           @relation(fields: [clientId], references: [id])
-  clientId     Int
-
-  schedule     Schedule          @relation(fields: [scheduleId], references: [id])
-  scheduleId   Int
-
-  date         DateTime
-  createdAt    DateTime          @default(now())
-  status       AppointmentStatus @default(PENDING)
-  notes        String?
-}
-
-model Clients {
+model Account {
   id          Int           @id @default(autoincrement())
-  name        String
-  secondName  String?
-  nickname    String?
-  address     String?
-  email       String?       @unique
+  userId      Int
+  user        User          @relation(fields: [userId], references: [id])
+  email       String        @unique
   phone       String?
+  password    String
+  apiKey      String        @unique
+  apiSecret   String        @unique
+
+  balance     Float         @default(0)           // Campo para saldo o balance
+
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
-
-  appointments Appointment[]
+  transactions Transaction[]
 }
 
-model Services {
-  id          Int               @id @default(autoincrement())
-  name        String
-  description String?
+model CryptoPair {
+  id          Int       @id @default(autoincrement())
+  symbolPair  String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  prices      CryptoPrice[]
+  transactions Transaction[]
+}
+
+model CryptoPrice {
+  id          Int         @id @default(autoincrement())
+  pairId      Int
+  pair        CryptoPair  @relation(fields: [pairId], references: [id])
   price       Float
-  duration    Int               // Duración en minutos
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  promotionServices PromotionServices[]
+  createdAt   DateTime    @default(now())
 }
 
-model Promotions {
-  id          Int               @id @default(autoincrement())
-  name        String
-  description String?
-  discount    Float             // Porcentaje de descuento
-  startDate   DateTime
-  endDate     DateTime
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+model Transaction {
+  id             Int         @id @default(autoincrement())
+  idTransaction  String      @unique
+  accountId      Int
+  account        Account     @relation(fields: [accountId], references: [id])
 
-  promotionServices PromotionServices[]
-}
+  typeOrder      String      // ej: "limit", "market", "stop-limit"
+  amount         Float       // cantidad de cripto
+  currency       String      // moneda fiat o base, ej: "USDT"
 
-model PromotionServices {
-  promotionId Int
-  serviceId   Int
+  cryptoPairId   Int
+  pair           CryptoPair  @relation(fields: [cryptoPairId], references: [id])
 
-  promotion   Promotions        @relation(fields: [promotionId], references: [id])
-  service     Services          @relation(fields: [serviceId], references: [id])
+  side           String      // "buy" o "sell"
+  status         String      // "open", "closed", "cancelled", etc.
 
-  @@id([promotionId, serviceId])
+  entryPrice     Float       // precio al abrir la operación
+  entryTimestamp DateTime    @default(now())
+
+  exitPrice      Float?      // precio al cerrar, nullable
+  exitTimestamp  DateTime?   // fecha cierre, nullable
+
+  profitLoss     Float?      // ganancia o pérdida calculada al cerrar
+
+  isClosed       Boolean     @default(false)
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }

@@ -7,33 +7,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum WeekDay {
-  SUNDAY
-  MONDAY
-  TUESDAY
-  WEDNESDAY
-  THURSDAY
-  FRIDAY
-  SATURDAY
-}
-
-enum AppointmentStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-}
-
 model User {
   id            Int            @id @default(autoincrement())
   email         String         @unique
   password      String
-  username      String         // <-- Nuevo campo
+  username      String
   profile       Profile?       @relation(fields: [profileId], references: [id])
   profileId     Int?           @unique
   sessions      Session[]
   notifications Notification[]
-  appointments  Appointment[]
+  accounts      Account[]
 }
 
 model Profile {
@@ -67,108 +50,66 @@ model Notification {
   createdAt   DateTime  @default(now())
 }
 
-model Schedule {
-  id           Int           @id @default(autoincrement())
-  name         String
-  description  String?
-  availableDays AvailableDay[]
-  appointments Appointment[]
-}
-
-// Días disponibles
-model AvailableDay {
-  id          Int       @id @default(autoincrement())
-  schedule    Schedule  @relation(fields: [scheduleId], references: [id])
-  scheduleId  Int
-  dayOfWeek   WeekDay
-  startTime   String    // Formato "HH:mm"
-  endTime     String    // Formato "HH:mm"
-}
-
-// Cita con relación a Cliente, Usuario, Servicios y Promoción
-model Appointment {
-  id           Int               @id @default(autoincrement())
-
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       Int?
-
-  client       Clients?          @relation(fields: [clientId], references: [id])
-  clientId     Int?
-  hora         Int?
-  schedule     Schedule          @relation(fields: [scheduleId], references: [id])
-  scheduleId   Int
-
-  // Relación con Promociones (una cita puede tener una promoción aplicada)
-  promotion    Promotions?       @relation(fields: [promotionId], references: [id])
-  promotionId  Int?
-
-  date         DateTime
-  createdAt    DateTime          @default(now())
-  status       AppointmentStatus @default(PENDING)
-  notes        String?
-
-  // Relación muchos a muchos con Services a través de AppointmentServices
-  appointmentServices AppointmentServices[]
-}
-
-model Clients {
+model Account {
   id          Int           @id @default(autoincrement())
-  name        String
-  secondName  String?
-  nickname    String?
-  address     String?
-  email       String?       @unique
+  userId      Int
+  user        User          @relation(fields: [userId], references: [id])
+  email       String        @unique
   phone       String?
+  password    String
+  apiKey      String        @unique
+  apiSecret   String        @unique
+
+  balance     Float         @default(0)           // Campo para saldo o balance
+
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
-
-  appointments Appointment[]
+  transactions Transaction[]
 }
 
-model Services {
-  id          Int               @id @default(autoincrement())
-  name        String
-  description String?
+model CryptoPair {
+  id          Int       @id @default(autoincrement())
+  symbolPair  String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  prices      CryptoPrice[]
+  transactions Transaction[]
+}
+
+model CryptoPrice {
+  id          Int         @id @default(autoincrement())
+  pairId      Int
+  pair        CryptoPair  @relation(fields: [pairId], references: [id])
   price       Float
-  duration    Int               // Duración en minutos
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  promotionServices PromotionServices[]
-  appointmentServices AppointmentServices[] // Nueva relación inversa
+  createdAt   DateTime    @default(now())
 }
 
-model Promotions {
-  id          Int               @id @default(autoincrement())
-  name        String
-  description String?
-  discount    Float             // Porcentaje de descuento
-  startDate   DateTime
-  endDate     DateTime
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+model Transaction {
+  id             Int         @id @default(autoincrement())
+  idTransaction  String      @unique
+  accountId      Int
+  account        Account     @relation(fields: [accountId], references: [id])
 
-  promotionServices PromotionServices[]
-  appointments      Appointment[]         // Nueva relación inversa
-}
+  typeOrder      String      // ej: "limit", "market", "stop-limit"
+  amount         Float       // cantidad de cripto
+  currency       String      // moneda fiat o base, ej: "USDT"
 
-model PromotionServices {
-  promotionId Int
-  serviceId   Int
+  cryptoPairId   Int
+  pair           CryptoPair  @relation(fields: [cryptoPairId], references: [id])
 
-  promotion   Promotions        @relation(fields: [promotionId], references: [id])
-  service     Services          @relation(fields: [serviceId], references: [id])
+  side           String      // "buy" o "sell"
+  status         String      // "open", "closed", "cancelled", etc.
 
-  @@id([promotionId, serviceId])
-}
+  entryPrice     Float       // precio al abrir la operación
+  entryTimestamp DateTime    @default(now())
 
-// Nueva tabla intermedia para relacionar Appointment con Services
-model AppointmentServices {
-  appointmentId Int
-  serviceId     Int
+  exitPrice      Float?      // precio al cerrar, nullable
+  exitTimestamp  DateTime?   // fecha cierre, nullable
 
-  appointment   Appointment       @relation(fields: [appointmentId], references: [id])
-  service       Services          @relation(fields: [serviceId], references: [id])
+  profitLoss     Float?      // ganancia o pérdida calculada al cerrar
 
-  @@id([appointmentId, serviceId])
+  isClosed       Boolean     @default(false)
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
