@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseIntPipe } from '@nestjs/common';
-import { AccountService } from './account.service';
-import { CreateAccountDto } from './dto/create-account.dto';
-import { UpdateAccountDto } from './dto/update-account.dto';
+import { CreateBankAccountTypeDto } from './dto/create-bankAccountType.dto';
+import { UpdateBankAccountTypeDto } from './dto/update-bankAccountType.dto';
+import { BankAccountTypeService } from './bankAccountType.service';
 import {
   ApiTags,
   ApiOperation,
@@ -15,14 +15,14 @@ import {
 
 @ApiTags('accounts') // Etiqueta general para agrupación en Swagger
 @Controller('account')
-export class AccountController {
-  constructor(private readonly accountService: AccountService) {}
+export class BankAccountTypeController {
+  constructor(private readonly accountService: BankAccountTypeService) {}
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva cuenta' })
-  @ApiCreatedResponse({ description: 'La cuenta fue creada exitosamente.', type: CreateAccountDto })
+  @ApiCreatedResponse({ description: 'La cuenta fue creada exitosamente.', type: CreateBankAccountTypeDto })
   @ApiBadRequestResponse({ description: 'Datos inválidos o cuenta duplicada.' })
-  async create(@Body() createAccountDto: CreateAccountDto) {
+  async create(@Body() createAccountDto: CreateBankAccountTypeDto) {
     return this.accountService.create(createAccountDto);
   }
 
@@ -53,7 +53,7 @@ export class AccountController {
   @ApiResponse({ status: 200, description: 'Cuenta actualizada correctamente.' })
   @ApiBadRequestResponse({ description: 'Datos inválidos para la actualización.' })
   @ApiNotFoundResponse({ description: 'Cuenta no encontrada con el ID proporcionado.' })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateAccountDto: UpdateAccountDto) {
+  async update(@Param('id', ParseIntPipe) id: number, @Body() updateAccountDto: UpdateBankAccountTypeDto) {
     return this.accountService.update(id, updateAccountDto);
   }
 

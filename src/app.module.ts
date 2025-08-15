@@ -14,8 +14,9 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PruebaService } from './prueba/prueba.service';
 import { PruebaModule } from './prueba/prueba.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { UserModule } from './user/user.module';
 @Module({
-  imports: [ScheduleModule.forRoot(), ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule],
+  imports: [ScheduleModule.forRoot(), ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService],
 })

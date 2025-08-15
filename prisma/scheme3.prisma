@@ -17,7 +17,7 @@ model User {
   profileId     Int?           @unique
   sessions      Session[]
   notifications Notification[]
-  accounts      Account[]
+  accounts      Account[]      // Relación con cuentas
 }
 
 model Profile {
@@ -51,17 +51,6 @@ model Notification {
   createdAt   DateTime  @default(now())
 }
 
-// Clientes bancarios
-model Customer {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  phone     String?
-  address   String?
-  createdAt DateTime @default(now())
-  accounts  Account[]
-}
-
 // Tipos de cuentas bancarias (ahorro, spot, margin, cruzado, etc.)
 model BankAccountType {
   id          Int      @id @default(autoincrement())
@@ -81,17 +70,17 @@ model Currency {
   transfers         Transfer[]
 }
 
-// Cuentas bancarias jerárquicas con claves de acceso
+// Cuentas bancarias jerárquicas con claves de acceso, ligadas a usuario
 model Account {
   id              Int       @id @default(autoincrement())
-  customerId      Int
+  userId          Int
   parentAccountId Int?
   bankAccountTypeId Int
   key             String
   secretKey       String
   createdAt       DateTime  @default(now())
 
-  customer         Customer  @relation(fields: [customerId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
   parentAccount    Account?  @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
   subAccounts      Account[] @relation("AccountHierarchy")
   bankAccountType  BankAccountType @relation(fields: [bankAccountTypeId], references: [id])
@@ -164,7 +153,7 @@ model Transfer {
   currencyCode   String   @db.VarChar(5)
   amount         Decimal
   transferDate   DateTime @default(now())
-  journalEntryId Int
+  journalEntryId Int      @unique
   description    String?
   statusId       Int      @default(1)
 

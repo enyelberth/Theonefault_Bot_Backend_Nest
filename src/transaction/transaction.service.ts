@@ -10,6 +10,7 @@ export class TransactionService {
   constructor(private readonly prisma: PrismaClient) {}
 
   async create(createTransactionDto: CreateTransactionDto) {
+    /*
     try {
       const transaction = await this.prisma.transaction.create({
         data: createTransactionDto,
@@ -26,18 +27,22 @@ export class TransactionService {
 
       throw new InternalServerErrorException('Error inesperado al crear la transacción.');
     }
+      */
   }
 
   async findAll() {
+    /*
     try {
       return await this.prisma.transaction.findMany();
     } catch (error) {
       this.logger.error('Error obteniendo transacciones', error);
       throw new InternalServerErrorException('Error inesperado al obtener las transacciones.');
     }
+      */
   }
 
   async findOne(id: number) {
+    /*
     try {
       const transaction = await this.prisma.transaction.findUnique({
         where: { id },
@@ -51,9 +56,11 @@ export class TransactionService {
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('Error inesperado al buscar la transacción.');
     }
+      */
   }
 
   async update(id: number, updateTransactionDto: UpdateTransactionDto) {
+    /*
     try {
       const transaction = await this.prisma.transaction.update({
         where: { id },
@@ -74,9 +81,11 @@ export class TransactionService {
 
       throw new InternalServerErrorException('Error inesperado al actualizar la transacción.');
     }
+      */
   }
 
   async remove(id: number) {
+    /*
     try {
       const transaction = await this.prisma.transaction.delete({
         where: { id },
@@ -91,5 +100,7 @@ export class TransactionService {
 
       throw new InternalServerErrorException('Error inesperado al eliminar la transacción.');
     }
+  */
   }
+  
 }

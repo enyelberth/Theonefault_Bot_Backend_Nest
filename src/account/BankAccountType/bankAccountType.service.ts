@@ -5,19 +5,21 @@ import {
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { CreateAccountDto } from './dto/create-account.dto';
-import { UpdateAccountDto } from './dto/update-account.dto';
+//import { CreateAccountDto } from './dto/create-account.dto';
+import { CreateBankAccountTypeDto } from './dto/create-bankAccountType.dto';
+import { UpdateBankAccountTypeDto } from './dto/update-bankAccountType.dto';
+//import { UpdateAccountDto } from './dto/update-account.dto';
 import { PrismaClient, Prisma } from '@prisma/client';
 
 @Injectable()
-export class AccountService {
-  private readonly logger = new Logger(AccountService.name);
+export class BankAccountTypeService {
+  private readonly logger = new Logger(BankAccountTypeService.name);
 
   constructor(private readonly prisma: PrismaClient) {}
 
-  async create(createAccountDto: CreateAccountDto) {
+  async create(createAccountDto: CreateBankAccountTypeDto) {
     try {
-      const account = await this.prisma.account.create({
+      const account = await this.prisma.bankAccountType.create({
         data: createAccountDto,
       });
       return account;
@@ -36,7 +38,7 @@ export class AccountService {
 
   async findAll() {
     try {
-      return await this.prisma.account.findMany();
+      return await this.prisma.bankAccountType.findMany();
     } catch (error) {
       this.logger.error('Error buscando cuentas', error);
       throw new InternalServerErrorException('Error inesperado al buscar cuentas.');
@@ -44,17 +46,17 @@ export class AccountService {
   }
 
   // No existe campo email en Account, si quieres buscar por usuario:
-  async findByUserId(userId: number) {
+  async findByUserId(id: number) {
     try {
-      const accounts = await this.prisma.account.findMany({
-        where: { userId },
+      const accounts = await this.prisma.bankAccountType.findMany({
+        where: { id },
       });
       if (!accounts || accounts.length === 0) {
-        throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${userId}`);
+        throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${id}`);
       }
       return accounts;
     } catch (error) {
-      this.logger.error(`Error buscando cuentas del usuario con id ${userId}`, error);
+      this.logger.error(`Error buscando cuentas del usuario con id ${id}`, error);
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException(
         'Error inesperado al buscar cuentas por usuario.',
@@ -64,7 +66,7 @@ export class AccountService {
 
   async findOne(id: number) {
     try {
-      const account = await this.prisma.account.findUnique({
+      const account = await this.prisma.bankAccountType.findUnique({
         where: { id },
       });
       if (!account) {
@@ -78,9 +80,9 @@ export class AccountService {
     }
   }
 
-  async update(id: number, updateAccountDto: UpdateAccountDto) {
+  async update(id: number, updateAccountDto: UpdateBankAccountTypeDto) {
     try {
-      const account = await this.prisma.account.update({
+      const account = await this.prisma.bankAccountType.update({
         where: { id },
         data: updateAccountDto,
       });
@@ -102,7 +104,7 @@ export class AccountService {
 
   async remove(id: number) {
     try {
-      const account = await this.prisma.account.delete({
+      const account = await this.prisma.bankAccountType.delete({
         where: { id },
       });
       return account;

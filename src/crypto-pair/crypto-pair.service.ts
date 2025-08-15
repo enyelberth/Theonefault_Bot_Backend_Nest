@@ -9,14 +9,14 @@ export class CryptoPairService {
     this.prisma = new PrismaClient();
   }
 
-  async create(createCryptoPairDto: CreateCryptoPairDto): Promise<any> {
-    return await this.prisma.cryptoPair.create({
-      data: createCryptoPairDto,
-    });
+  async create(createCryptoPairDto: CreateCryptoPairDto){
+   // return await this.prisma.cryptoPair.create({
+   //   data: createCryptoPairDto,
+   // });
   }
 
-  async findAll(): Promise<any[]> {
-    return await this.prisma.cryptoPair.findMany();
+  async findAll() {
+   // return await this.prisma.cryptoPair.findMany();
   }
 
   findOne(id: number) {

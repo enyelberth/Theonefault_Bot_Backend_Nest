@@ -1,32 +1,42 @@
+import { IsInt, IsOptional, IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, Length } from 'class-validator';
 
 export class CreateAccountDto {
-  @ApiProperty({ example: 1, description: 'ID del usuario propietario de la cuenta' })
+  @ApiProperty({
+    description: 'ID del usuario propietario de la cuenta',
+    example: 1,
+  })
+  @IsInt()
   userId: number;
 
-  @ApiProperty({ example: 'usuario@example.com', description: 'Email único de la cuenta' })
-  @IsEmail()
-  email: string;
-
-  @ApiPropertyOptional({ example: '+34123456789', description: 'Teléfono de contacto' })
+  @ApiPropertyOptional({
+    description: 'ID de la cuenta padre para cuentas jerárquicas',
+    example: 10,
+  })
   @IsOptional()
-  @IsString()
-  phone?: string;
+  @IsInt()
+  parentAccountId?: number;
 
-  @ApiProperty({ example: 'miPasswordSeguro123', description: 'Contraseña de la cuenta' })
-  @IsNotEmpty()
-  @IsString()
-  @Length(6, 128)
-  password: string;
+  @ApiProperty({
+    description: 'Tipo de cuenta bancaria (referencia a BankAccountType)',
+    example: 2,
+  })
+  @IsInt()
+  bankAccountTypeId: number;
 
-  @ApiProperty({ example: 'apikey123', description: 'Clave API única' })
-  @IsNotEmpty()
+  @ApiProperty({
+    description: 'Clave pública o identificador de la cuenta',
+    example: 'account_key_xyz123',
+  })
   @IsString()
-  apiKey: string;
+  @IsNotEmpty()
+  key: string;
 
-  @ApiProperty({ example: 'secret456', description: 'Secreto asociado a la API' })
-  @IsNotEmpty()
+  @ApiProperty({
+    description: 'Clave secreta para acceso seguro (debe almacenarse cifrada)',
+    example: 'secret_key_abc456',
+  })
   @IsString()
-  apiSecret: string;
+  @IsNotEmpty()
+  secretKey: string;
 }
