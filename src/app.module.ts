@@ -15,8 +15,9 @@ import { PruebaService } from './prueba/prueba.service';
 import { PruebaModule } from './prueba/prueba.module';
 import { TransactionModule } from './transaction/transaction.module';
 import { UserModule } from './user/user.module';
+import { BankAccountTypeServiceModule } from './account/BankAccountType/bankAccountType.module';
 @Module({
-  imports: [ScheduleModule.forRoot(), ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule],
+  imports: [ScheduleModule.forRoot(), ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService],
 })

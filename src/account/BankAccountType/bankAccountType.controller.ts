@@ -13,8 +13,8 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 
-@ApiTags('accounts') // Etiqueta general para agrupación en Swagger
-@Controller('account')
+@ApiTags('BankAccountType') // Etiqueta general para agrupación en Swagger
+@Controller('bankAccountType')
 export class BankAccountTypeController {
   constructor(private readonly accountService: BankAccountTypeService) {}
 

@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsNotEmpty, IsEmail, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAccountDto {
@@ -39,4 +39,19 @@ export class CreateAccountDto {
   @IsString()
   @IsNotEmpty()
   secretKey: string;
+
+  @ApiProperty({
+    description: 'Correo electrónico asociado a la cuenta',
+    example: 'usuario@example.com',
+  })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({
+    description: 'Contraseña de la cuenta (mínimo 6 caracteres)',
+    example: 'Secreto123!',
+  })
+  @IsString()
+  @MinLength(6)
+  password: string;
 }

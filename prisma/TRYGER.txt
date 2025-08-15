@@ -1,0 +1,16 @@
+CREATE OR REPLACE FUNCTION create_account_balances()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO "AccountBalance" ("accountId", "currencyCode", "balance")
+  SELECT NEW.id, code, 0 FROM "Currency";
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE TRIGGER account_after_insert
+AFTER INSERT ON "Account"
+FOR EACH ROW
+EXECUTE PROCEDURE create_account_balances();

@@ -13,6 +13,10 @@ model User {
   email         String         @unique
   password      String
   username      String
+  key             String?
+  secretKey       String?
+  createdAt     DateTime  @default(now())
+
   profile       Profile?       @relation(fields: [profileId], references: [id])
   profileId     Int?           @unique
   sessions      Session[]
@@ -27,6 +31,8 @@ model Profile {
   phone       String?
   birthDate   DateTime?
   address     String?
+  createdAt   DateTime  @default(now())
+
   user        User?    @relation
 }
 
@@ -56,6 +62,7 @@ model BankAccountType {
   id          Int      @id @default(autoincrement())
   typeName    String
   description String?
+  createdAt   DateTime  @default(now())
   accounts    Account[]
 }
 
@@ -63,6 +70,8 @@ model BankAccountType {
 model Currency {
   code        String   @id @db.VarChar(5)
   description String?
+  createdAt   DateTime  @default(now())
+
   accountBalances AccountBalance[]
   tradingPairsBase  TradingPair[] @relation("BaseCurrency")
   tradingPairsQuote TradingPair[] @relation("QuoteCurrency")
@@ -78,6 +87,8 @@ model Account {
   bankAccountTypeId Int
   key             String
   secretKey       String
+  email           String    @unique
+  password        String
   createdAt       DateTime  @default(now())
 
   user            User      @relation(fields: [userId], references: [id])

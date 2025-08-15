@@ -16,6 +16,7 @@ CREATE TABLE "User" (
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
     "username" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "profileId" INTEGER,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
@@ -29,6 +30,7 @@ CREATE TABLE "Profile" (
     "phone" TEXT,
     "birthDate" TIMESTAMP(3),
     "address" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Profile_pkey" PRIMARY KEY ("id")
 );
@@ -59,22 +61,11 @@ CREATE TABLE "Notification" (
 );
 
 -- CreateTable
-CREATE TABLE "Customer" (
-    "id" SERIAL NOT NULL,
-    "name" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "phone" TEXT,
-    "address" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Customer_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "BankAccountType" (
     "id" SERIAL NOT NULL,
     "typeName" TEXT NOT NULL,
     "description" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "BankAccountType_pkey" PRIMARY KEY ("id")
 );
@@ -83,6 +74,7 @@ CREATE TABLE "BankAccountType" (
 CREATE TABLE "Currency" (
     "code" VARCHAR(5) NOT NULL,
     "description" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Currency_pkey" PRIMARY KEY ("code")
 );
@@ -90,11 +82,13 @@ CREATE TABLE "Currency" (
 -- CreateTable
 CREATE TABLE "Account" (
     "id" SERIAL NOT NULL,
-    "customerId" INTEGER NOT NULL,
+    "userId" INTEGER NOT NULL,
     "parentAccountId" INTEGER,
     "bankAccountTypeId" INTEGER NOT NULL,
     "key" TEXT NOT NULL,
     "secretKey" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "password" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Account_pkey" PRIMARY KEY ("id")
@@ -203,7 +197,7 @@ CREATE UNIQUE INDEX "User_profileId_key" ON "User"("profileId");
 CREATE UNIQUE INDEX "Session_token_key" ON "Session"("token");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Customer_email_key" ON "Customer"("email");
+CREATE UNIQUE INDEX "Account_email_key" ON "Account"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AccountBalance_accountId_currencyCode_key" ON "AccountBalance"("accountId", "currencyCode");
@@ -224,7 +218,7 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId"
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Account" ADD CONSTRAINT "Account_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Account" ADD CONSTRAINT "Account_parentAccountId_fkey" FOREIGN KEY ("parentAccountId") REFERENCES "Account"("id") ON DELETE SET NULL ON UPDATE CASCADE;
