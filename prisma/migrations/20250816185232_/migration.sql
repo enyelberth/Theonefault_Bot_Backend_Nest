@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "EntryType" AS ENUM ('DEBE', 'HABER');
+CREATE TYPE "EntryType" AS ENUM ('INGRESO', 'EGRESO');
 
 -- CreateEnum
 CREATE TYPE "OrderType" AS ENUM ('LIMIT', 'MARKET', 'STOP_LIMIT');
@@ -16,6 +16,8 @@ CREATE TABLE "User" (
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
     "username" TEXT NOT NULL,
+    "key" TEXT,
+    "secretKey" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "profileId" INTEGER,
 

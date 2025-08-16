@@ -152,8 +152,8 @@ model JournalEntryLine {
 }
 
 enum EntryType {
-  DEBE
-  HABER
+  INGRESO
+  EGRESO
 }
 
 // Transferencias entre cuentas
