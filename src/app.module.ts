@@ -17,8 +17,9 @@ import { TransactionModule } from './transaction/transaction.module';
 import { UserModule } from './user/user.module';
 import { BankAccountTypeServiceModule } from './account/BankAccountType/bankAccountType.module';
 import { JournalEntryModule } from './transaction/journalEntry/journalEntry.module';
+import { TradingModule } from './trading/trading.module';
 @Module({
-  imports: [ScheduleModule.forRoot(), JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule],
+  imports: [ScheduleModule.forRoot(), JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, TradingModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService],
 })
