@@ -100,3 +100,14 @@ INSERT INTO public."Currency"  (code, description) VALUES
 INSERT INTO public."Currency"  (code, description) VALUES
 ('FDUSD', 'First Digital USD');
 
+
+
+
+status 
+id|statusName|
+--+----------+
+ 1|Failed    |
+ 2|Pending   |
+ 3|Confirmed |
+ 4|Completed |
+ 5|Processing|
