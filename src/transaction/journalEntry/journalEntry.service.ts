@@ -121,22 +121,52 @@ export class JournalEntryService {
     }
   }
 
-  async create(createJournalEntryDto: CreateJournalEntryDto) {
-    await this.validateDto(createJournalEntryDto);
-    const prismaData = this.mapCreateEntryDtoToPrisma(createJournalEntryDto);
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        const entry = await tx.journalEntry.create({
-          data: prismaData,
-          include: { lines: true }, // incluir líneas en la respuesta
-        });
-        await this.updateBalances(tx, entry.lines);
-        return entry;
-      });
-    } catch (error) {
-      this.handlePrismaError(error, 'Error creando una entrada del diario');
+async create(createJournalEntryDto: CreateJournalEntryDto) {
+  await this.validateDto(createJournalEntryDto);
+
+  // Convertir las líneas a JSON string para pasarlas al procedimiento
+  const p_lines = JSON.stringify(createJournalEntryDto.lines);
+
+  try {
+    // Llamada al procedimiento almacenado con cast explícito de tipos
+    const result = await this.prisma.$queryRaw<{ insert_journal_entry: number }[]>`
+      SELECT insert_journal_entry(
+        ${createJournalEntryDto.entryDate}::timestamp,
+        ${createJournalEntryDto.description}::text,
+        ${createJournalEntryDto.createdBy}::text,
+        ${createJournalEntryDto.statusId ?? 1}::integer,
+        ${p_lines}::jsonb
+      );
+    `;
+
+    const newEntryId = result[0]?.insert_journal_entry;
+
+    if (!newEntryId) {
+      throw new Error('No se pudo crear la entrada del diario');
     }
+
+    // Cargar la entrada completa con sus líneas ya creadas
+    const entryComplete = await this.prisma.journalEntry.findUnique({
+      where: { id: newEntryId },
+      include: { lines: true, status: true, transfer: true },
+    });
+
+    if (!entryComplete) {
+      throw new Error('Entrada del diario creada no encontrada');
+    }
+
+    // Actualizar balances basados en las líneas creadas dentro de una transacción
+    await this.prisma.$transaction(tx => this.updateBalances(tx, entryComplete.lines));
+
+    return entryComplete;
+  } catch (error) {
+    this.handlePrismaError(error, 'Error creando una entrada del diario con procedimiento almacenado');
   }
+}
+
+
+
+
 
   async findAllJournalEntries(skip = 0, take = 10) {
     try {

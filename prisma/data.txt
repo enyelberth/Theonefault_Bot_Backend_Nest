@@ -36,3 +36,40 @@ id|statusName|
   (3, 'Confirmed'),
   (4, 'Completed'),
   (5, 'Processing');
+
+
+
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION update_account_balance()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE "AccountBalance"
+    SET balance = balance + NEW.amount * CASE WHEN NEW."entryType" = 'INGRESO' THEN 1 ELSE -1 END
+    WHERE "accountId" = NEW."accountId" AND "currencyCode" = NEW."currencyCode";
+
+    IF NOT FOUND THEN
+      INSERT INTO "AccountBalance" ("accountId", "currencyCode", balance)
+      VALUES (NEW."accountId", NEW."currencyCode", NEW.amount * CASE WHEN NEW."entryType" = 'INGRESO' THEN 1 ELSE -1 END);
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+CREATE TRIGGER trg_update_account_balance
+AFTER INSERT ON "JournalEntryLine"
+FOR EACH ROW
+EXECUTE FUNCTION update_account_balance();
+
+
+

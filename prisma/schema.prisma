@@ -141,7 +141,7 @@ model JournalEntry {
 model JournalEntryLine {
   id           Int      @id @default(autoincrement())
   entryId      Int
-  accountId    Int
+  accountId    Int      @map("accountId")
   currencyCode String   @db.VarChar(5)
   amount       Decimal
   entryType    EntryType

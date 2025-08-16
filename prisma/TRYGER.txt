@@ -14,3 +14,62 @@ CREATE TRIGGER account_after_insert
 AFTER INSERT ON "Account"
 FOR EACH ROW
 EXECUTE PROCEDURE create_account_balances();
+
+
+
+
+
+
+
+
+
+
+
+//////////////////
+CREATE OR REPLACE FUNCTION insert_journal_entry(
+    p_entryDate timestamp,
+    p_description text,
+    p_createdBy text,
+    p_statusId int,
+    p_lines jsonb -- las líneas enviadas en formato JSONB
+) RETURNS int AS $$
+DECLARE
+    v_entryId int;
+    line jsonb;
+BEGIN
+    -- Insertar en JournalEntry y obtener id generado
+    INSERT INTO "JournalEntry" ("entryDate", "description", "createdBy", "statusId", "createdAt")
+    VALUES (p_entryDate, p_description, p_createdBy, p_statusId, now())
+    RETURNING id INTO v_entryId;
+
+    -- Iterar por cada línea del JSONB para insertarla
+    FOR line IN SELECT * FROM jsonb_array_elements(p_lines)
+    LOOP
+        INSERT INTO "JournalEntryLine" ("entryId", "accountId", "currencyCode", "amount", "entryType")
+        VALUES (
+            v_entryId,
+            (line ->> 'accountId')::int,
+            line ->> 'currencyCode',
+            (line ->> 'amount')::numeric,
+            (line ->> 'entryType')::text
+        );
+    END LOOP;
+
+    RETURN v_entryId; -- Retornas el id de la entrada creada
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+const p_lines = JSON.stringify(createJournalEntryDto.lines);
+
+const result = await prisma.$queryRaw`
+  SELECT insert_journal_entry(
+    ${createJournalEntryDto.entryDate},
+    ${createJournalEntryDto.description},
+    ${createJournalEntryDto.createdBy},
+    ${createJournalEntryDto.statusId ?? 1},
+    ${p_lines}::jsonb
+  )
+`;

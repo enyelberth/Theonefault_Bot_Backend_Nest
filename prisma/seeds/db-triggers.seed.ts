@@ -5,22 +5,24 @@ const prisma = new PrismaClient();
 async function seedTriggersAndProcedures() {
   // Crear función para update_account_balance
   const createFunctionSQL = `
-    CREATE OR REPLACE FUNCTION update_account_balance()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      IF TG_OP = 'INSERT' THEN
-        UPDATE "AccountBalance"
-        SET balance = balance + NEW.amount * CASE WHEN NEW.entryType = 'DEBE' THEN 1 ELSE -1 END
-        WHERE accountId = NEW.accountId AND currencyCode = NEW.currencyCode;
+CREATE OR REPLACE FUNCTION update_account_balance()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE "AccountBalance"
+    SET balance = balance + NEW.amount * CASE WHEN NEW.entryType = 'INGRESO' THEN 1 ELSE -1 END
+    WHERE "accountId" = NEW.accountId AND "currencyCode" = NEW.currencyCode;
 
-        IF NOT FOUND THEN
-          INSERT INTO "AccountBalance" ("accountId", "currencyCode", balance)
-          VALUES (NEW.accountId, NEW.currencyCode, NEW.amount * CASE WHEN NEW.entryType = 'DEBE' THEN 1 ELSE -1 END);
-        END IF;
-      END IF;
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
+    IF NOT FOUND THEN
+      INSERT INTO "AccountBalance" ("accountId", "currencyCode", balance)
+      VALUES (NEW.accountId, NEW.currencyCode, NEW.amount * CASE WHEN NEW.entryType = 'INGRESO' THEN 1 ELSE -1 END);
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
   `;
 
   const dropTriggerSQL = `
