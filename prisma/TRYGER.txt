@@ -73,3 +73,56 @@ const result = await prisma.$queryRaw`
     ${p_lines}::jsonb
   )
 `;
+
+
+
+
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION insertar_journal_entry_con_lineas(
+    p_entryDate TIMESTAMP,
+    p_description TEXT,
+    p_createdBy TEXT,
+    p_statusId INT,
+    p_accountId INT,
+    p_currencyCode VARCHAR(5),
+    p_amount NUMERIC,
+    p_entryType TEXT
+)
+RETURNS INT AS $$
+DECLARE
+    v_entryId INT;
+BEGIN
+    -- Inserta en JournalEntry y retorna el id
+    INSERT INTO "JournalEntry" ("entryDate", "description", "createdBy", "statusId", "createdAt")
+    VALUES (p_entryDate, p_description, p_createdBy, p_statusId, NOW())
+    RETURNING id INTO v_entryId;
+
+    -- Inserta en JournalEntryLine con el id retornado
+    INSERT INTO "JournalEntryLine" ("entryId", "accountId", "currencyCode", "amount", "entryType")
+    VALUES (v_entryId, p_accountId, p_currencyCode, p_amount, p_entryType);
+
+    RETURN v_entryId;
+END;
+$$ LANGUAGE plpgsql;
+
+--PRasda
+
+
+
+SELECT insertar_journal_entry_con_lineas(
+    '2025-08-16 20:00:00',
+    'Descripción de la entrada',
+    'usuario_creador',
+    1,
+    1,
+    'USDT',
+    100.00,
+    'INGRESO'
+);
+

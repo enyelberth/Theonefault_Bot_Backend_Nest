@@ -144,17 +144,14 @@ model JournalEntryLine {
   accountId    Int      @map("accountId")
   currencyCode String   @db.VarChar(5)
   amount       Decimal
-  entryType    EntryType
+  entryType    String
 
   journalEntry JournalEntry @relation(fields: [entryId], references: [id])
   account      Account      @relation(fields: [accountId], references: [id])
   currency     Currency     @relation(fields: [currencyCode], references: [code])
 }
 
-enum EntryType {
-  INGRESO
-  EGRESO
-}
+
 
 // Transferencias entre cuentas
 model Transfer {

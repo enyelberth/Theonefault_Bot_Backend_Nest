@@ -1,7 +1,4 @@
 -- CreateEnum
-CREATE TYPE "EntryType" AS ENUM ('INGRESO', 'EGRESO');
-
--- CreateEnum
 CREATE TYPE "OrderType" AS ENUM ('LIMIT', 'MARKET', 'STOP_LIMIT');
 
 -- CreateEnum
@@ -133,7 +130,7 @@ CREATE TABLE "JournalEntryLine" (
     "accountId" INTEGER NOT NULL,
     "currencyCode" VARCHAR(5) NOT NULL,
     "amount" DECIMAL(65,30) NOT NULL,
-    "entryType" "EntryType" NOT NULL,
+    "entryType" TEXT NOT NULL,
 
     CONSTRAINT "JournalEntryLine_pkey" PRIMARY KEY ("id")
 );

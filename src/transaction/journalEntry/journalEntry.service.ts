@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, ValidationPipe, BadRequestException as NestBadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, BadRequestException as NestBadRequestException } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { CreateJournalEntryDto, UpdateJournalEntryDto } from './dto/create-journalEntry.dto';
 import { validate } from 'class-validator';
@@ -15,7 +15,7 @@ export class JournalEntryService {
     const errors = await validate(object, { forbidUnknownValues: false });
     if (errors.length > 0) {
       const messages = errors
-        .map(err => err.constraints ? Object.values(err.constraints) : [])
+        .map(err => (err.constraints ? Object.values(err.constraints) : []))
         .flat();
       throw new NestBadRequestException(messages);
     }
@@ -38,32 +38,6 @@ export class JournalEntryService {
     }
   }
 
-  private mapCreateEntryDtoToPrisma(createDto: CreateJournalEntryDto) {
-    return {
-      entryDate: createDto.entryDate,
-      description: createDto.description,
-      createdBy: createDto.createdBy,
-      status: createDto.statusId ? { connect: { id: createDto.statusId } } : undefined,
-      lines: {
-        create: createDto.lines.map(line => ({
-          accountId: line.accountId,
-          currencyCode: line.currencyCode,
-          amount: line.amount,
-          entryType: line.entryType,
-        })),
-      },
-    };
-  }
-
-  private mapUpdateEntryDtoToPrisma(updateDto: UpdateJournalEntryDto) {
-    return {
-      entryDate: updateDto.entryDate,
-      description: updateDto.description,
-      createdBy: updateDto.createdBy,
-      status: updateDto.statusId ? { connect: { id: updateDto.statusId } } : undefined,
-    };
-  }
-
   private mapCreateLineDtoToPrisma(createDto: any) {
     return {
       accountId: createDto.accountId,
@@ -74,19 +48,10 @@ export class JournalEntryService {
     };
   }
 
-  private mapUpdateLineDtoToPrisma(updateDto: any) {
-    return {
-      accountId: updateDto.accountId,
-      currencyCode: updateDto.currencyCode,
-      amount: updateDto.amount,
-      entryType: updateDto.entryType,
-    };
-  }
-
   private async updateBalances(tx: Prisma.TransactionClient, lines: any[]) {
     for (const line of lines) {
       const { accountId, currencyCode, amount, entryType } = line;
-      const balanceChange = entryType === 'INGRESO' ? amount : (amount * -1);
+      const balanceChange = entryType === 'INGRESO' ? amount : amount * -1;
 
       const existingBalance = await tx.accountBalance.findUnique({
         where: {
@@ -121,52 +86,64 @@ export class JournalEntryService {
     }
   }
 
-async create(createJournalEntryDto: CreateJournalEntryDto) {
-  await this.validateDto(createJournalEntryDto);
+  async create(createJournalEntryDto: CreateJournalEntryDto) {
+    await this.validateDto(createJournalEntryDto);
 
-  // Convertir las líneas a JSON string para pasarlas al procedimiento
-  const p_lines = JSON.stringify(createJournalEntryDto.lines);
+    try {
+      let newEntryId: number | null = null;
 
-  try {
-    // Llamada al procedimiento almacenado con cast explícito de tipos
-    const result = await this.prisma.$queryRaw<{ insert_journal_entry: number }[]>`
-      SELECT insert_journal_entry(
-        ${createJournalEntryDto.entryDate}::timestamp,
-        ${createJournalEntryDto.description}::text,
-        ${createJournalEntryDto.createdBy}::text,
-        ${createJournalEntryDto.statusId ?? 1}::integer,
-        ${p_lines}::jsonb
-      );
-    `;
+      if (createJournalEntryDto.lines.length === 0) {
+        throw new BadRequestException('Debe proporcionar al menos una línea para la entrada');
+      }
 
-    const newEntryId = result[0]?.insert_journal_entry;
+      const primeraLinea = createJournalEntryDto.lines[0];
 
-    if (!newEntryId) {
-      throw new Error('No se pudo crear la entrada del diario');
+      // Ejecuta procedimiento almacenado para crear JournalEntry y primera JournalEntryLine
+      const result = await this.prisma.$queryRaw<{ insertar_journal_entry_con_lineas: number }[]>`
+        SELECT insertar_journal_entry_con_lineas(
+          ${createJournalEntryDto.entryDate}::timestamp,
+          ${createJournalEntryDto.description}::text,
+          ${createJournalEntryDto.createdBy}::text,
+          ${createJournalEntryDto.statusId ?? 1}::integer,
+          ${primeraLinea.accountId}::integer,
+          ${primeraLinea.currencyCode}::varchar,
+          ${primeraLinea.amount}::numeric,
+          ${primeraLinea.entryType}::text
+        );
+      `;
+
+      newEntryId = result[0]?.insertar_journal_entry_con_lineas;
+      if (!newEntryId) {
+        throw new Error('No se pudo crear la entrada del diario');
+      }
+
+      // Inserta el resto de líneas, si existen
+      for (let i = 1; i < createJournalEntryDto.lines.length; i++) {
+        const linea = createJournalEntryDto.lines[i];
+        await this.prisma.$queryRaw`
+          INSERT INTO "JournalEntryLine" ("entryId", "accountId", "currencyCode", "amount", "entryType")
+          VALUES (${newEntryId}, ${linea.accountId}, ${linea.currencyCode}, ${linea.amount}, ${linea.entryType})
+        `;
+      }
+
+      // carga la entrada completa con líneas
+      const entryComplete = await this.prisma.journalEntry.findUnique({
+        where: { id: newEntryId },
+        include: { lines: true, status: true, transfer: true },
+      });
+
+      if (!entryComplete) {
+        throw new Error('Entrada del diario creada no encontrada');
+      }
+
+      // Actualiza balances dentro de una transacción
+      await this.prisma.$transaction(tx => this.updateBalances(tx, entryComplete.lines));
+
+      return entryComplete;
+    } catch (error) {
+      this.handlePrismaError(error, 'Error creando una entrada del diario con procedimiento almacenado');
     }
-
-    // Cargar la entrada completa con sus líneas ya creadas
-    const entryComplete = await this.prisma.journalEntry.findUnique({
-      where: { id: newEntryId },
-      include: { lines: true, status: true, transfer: true },
-    });
-
-    if (!entryComplete) {
-      throw new Error('Entrada del diario creada no encontrada');
-    }
-
-    // Actualizar balances basados en las líneas creadas dentro de una transacción
-    await this.prisma.$transaction(tx => this.updateBalances(tx, entryComplete.lines));
-
-    return entryComplete;
-  } catch (error) {
-    this.handlePrismaError(error, 'Error creando una entrada del diario con procedimiento almacenado');
   }
-}
-
-
-
-
 
   async findAllJournalEntries(skip = 0, take = 10) {
     try {
@@ -204,7 +181,7 @@ async create(createJournalEntryDto: CreateJournalEntryDto) {
         const updatedEntry = await tx.journalEntry.update({
           where: { id },
           data: prismaData,
-          include: { lines: true }, // incluir líneas en la respuesta
+          include: { lines: true },
         });
         await this.updateBalances(tx, updatedEntry.lines);
         return updatedEntry;
@@ -273,5 +250,40 @@ async create(createJournalEntryDto: CreateJournalEntryDto) {
     } catch (error) {
       this.handlePrismaError(error, `Error eliminando línea con id ${id}`);
     }
+  }
+
+  private mapCreateEntryDtoToPrisma(createDto: CreateJournalEntryDto) {
+    return {
+      entryDate: createDto.entryDate,
+      description: createDto.description,
+      createdBy: createDto.createdBy,
+      status: createDto.statusId ? { connect: { id: createDto.statusId } } : undefined,
+      lines: {
+        create: createDto.lines.map(line => ({
+          accountId: line.accountId,
+          currencyCode: line.currencyCode,
+          amount: line.amount,
+          entryType: line.entryType,
+        })),
+      },
+    };
+  }
+
+  private mapUpdateEntryDtoToPrisma(updateDto: UpdateJournalEntryDto) {
+    return {
+      entryDate: updateDto.entryDate,
+      description: updateDto.description,
+      createdBy: updateDto.createdBy,
+      status: updateDto.statusId ? { connect: { id: updateDto.statusId } } : undefined,
+    };
+  }
+
+  private mapUpdateLineDtoToPrisma(updateDto: any) {
+    return {
+      accountId: updateDto.accountId,
+      currencyCode: updateDto.currencyCode,
+      amount: updateDto.amount,
+      entryType: updateDto.entryType,
+    };
   }
 }
