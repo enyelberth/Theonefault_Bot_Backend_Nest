@@ -32,10 +32,10 @@ export class PruebaService {
       await this.savePriceToDatabase(price);
 
       if (this.grids.length === 0) {
-        await this.createGrids(price);
+      //  await this.createGrids(price);
       }
 
-      await this.manageGrids(price);
+    //  await this.manageGrids(price);
 
     //  this.logger.log(`Precio BTC a los ${new Date().toLocaleTimeString()}: $${price}`);
     } catch (error) {
