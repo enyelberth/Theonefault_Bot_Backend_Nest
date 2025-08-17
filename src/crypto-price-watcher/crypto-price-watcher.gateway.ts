@@ -4,7 +4,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
-import * as WebSocket from 'ws'; // Se necesita un cliente WebSocket
+import * as WebSocket from 'ws';
 
 @WebSocketGateway({
   cors: {
@@ -15,37 +15,45 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
   @WebSocketServer()
   server: Server;
 
-  private readonly binanceWebSocket: WebSocket;
+  private readonly binanceSockets: { [key: string]: WebSocket } = {};
+  private readonly symbols = ['linkfdusd']; // pares para monitorear
 
   constructor() {
-    // Conexión con el WebSocket de Binance para LINKFDUSD
-    this.binanceWebSocket = new WebSocket('wss://stream.binance.com:9443/ws/linkfdusd@trade');
+    // Inicializamos una conexión WebSocket de Binance por cada par
+    this.symbols.forEach((symbol) => {
+      const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@trade`);
+      this.binanceSockets[symbol] = ws;
+    });
   }
 
   afterInit(server: Server) {
     console.log('Gateway inicializado. Conectando a Binance...');
 
-    this.binanceWebSocket.onmessage = (event) => {
-      const tradeData = JSON.parse(event.data.toString());
-      const btcPrice = tradeData.p; // El precio de la transacción
+    this.symbols.forEach((symbol) => {
+      const ws = this.binanceSockets[symbol];
 
-      if (btcPrice) {
-        // Emite el nuevo precio de BTC a todos los clientes conectados
-        this.server.emit('btc-price-update', btcPrice);
-        console.log(`Nuevo precio de BTC: ${btcPrice}`);
-      }
-    };
+      ws.onopen = () => {
+        console.log(`Conectado exitosamente al WebSocket de Binance para ${symbol}`);
+      };
 
-    this.binanceWebSocket.onopen = () => {
-      console.log('Conectado exitosamente al WebSocket de Binance.');
-    };
+      ws.onmessage = (event) => {
+        const tradeData = JSON.parse(event.data.toString());
+        const price = tradeData.p;
 
-    this.binanceWebSocket.onerror = (error) => {
-      console.error('Error en la conexión con Binance WebSocket:', error);
-    };
+        if (price) {
+          // Emitimos el precio con un evento específico para el par
+          this.server.emit(`${symbol}-price-update`, price);
+          console.log(`Nuevo precio de ${symbol.toUpperCase()}: ${price}`);
+        }
+      };
 
-    this.binanceWebSocket.onclose = () => {
-      console.log('Conexión con Binance WebSocket cerrada.');
-    };
+      ws.onerror = (error) => {
+        console.error(`Error en la conexión con Binance WebSocket para ${symbol}:`, error);
+      };
+
+      ws.onclose = () => {
+        console.log(`Conexión con Binance WebSocket para ${symbol} cerrada.`);
+      };
+    });
   }
 }
