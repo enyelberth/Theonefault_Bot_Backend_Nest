@@ -37,6 +37,14 @@ export class AccountController {
     }
     return this.accountService.findAll();
   }
+    @Get(':id/balance')
+  @ApiOperation({ summary: 'Obtener el saldo de una cuenta por su ID' })
+  @ApiParam({ name: 'id', type: Number, description: 'ID de la cuenta' })
+  @ApiResponse({ status: 200, description: 'Saldo de la cuenta obtenido correctamente.', type: Number })
+  @ApiNotFoundResponse({ description: 'Cuenta no encontrada o sin saldo positivo.' })
+  async findAllAccountBalance(@Param('id', ParseIntPipe) id: number) {
+    return this.accountService.findAllAccountBalance(id);
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una cuenta por su ID' })

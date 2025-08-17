@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { AccountService } from 'src/account/account.service';
 
 @Module({
+  exports: [TradingService],
   controllers: [TradingController],
   providers: [TradingService, AccountService, PrismaClient],
 })

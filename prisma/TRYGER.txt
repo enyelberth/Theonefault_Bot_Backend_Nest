@@ -126,3 +126,27 @@ SELECT insertar_journal_entry_con_lineas(
     'INGRESO'
 );
 
+
+
+
+CREATE OR REPLACE FUNCTION fn_after_order_filled()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'FILLED' THEN
+    INSERT INTO "TradingExecution" ("orderId", "tradePrice", "tradeQuantity", "tradeTimestamp")
+    VALUES (NEW.id, COALESCE(NEW.price, 0), NEW.quantity, NOW());
+    -- Aquí podrías agregar lógica adicional para actualizar saldos o generar contraparte
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_after_order_update
+AFTER UPDATE ON "TradingOrder"
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status)
+EXECUTE FUNCTION fn_after_order_filled();
+
+
+
+
