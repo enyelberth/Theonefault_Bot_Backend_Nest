@@ -5,6 +5,7 @@ import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
 import { TradingService } from 'src/trading/trading.service';
 import { CreateTradingOrderDto } from 'src/trading/dto/create-tradingOrder.dto';
 import { OrderStatus } from '@prisma/client';
+import { BinanceService } from 'src/binance/binance.service';
 
 interface Grid {
   level: number;
@@ -22,26 +23,35 @@ export class PruebaService {
 
   constructor(
     private readonly cryptoPriceService: CryptoPriceService,
+    private readonly binanceService: BinanceService,
     private readonly trading: TradingService,
   ) {}
 
-  @Interval(2000)
-  async fetchAndSaveBtcPrice() {
+@Interval(6000)
+async fetchAndSaveBtcPrice() {
+  try {
+    const price = await this.getBtcPriceFromApi();
+    await this.savePriceToDatabase(price);
+    this.logger.log(`Precio BTC obtenido: ${price}`);
+
     try {
-      const price = await this.getBtcPriceFromApi();
-      await this.savePriceToDatabase(price);
-
-      if (this.grids.length === 0) {
-      //  await this.createGrids(price);
-      }
-
-    //  await this.manageGrids(price);
-
-    //  this.logger.log(`Precio BTC a los ${new Date().toLocaleTimeString()}: $${price}`);
+       await this.binanceService.getServerTime();
+      const saldos = await this.binanceService.listarSaldos();
+      this.logger.log('Saldos activos Binance:', saldos);
     } catch (error) {
-      this.logger.error('Error obteniendo el precio BTC', error);
+      this.logger.error('Error obteniendo saldos de Binance', error);
     }
+
+    if (this.grids.length === 0) {
+      // await this.createGrids(price);
+    }
+
+    // await this.manageGrids(price);
+
+  } catch (error) {
+    this.logger.error('Error obteniendo el precio BTC', error);
   }
+}
 
   private async createGrids(currentPrice: number) {
     this.grids = [];
@@ -73,52 +83,7 @@ export class PruebaService {
   }
 
   private async manageGrids(currentPrice: number) {
-    for (const grid of this.grids) {
-      if (!grid.active || !grid.orderId) continue;
-      try {
-        const order = await this.trading.findOneTradingOrder(grid.orderId);
-        if (!order) {
-          this.logger.warn(`Orden ${grid.orderId} no encontrada para grid ${grid.level}`);
-          grid.active = false;
-          continue;
-        }
-        if (order.status === OrderStatus.FILLED) {
-          this.logger.log(`Orden ${grid.orderId} llenada. Creando orden de venta contraparte.`);
-          const sellPrice = grid.level * (1 + this.trading['sellPriceMargin']);
-          const createSellOrderDto: CreateTradingOrderDto = {
-            accountId: order.accountId,
-            tradingPairId: order.tradingPairId,
-            orderType: order.orderType,
-            side: 'SELL',
-            price: order.price ? order.price.toNumber() : sellPrice,
-            quantity: order.quantity.toNumber(),
-            quantityRemaining: order.quantity.toNumber(),
-            status: 'OPEN',
-          };
-          await this.trading.createTradingOrder(createSellOrderDto, currentPrice);
-          grid.active = false;
-          this.logger.log(`Orden venta creada para grid nivel ${grid.level} a precio ${sellPrice}`);
-        } else if (order.status === OrderStatus.CANCELED) {
-          this.logger.log(`Orden ${grid.orderId} cancelada, volviendo a crear orden.`);
-          const createOrderDto: CreateTradingOrderDto = {
-            accountId: order.accountId,
-            tradingPairId: order.tradingPairId,
-            orderType: order.orderType,
-            side: order.side,
-            price: order.price ? order.price.toNumber() : undefined,
-            quantity: order.quantity.toNumber(),
-            quantityRemaining: order.quantity.toNumber(),
-            status: 'OPEN',
-          };
-          const newOrder = await this.trading.createTradingOrder(createOrderDto, currentPrice);
-          grid.orderId = newOrder.id;
-          grid.active = true;
-          this.logger.log(`Nueva orden creada con ID ${newOrder.id} para grid nivel ${grid.level}`);
-        }
-      } catch (e) {
-        this.logger.error(`Error gestionando grid en nivel ${grid.level}`, e);
-      }
-    }
+
   }
 
   private async getBtcPriceFromApi(): Promise<number> {

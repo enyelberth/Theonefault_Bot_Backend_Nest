@@ -1,237 +1,310 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { PrismaClient, OrderType, OrderSide, OrderStatus } from '@prisma/client';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import {
+  PrismaClient,
+  Prisma,
+  OrderType,
+  OrderSide,
+  OrderStatus,
+} from '@prisma/client';
 import { UpdateTradingOrderDto } from './dto/update-tradingOrder.dto';
 import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
 
 @Injectable()
 export class TradingService {
   private readonly logger = new Logger(TradingService.name);
-
-  private readonly priceMargin = 0.0008;
-  private readonly sellPriceMargin = 0.0008;
-  private readonly counterpartyPercent = 0.0008;
+  private readonly processingPairs = new Set<number>();
 
   constructor(private readonly prisma: PrismaClient) {}
 
-  private async descontarSaldo(accountId: number, amount: number, currencyCode: string) {
-    const balance = await this.prisma.accountBalance.findUnique({
-      where: {
-        accountId_currencyCode: { accountId, currencyCode },
-      },
-    });
-    if (!balance || balance.balance.toNumber() < amount) {
-      throw new BadRequestException(`Saldo insuficiente para descontar en la moneda ${currencyCode}.`);
-    }
-    await this.prisma.accountBalance.update({
-      where: {
-        accountId_currencyCode: { accountId, currencyCode },
-      },
-      data: {
-        balance: balance.balance.toNumber() - amount,
-      },
-    });
+  // --------------------
+  // Utils
+  // --------------------
+  private dec(n: number | Prisma.Decimal) {
+    return new Prisma.Decimal(n);
   }
 
-  private async agregarSaldo(accountId: number, amount: number, currencyCode: string) {
-    const balance = await this.prisma.accountBalance.findUnique({
+  // --------------------
+  // Helpers de balance (ATÓMICOS)
+  // --------------------
+  private async descontarSaldo(
+    tx: Prisma.TransactionClient,
+    accountId: number,
+    amount: number,
+    currencyCode: string,
+  ) {
+    const amt = this.dec(amount);
+    if (amt.lte(0)) return;
+
+    const { count } = await tx.accountBalance.updateMany({
       where: {
-        accountId_currencyCode: { accountId, currencyCode },
+        AND: [
+          { accountId },
+          { currencyCode },
+          { balance: { gte: amt } },
+        ],
+      },
+      data: {
+        balance: { decrement: amt },
       },
     });
-    if (balance) {
-      await this.prisma.accountBalance.update({
-        where: {
-          accountId_currencyCode: { accountId, currencyCode },
-        },
-        data: {
-          balance: balance.balance.toNumber() + amount,
-        },
+
+    if (count === 0)
+      throw new BadRequestException(`Saldo insuficiente en ${currencyCode}.`);
+  }
+
+  private async agregarSaldo(
+    tx: Prisma.TransactionClient,
+    accountId: number,
+    amount: number,
+    currencyCode: string,
+  ) {
+    const amt = this.dec(amount);
+    if (amt.lte(0)) return;
+
+    const existing = await tx.accountBalance.findFirst({
+      where: { accountId, currencyCode },
+    });
+
+    if (existing) {
+      await tx.accountBalance.update({
+        where: { id: existing.id },
+        data: { balance: { increment: amt } },
       });
     } else {
-      await this.prisma.accountBalance.create({
+      await tx.accountBalance.create({
         data: {
           accountId,
           currencyCode,
-          balance: amount,
+          balance: amt,
         },
       });
     }
   }
 
-  async createTradingOrder(createTradingDto: CreateTradingOrderDto, cryptoPrice: number) {
+  // --------------------
+  // Crear orden
+  // --------------------
+  async createTradingOrder(
+    createTradingDto: CreateTradingOrderDto,
+    cryptoPrice: number,
+  ) {
     try {
       const account = await this.prisma.account.findUnique({
         where: { id: createTradingDto.accountId },
-        include: { accountBalances: true },
       });
-      if (!account) {
-        throw new NotFoundException(`Cuenta con ID ${createTradingDto.accountId} no encontrada.`);
-      }
+      if (!account)
+        throw new NotFoundException(
+          `Cuenta ${createTradingDto.accountId} no encontrada`,
+        );
 
       const tradingPair = await this.prisma.tradingPair.findUnique({
         where: { id: createTradingDto.tradingPairId },
       });
-      if (!tradingPair) {
-        throw new NotFoundException(`Par de trading con ID ${createTradingDto.tradingPairId} no encontrado.`);
-      }
+      if (!tradingPair)
+        throw new NotFoundException(
+          `Par ${createTradingDto.tradingPairId} no encontrado`,
+        );
 
-      if (createTradingDto.orderType == OrderType.MARKET) {
+      if (createTradingDto.orderType === OrderType.MARKET) {
         createTradingDto.price = null;
-      } else if ((createTradingDto.orderType == OrderType.LIMIT || createTradingDto.orderType == OrderType.STOP_LIMIT)
-                    && (createTradingDto.price == undefined || createTradingDto.price == null)) {
-        throw new BadRequestException('El precio es obligatorio para órdenes LIMIT o STOP_LIMIT.');
+      } else if (
+        (createTradingDto.orderType === OrderType.LIMIT ||
+          createTradingDto.orderType === OrderType.STOP_LIMIT) &&
+        createTradingDto.price == null
+      ) {
+        throw new BadRequestException(
+          'El precio es obligatorio para LIMIT o STOP_LIMIT.',
+        );
       }
 
-      if (createTradingDto.orderType == OrderType.LIMIT) {
-        if (createTradingDto.side === OrderSide.BUY) {
-          const maxAllowedPrice = cryptoPrice * (1 - this.priceMargin);
-          if (createTradingDto.price !== null && createTradingDto.price !== undefined && createTradingDto.price >= maxAllowedPrice) {
-            throw new BadRequestException(`El precio para orden BUY LIMIT debe ser al menos ${this.priceMargin * 100}% menor que el precio del crypto (${maxAllowedPrice}).`);
-          }
-        } else if (createTradingDto.side === OrderSide.SELL) {
-          const minAllowedPrice = cryptoPrice * (1 + this.sellPriceMargin);
-          if (createTradingDto.price !== null && createTradingDto.price !== undefined && createTradingDto.price <= minAllowedPrice) {
-            throw new BadRequestException(`El precio para orden SELL LIMIT debe ser al menos ${this.sellPriceMargin * 100}% mayor que el precio del crypto (${minAllowedPrice}).`);
-          }
-        }
-      }
+      if (createTradingDto.quantity <= 0)
+        throw new BadRequestException('Cantidad debe ser mayor que cero.');
 
-      if (createTradingDto.quantity <= 0) {
-        throw new BadRequestException('La cantidad debe ser mayor que cero.');
-      }
+      const effectivePrice =
+        createTradingDto.orderType === OrderType.MARKET
+          ? cryptoPrice
+          : (createTradingDto.price as number);
 
-      let requiredBalance: number;
+      const qtyDec = this.dec(createTradingDto.quantity);
+      const priceDec = this.dec(effectivePrice);
+
+      let requiredBalance: Prisma.Decimal;
       let currencyToDebit: string;
 
       if (createTradingDto.side === OrderSide.BUY) {
-        requiredBalance = createTradingDto.quantity * cryptoPrice;
-        currencyToDebit = tradingPair.baseCurrencyCode;
-      } else {
-        requiredBalance = createTradingDto.quantity;
+        requiredBalance = qtyDec.mul(priceDec);
         currencyToDebit = tradingPair.quoteCurrencyCode;
+      } else {
+        requiredBalance = qtyDec; // vender requiere tener la base
+        currencyToDebit = tradingPair.baseCurrencyCode;
       }
 
-      await this.descontarSaldo(createTradingDto.accountId, requiredBalance, currencyToDebit);
+      return await this.prisma.$transaction(async (tx) => {
+        await this.descontarSaldo(
+          tx,
+          createTradingDto.accountId,
+          Number(requiredBalance),
+          currencyToDebit,
+        );
 
-      const newOrder = await this.prisma.tradingOrder.create({
-        data: {
-          accountId: createTradingDto.accountId,
-          tradingPairId: createTradingDto.tradingPairId,
-          orderType: createTradingDto.orderType,
-          side: createTradingDto.side,
-          price: createTradingDto.price,
-          quantity: createTradingDto.quantity,
-          quantityRemaining: createTradingDto.quantityRemaining,
-          status: createTradingDto.status ?? OrderStatus.OPEN,
-        },
+        return tx.tradingOrder.create({
+          data: {
+            accountId: createTradingDto.accountId,
+            tradingPairId: createTradingDto.tradingPairId,
+            orderType: createTradingDto.orderType,
+            side: createTradingDto.side,
+            price:
+              createTradingDto.price != null
+                ? this.dec(createTradingDto.price)
+                : null,
+            quantity: qtyDec,
+            quantityRemaining:
+              createTradingDto.quantityRemaining != null
+                ? this.dec(createTradingDto.quantityRemaining)
+                : qtyDec,
+            status: createTradingDto.status ?? OrderStatus.OPEN,
+          },
+        });
       });
-
-      return newOrder;
     } catch (error) {
-      this.logger.error('Error creando orden de trading', error);
-      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
-      throw new ConflictException('Error inesperado al crear la orden de trading.');
-    }
-  }
-
-async updateOrderStatus(id: number, newStatus: OrderStatus, cryptoPrice: number) {
-  const order = await this.prisma.tradingOrder.findUnique({
-    where: { id },
-    include: { tradingPair: true },
-  });
-  if (!order) {
-    throw new NotFoundException(`Orden con ID ${id} no encontrada.`);
-  }
-
-  // Actualizar el estado primero para evitar inconsistencias
-  const updatedOrder = await this.prisma.tradingOrder.update({
-    where: { id },
-    data: { status: newStatus },
-  });
-
-  if (newStatus === OrderStatus.CANCELED && order.status !== OrderStatus.CANCELED) {
-    const price = order.price ? order.price.toNumber() : cryptoPrice;
-    let refundAmount: number;
-    let currencyToCredit: string;
-
-    if (order.side === OrderSide.BUY) {
-      refundAmount = order.quantity.toNumber() * price;
-      currencyToCredit = order.tradingPair.baseCurrencyCode;
-    } else {
-      refundAmount = order.quantity.toNumber();
-      currencyToCredit = order.tradingPair.quoteCurrencyCode;
-    }
-
-    await this.agregarSaldo(order.accountId, refundAmount, currencyToCredit);
-  }
-
-  if (newStatus === OrderStatus.FILLED && order.status !== OrderStatus.FILLED) {
-    let creditAmount: number;
-    let currencyToCredit: string;
-
-    if (order.side === OrderSide.BUY) {
-      creditAmount = order.quantity.toNumber();
-      currencyToCredit = order.tradingPair.quoteCurrencyCode;
-    } else {
-      creditAmount = order.quantity.toNumber() * (order.price ? order.price.toNumber() : cryptoPrice);
-      currencyToCredit = order.tradingPair.baseCurrencyCode;
-    }
-
-    await this.agregarSaldo(order.accountId, creditAmount, currencyToCredit);
-
-    // Calcular ganancia basada en variable counterpartyPercent
-    // Precio contraparte ajustado para obtener ganancia o pérdida esperada
-    const counterpartySide = order.side === OrderSide.BUY ? OrderSide.SELL : OrderSide.BUY;
-    const priceAdjustment = order.side === OrderSide.BUY
-      ? 1 + this.counterpartyPercent  // Contraparte con precio mayor a compra original
-      : 1 - this.counterpartyPercent; // Contraparte con precio menor a venta original
-
-    const counterpartyPrice = (order.price ? order.price.toNumber() : cryptoPrice) * priceAdjustment;
-
-    // Crear la orden contraparte con cantidad igual y precio ajustado
-    const counterpartyOrder: CreateTradingOrderDto = {
-      accountId: order.accountId,
-      tradingPairId: order.tradingPairId,
-      orderType: order.orderType,
-      side: counterpartySide,
-      price: counterpartyPrice,
-      quantity: order.quantity.toNumber(),
-      quantityRemaining: order.quantity.toNumber(),
-      status: OrderStatus.OPEN,
-    };
-
-    await this.createTradingOrder(counterpartyOrder, cryptoPrice);
-  }
-
-  return updatedOrder;
-}
-
-
-
-  async monitorPricesAndCompleteOrders(currentPrice: number) {
-   // console.log("HOLA");
-//   console.log(currentPrice*(this.priceMargin+1));
-    const openLimitOrders = await this.prisma.tradingOrder.findMany({
-      where: {
-        status: OrderStatus.OPEN,
-        orderType: OrderType.LIMIT,
-      },
-      include: { tradingPair: true },
-    });
-
-    for (const order of openLimitOrders) {
-      const orderPrice = order.price?.toNumber();
-      if (!orderPrice) continue;
-
+      this.logger.error('Error creando orden', error?.stack || error);
       if (
-        (order.side === OrderSide.BUY && currentPrice <= orderPrice) ||
-        (order.side === OrderSide.SELL && currentPrice >= orderPrice)
-      ) {
-        await this.updateOrderStatus(order.id, OrderStatus.FILLED, currentPrice);
-      }
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      )
+        throw error;
+      throw new ConflictException('Error inesperado al crear la orden.');
     }
   }
 
+  // --------------------
+  // Lógica de llenado interno
+  // --------------------
+  private async fillOrderTx(
+    tx: Prisma.TransactionClient,
+    order: {
+      id: number;
+      accountId: number;
+      side: OrderSide;
+      price: Prisma.Decimal | null;
+      quantity: Prisma.Decimal;
+      tradingPair: { baseCurrencyCode: string; quoteCurrencyCode: string };
+    },
+    currentPrice: number,
+  ) {
+    const fillPrice = this.dec(currentPrice);
+    const qty = this.dec(order.quantity);
+
+    if (order.side === OrderSide.BUY) {
+      const actualCost = qty.mul(fillPrice);
+
+      if (order.price) {
+        const reserved = qty.mul(order.price);
+        const refund = reserved.sub(actualCost);
+        if (refund.gt(0)) {
+          await this.agregarSaldo(
+            tx,
+            order.accountId,
+            Number(refund),
+            order.tradingPair.quoteCurrencyCode,
+          );
+        }
+      }
+
+      await this.agregarSaldo(
+        tx,
+        order.accountId,
+        Number(qty),
+        order.tradingPair.baseCurrencyCode,
+      );
+    } else {
+      const proceeds = qty.mul(fillPrice);
+      await this.agregarSaldo(
+        tx,
+        order.accountId,
+        Number(proceeds),
+        order.tradingPair.quoteCurrencyCode,
+      );
+    }
+
+    // Actualizar orden dentro de la transacción usando tx
+    await tx.tradingOrder.update({
+      where: { id: order.id },
+      data: {
+        status: OrderStatus.FILLED,
+        quantityRemaining: this.dec(0),
+      },
+    });
+  }
+
+  // --------------------
+  // Procesar tick de precio
+  // --------------------
+  async processPriceTick(tradingPairId: number, currentPrice: number) {
+    if (this.processingPairs.has(tradingPairId)) return;
+    this.processingPairs.add(tradingPairId);
+
+    try {
+      await this.prisma.$transaction(
+        async (tx) => {
+          const ordersToFill = await tx.tradingOrder.findMany({
+            where: {
+              tradingPairId,
+              status: OrderStatus.OPEN,
+              OR: [
+                { orderType: OrderType.MARKET },
+                {
+                  AND: [
+                    { orderType: OrderType.LIMIT },
+                    { side: OrderSide.BUY },
+                    { price: { gte: currentPrice } },
+                  ],
+                },
+                {
+                  AND: [
+                    { orderType: OrderType.LIMIT },
+                    { side: OrderSide.SELL },
+                    { price: { lte: currentPrice } },
+                  ],
+                },
+              ],
+            },
+            include: {
+              tradingPair: {
+                select: {
+                  baseCurrencyCode: true,
+                  quoteCurrencyCode: true,
+                },
+              },
+            },
+            orderBy: { id: 'asc' },
+            take: 200,
+          });
+
+          for (const order of ordersToFill) {
+            await this.fillOrderTx(tx, order, currentPrice);
+          }
+        },
+        {
+          maxWait: 5000,
+          timeout: 20000,
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        },
+      );
+    } finally {
+      this.processingPairs.delete(tradingPairId);
+    }
+  }
+
+  // --------------------
+  // CRUD básico
+  // --------------------
   findAllTradingOrders() {
     return this.prisma.tradingOrder.findMany();
   }

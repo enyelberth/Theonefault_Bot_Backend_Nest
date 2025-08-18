@@ -31,7 +31,7 @@ export class TradingController {
   @ApiOperation({ summary: 'Obtener todas las órdenes de trading' })
   @ApiResponse({ status: 200, description: 'Lista de órdenes obtenida correctamente.' })
   findAll() {
-    return this.tradingService.findAllTradingOrders();
+  //  return this.tradingService.findAllTradingOrders();
   }
 
   @Get(':id')
@@ -40,7 +40,7 @@ export class TradingController {
   @ApiResponse({ status: 200, description: 'Orden encontrada correctamente.' })
   @ApiNotFoundResponse({ description: 'Orden no encontrada.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.tradingService.findOneTradingOrder(id);
+   // return this.tradingService.findOneTradingOrder(id);
   }
 
   @Patch(':id')
@@ -51,7 +51,7 @@ export class TradingController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateTradingOrderDto,
   ) {
-    return this.tradingService.updateTradingOrder(id, updateDto);
+  //  return this.tradingService.updateTradingOrder(id, updateDto);
   }
 
   @Patch(':id/status')
@@ -68,7 +68,7 @@ export class TradingController {
     if (isNaN(cryptoPrice) || cryptoPrice <= 0) {
       throw new BadRequestException('cryptoPrice inválido o no proporcionado.');
     }
-    return this.tradingService.updateOrderStatus(id, newStatus, cryptoPrice);
+  //  return this.tradingService.updateOrderStatus(id, newStatus, cryptoPrice);
   }
 
   @Delete(':id')
@@ -77,7 +77,7 @@ export class TradingController {
   @ApiResponse({ status: 200, description: 'Orden eliminada correctamente.' })
   @ApiNotFoundResponse({ description: 'Orden no encontrada.' })
   remove(@Param('id', ParseIntPipe) id: number) {
-    return this.tradingService.removeTradingOrder(id);
+   // return this.tradingService.removeTradingOrder(id);
   }
 
   @Post('monitor')
@@ -88,7 +88,7 @@ export class TradingController {
     if (isNaN(currentPrice) || currentPrice <= 0) {
       throw new BadRequestException('currentPrice inválido o no proporcionado.');
     }
-    await this.tradingService.monitorPricesAndCompleteOrders(currentPrice);
-    return { message: 'Monitoreo ejecutado correctamente.' };
+  //  await this.tradingService.monitorPricesAndCompleteOrders(currentPrice);
+   // return { message: 'Monitoreo ejecutado correctamente.' };
   }
 }
