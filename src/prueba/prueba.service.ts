@@ -35,9 +35,9 @@ async fetchAndSaveBtcPrice() {
     this.logger.log(`Precio BTC obtenido: ${price}`);
 
     try {
-       await this.binanceService.getServerTime();
-      const saldos = await this.binanceService.listarSaldos();
-      this.logger.log('Saldos activos Binance:', saldos);
+  //   await this.binanceService.getServerTime();
+   //   const saldos = await this.binanceService.getAccountBalance()
+   //   this.logger.log('Saldos activos Binance:', saldos);
     } catch (error) {
       this.logger.error('Error obteniendo saldos de Binance', error);
     }
