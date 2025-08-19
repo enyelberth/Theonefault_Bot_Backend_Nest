@@ -22,6 +22,7 @@ export class BinanceService {
       .update(querystring)
       .digest('hex');
   }
+  //Firmas 
 
   async getServerTime(): Promise<number> {
     const url = `${process.env.BASE_URL}/api/v3/time`;
@@ -66,7 +67,7 @@ export class BinanceService {
 
     return response.data;
   }
-
+  //Create ordenes 
   async createLimitOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
     const params = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
     return this.postSigned('/api/v3/order', params);
@@ -124,7 +125,47 @@ export class BinanceService {
 
     return response.data;
   }
+  async cancelOrder(symbol: string, orderId?: number) {
+    const serverTime = await this.getServerTime();
+    const params: Record<string, string | number> = { symbol, timestamp: serverTime, recvWindow: 10000 };
 
+    // Si se pasa orderId cancela esa orden, sino cancela todas (opcional)
+    if (orderId !== undefined) {
+      params.orderId = orderId;
+    }
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
+
+    const response = await axios.delete(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+
+  // Función para obtener precio de la crypto según el par (símbolo)
+   async getSymbolPrice(symbol: string) {
+    const params = { symbol };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const url = `${process.env.BASE_URL}/api/v3/ticker/price?${queryString}`;
+
+    const response = await axios.get(url, {
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+//Obtener saldos 
   async getAllOrders(symbol: string, limit = 500, fromId?: number) {
     const serverTime = await this.getServerTime();
     const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 10000 };
@@ -166,6 +207,67 @@ export class BinanceService {
 
     return response.data;
   }
+  async getCrossMarginAccountInfo() {
+    const serverTime = await this.getServerTime();
+    const params = { timestamp: serverTime, recvWindow: 10000 };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    // CORRECCIÓN AQUÍ: Cambia api por sapi
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/account?${queryString}&signature=${signature}`;
+
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+
+
+
+  async getIsolatedMarginAccountInfo(symbol: string) {
+    const serverTime = await this.getServerTime();
+    const params = { timestamp: serverTime, recvWindow: 10000, symbol };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/api/v1/margin/isolated/account?${queryString}&signature=${signature}`;
+
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+  async getFuturesAccountBalance() {
+    const serverTime = await this.getServerTime();
+    const params = { timestamp: serverTime, recvWindow: 10000 };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/fapi/v2/balance?${queryString}&signature=${signature}`;
+
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+
+
+
 
   async getAccountBalancesAll() {
     const serverTime = await this.getServerTime();
