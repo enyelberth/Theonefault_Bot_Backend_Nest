@@ -165,6 +165,21 @@ export class BinanceService {
 
     return response.data;
   }
+  async obtenerFiltrosSimbolo(symbol: string) {
+  const url = `${process.env.BASE_URL}/api/v3/exchangeInfo`;
+  const response = await axios.get(url, { httpsAgent: this.httpsAgent });
+
+  const symbolInfo = response.data.symbols.find((s: any) => s.symbol === symbol);
+  if (!symbolInfo) {
+    throw new Error(`Símbolo ${symbol} no encontrado en exchangeInfo`);
+  }
+
+  const priceFilter = symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER');
+  const lotSizeFilter = symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE');
+
+  return { priceFilter, lotSizeFilter };
+}
+
 //Obtener saldos 
   async getAllOrders(symbol: string, limit = 500, fromId?: number) {
     const serverTime = await this.getServerTime();
