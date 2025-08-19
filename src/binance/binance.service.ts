@@ -241,6 +241,32 @@ export class BinanceService {
 
     return response.data;
   }
+async getNonZeroBalances() {
+  const serverTime = await this.getServerTime();
+  const params = { timestamp: serverTime, recvWindow: 10000 };
+
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+  const queryString = query.toString();
+
+  const signature = this.sign(queryString);
+  const url = `${process.env.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
+
+  const response = await axios.get(url, {
+    headers: { 'X-MBX-APIKEY': this.API_KEY },
+    httpsAgent: this.httpsAgent,
+  });
+
+  // Filtra activos con balance libre o bloqueado mayor que 0
+  const balances = response.data.balances.filter(
+    (asset: any) => parseFloat(asset.free) > 0 || parseFloat(asset.locked) > 0
+  );
+
+  return balances;
+}
+
+
+
 
 
 

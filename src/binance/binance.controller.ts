@@ -14,6 +14,12 @@ export class BinanceController {
   async getAccountInfo() {
     return this.binanceService.getAccountInfo();
   }
+  @Get('account-balance')
+  @ApiOperation({ summary: 'Obtener información del balance de la cuenta' })
+  @ApiResponse({ status: 200, description: 'Información del balance de la cuenta obtenida correctamente.' })
+  async getAccountBalance() {
+    return this.binanceService.getNonZeroBalances();
+  }
 
   @Post('order/limit')
   @ApiOperation({ summary: 'Crear una orden limit'})
