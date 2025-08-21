@@ -115,6 +115,8 @@ export class GridBuyStrategy implements TradingStrategy {
                 'GTC'
               );
               this.logger.log(`Orden SELL creada ID: ${sellOrder.orderId} en nivel ${i}`);
+              this.logger.log(`PPrecio de venta ${sellPrice} en nivel ${i}`);
+
             } catch (err) {
               this.logger.error(`Error creando orden SELL nivel ${i}: ${err.message || err}`);
             }

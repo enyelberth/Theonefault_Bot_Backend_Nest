@@ -14,6 +14,7 @@ export class BinanceController {
   async getAccountInfo() {
     return this.binanceService.getAccountInfo();
   }
+  
   @Get('account-balance')
   @ApiOperation({ summary: 'Obtener información del balance de la cuenta' })
   @ApiResponse({ status: 200, description: 'Información del balance de la cuenta obtenida correctamente.' })
@@ -78,5 +79,14 @@ export class BinanceController {
     @Query('fromId') fromId?: number,
   ) {
     return this.binanceService.getAllOrders(symbol, limit ?? 500, fromId);
+  }
+
+  // Nuevo endpoint para cancelar todas las órdenes de un símbolo
+  @Post('orders/cancel-all/:symbol')
+  @ApiOperation({ summary: 'Cancelar todas las órdenes abiertas de un símbolo' })
+  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par, ej. LINKUSDT' })
+  @ApiResponse({ status: 200, description: 'Órdenes canceladas correctamente.' })
+  async cancelAllOrders(@Param('symbol') symbol: string) {
+    return this.binanceService.cancelAllOrders(symbol);
   }
 }

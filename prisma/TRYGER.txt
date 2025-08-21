@@ -174,3 +174,15 @@ EXECUTE FUNCTION fn_after_order_filled();
   "fills": [],
   "selfTradePreventionMode": "EXPIRE_MAKER"
 }
+
+{
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridBuy",
+  "config": {
+    "gridCount": 20,
+    "lowerPrice": 25.0,
+    "upperPrice": 26.1,
+    "totalQuantity": 20,
+    "profitMargin": 0.00151,
+  }
+}

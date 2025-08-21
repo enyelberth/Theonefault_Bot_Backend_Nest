@@ -20,8 +20,9 @@ import { JournalEntryModule } from './transaction/journalEntry/journalEntry.modu
 import { TradingModule } from './trading/trading.module';
 import { CryptoPriceWatcherGateway } from './crypto-price-watcher/crypto-price-watcher.gateway';
 import { HttpconfigModule } from './httpconfig/httpconfig.module';
+import { BotModule } from './bot/bot.module';
 @Module({
-  imports: [ScheduleModule.forRoot(), JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, TradingModule, HttpconfigModule],
+  imports: [ScheduleModule.forRoot(),BotModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, TradingModule, HttpconfigModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService, CryptoPriceWatcherGateway],
 })

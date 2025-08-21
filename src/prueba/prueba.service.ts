@@ -30,9 +30,9 @@ export class PruebaService {
 @Interval(6000)
 async fetchAndSaveBtcPrice() {
   try {
-    const price = await this.getBtcPriceFromApi();
-    await this.savePriceToDatabase(price);
-    this.logger.log(`Precio BTC obtenido: ${price}`);
+  //  const price = await this.getBtcPriceFromApi();
+  //  await this.savePriceToDatabase(price);
+  //  this.logger.log(`Precio BTC obtenido: ${price}`);
 
     try {
   //   await this.binanceService.getServerTime();

@@ -306,6 +306,40 @@ async getNonZeroBalances() {
 
     return response.data;
   }
+  async cancelAllOrders(symbol: string) {
+  try {
+    // 1. Obtener todas las órdenes abiertas para el símbolo
+    const serverTime = await this.getServerTime();
+    const params = { symbol, timestamp: serverTime, recvWindow: 10000 };
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/api/v3/openOrders?${queryString}&signature=${signature}`;
+
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    const openOrders = response.data;
+
+    // 2. Cancelar cada orden abierta
+    const cancelPromises = openOrders.map((order: any) => this.cancelOrder(symbol, order.orderId));
+
+    // Esperar a que se cancelen todas las órdenes
+    await Promise.all(cancelPromises);
+
+    return {
+      message: `Se cancelaron ${openOrders.length} órdenes para el símbolo ${symbol}`,
+      canceledOrdersCount: openOrders.length,
+    };
+  } catch (error) {
+    throw new Error('Error cancelando todas las órdenes: ' + error.message);
+  }
+}
+
 
 
 
