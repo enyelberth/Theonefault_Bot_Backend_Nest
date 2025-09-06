@@ -45,8 +45,8 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
       const ws = this.binanceSockets[symbol];
 
       ws.on('open', () => {
-        console.log(process.env.BASE_URL);
-        console.log(`Conectado a Binance WS para ${symbol}`);
+     //   console.log(process.env.BASE_URL);
+      //  console.log(`Conectado a Binance WS para ${symbol}`);
       });
 
       ws.on('message', async (data: WebSocket.RawData) => {

@@ -15,7 +15,7 @@ export class PricecryptoService {
     }
     async ObtenerPrecioCrypto(crypto: string): Promise<string> {
         const res = await axios.get(`${process.env.BASE_URL}/api/v3/exchangeInfo?symbol=${crypto}`);
-        console.log(res.data);
+     //   console.log(res.data);
         this.hola();
         return `El precio de ${crypto} es $${res.data.price}`;
     }

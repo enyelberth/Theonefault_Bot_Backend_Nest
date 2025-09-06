@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { StrategiesTradingService } from './strategies-trading.service';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBadRequestResponse, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateStrategyTypeDto, CreateTradingStrategyDto } from './dto/create-strategies-trading.dto';
 import { UpdateStrategyTypeDto, UpdateTradingStrategyDto } from './dto/update-strategies-trading.dto';
 import { StrategyType, TradingStrategy } from '@prisma/client';
@@ -9,11 +9,18 @@ import { StrategyType, TradingStrategy } from '@prisma/client';
 export class StrategiesTradingController {
   constructor(private readonly strategiesTradingService: StrategiesTradingService) { }
 
+  @ApiOperation({ summary: 'Crear una nueva estrategia de trading' })
+  @ApiResponse({ status: 200, description: 'Estrategia de trading creada correctamente.', type: CreateTradingStrategyDto })
+  @ApiBadRequestResponse({ description: 'Datos inválidos.' })
   @Post('/createStrategy')
   async create(@Body() createStrategiesTradingDto: CreateTradingStrategyDto) {
     return await this.strategiesTradingService.createStrategies(createStrategiesTradingDto);
   }
+
+  @ApiOperation({ summary: 'Obtener todas las estrategias de trading' })
+  @ApiBadRequestResponse({ description: 'Datos inválidos.' })
   @Get('/getStrategies')
+  
   async findAll(): Promise<TradingStrategy[]> {
     return await this.strategiesTradingService.getStrategies();
   }
