@@ -231,3 +231,23 @@ model TradingExecution {
 
   tradingOrder TradingOrder @relation(fields: [orderId], references: [id])
 }
+
+model TradingStrategy {
+  id         Int          @id @default(autoincrement())
+  symbol     String
+  typeId     Int
+  type       StrategyType @relation(fields: [typeId], references: [id])
+  config     Json         // Guarda configuración específica como JSON
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([typeId]) // Índice para mejorar consultas por tipo
+}
+
+model StrategyType {
+  id          Int               @id @default(autoincrement())
+  name        String            @unique
+  description String?
+  createdAt   DateTime          @default(now())
+  strategies  TradingStrategy[] // Relación uno a muchos
+}

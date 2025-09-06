@@ -186,3 +186,16 @@ EXECUTE FUNCTION fn_after_order_filled();
     "profitMargin": 0.00151,
   }
 }
+
+
+{
+  "symbol": "BNBFDUSD",
+  "strategyType": "rsi",
+  "config": {
+    "rsiPeriod": 14,
+    "oversoldThreshold": 30,
+    "overboughtThreshold": 70,
+    "tradeQuantity": 10,
+    "minSleepMs": 15000
+  }
+}

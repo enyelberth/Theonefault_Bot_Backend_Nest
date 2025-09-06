@@ -1,21 +1,26 @@
-// strategies/trading-strategy.interface.ts
-export interface TradingStrategy {
+export interface TradingStrategy<TConfig = any> {
   symbol: string;
-  config: {
-    //Cantidad de Grid
-    gridCount: number;
-    //Precio mas bajo
-    lowerPrice?: number;
-    //Precio mas alto
-    upperPrice?: number;
-    //Cantidad total
-    totalQuantity: number;
-    //Margen de beneficio
-    profitMargin: number;
-    //Edad máxima de la orden  
-    maxOrderAgeMs?: number;
-  };
+  config: TConfig;
 
   run(): Promise<void>;
   stop?(): Promise<void>;
+}
+export interface GridStrategyConfig {
+  gridCount: number;
+  lowerPrice?: number;
+  upperPrice?: number;
+  totalQuantity: number;
+  profitMargin: number;
+  maxOrderAgeMs?: number;
+  stopLossMargin?: number;
+  minSleepMs?: number;
+  maxSleepMs?: number;
+}
+
+export interface RsiStrategyConfig {
+  rsiPeriod: number;
+  oversoldThreshold: number;
+  overboughtThreshold: number;
+  tradeQuantity: number;
+  minSleepMs?: number;
 }

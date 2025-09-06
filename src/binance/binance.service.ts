@@ -306,6 +306,82 @@ async getNonZeroBalances() {
 
     return response.data;
   }
+  async createStopLossOrder(
+  symbol: string,
+  side: 'BUY' | 'SELL',
+  quantity: string,
+  stopPrice: string,
+  options: Record<string, any> = {},
+) {
+  const serverTime = await this.getServerTime();
+  const params = {
+    symbol,
+    side,
+    type: 'STOP_LOSS_LIMIT',
+    quantity,
+    price: stopPrice,
+    stopPrice,
+    timeInForce: 'GTC',
+    timestamp: serverTime,
+    recvWindow: 10000,
+    ...options,
+  };
+
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+  const queryString = query.toString();
+
+  const signature = this.sign(queryString);
+  const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
+
+  const response = await axios.post(url, null, {
+    headers: { 'X-MBX-APIKEY': this.API_KEY },
+    httpsAgent: this.httpsAgent,
+  });
+
+  return response.data;
+}
+async getCandles(
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<{ open: string; high: string; low: string; close: string; volume: string; openTime: number; closeTime: number; }[]> {
+  const params = { symbol, interval, limit };
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+  const queryString = query.toString();
+
+  const url = `${process.env.BASE_URL}/api/v3/klines?${queryString}`;
+
+  const response = await axios.get(url, {
+    httpsAgent: this.httpsAgent,
+  });
+
+  // El endpoint devuelve arrays por vela, con esta estructura:
+  // [
+  //   0 Open time,
+  //   1 Open,
+  //   2 High,
+  //   3 Low,
+  //   4 Close,
+  //   5 Volume,
+  //   6 Close time,
+  //   ...
+  // ]
+  
+  // Lo transformamos a objetos con propiedades explícitas
+  return response.data.map((kline: any[]) => ({
+    openTime: kline[0],
+    open: kline[1],
+    high: kline[2],
+    low: kline[3],
+    close: kline[4],
+    volume: kline[5],
+    closeTime: kline[6],
+  }));
+}
+
+
   async cancelAllOrders(symbol: string) {
   try {
     // 1. Obtener todas las órdenes abiertas para el símbolo
