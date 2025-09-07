@@ -180,28 +180,45 @@ model TradingPair {
 
   baseCurrency  Currency @relation("BaseCurrency", fields: [baseCurrencyCode], references: [code])
   quoteCurrency Currency @relation("QuoteCurrency", fields: [quoteCurrencyCode], references: [code])
-  tradingOrders TradingOrder[]
 
   @@unique([baseCurrencyCode, quoteCurrencyCode])
 }
 
 // Órdenes de trading spot
 model TradingOrder {
-  id                Int        @id @default(autoincrement())
-  accountId         Int
-  tradingPairId     Int
-  orderType         OrderType
-  side              OrderSide
-  price             Decimal?   
-  quantity          Decimal
-  quantityRemaining Decimal
-  status            OrderStatus @default(OPEN)
-  createdAt         DateTime    @default(now())
+  id                 Int           @id @default(autoincrement())
+  accountId          Int
+  symbol             String
+  orderId            Int           @unique
+  client_order_id    String        @unique 
+  side               OrderSide
+  price              Decimal?      
+  quantity           Decimal
+  quantityExecuted   Decimal
+  status             OrderStatus   @default(OPEN)
+  type               OrderType
+  stopPrice          Decimal?  
+  quantityStop       Decimal?      
+  isWorking          Boolean       @default(true)
+  profit_loss        Decimal?      
+  closed_time        DateTime?
 
-  account           Account     @relation(fields: [accountId], references: [id])
-  tradingPair       TradingPair @relation(fields: [tradingPairId], references: [id])
-  executions        TradingExecution[]
+  closingOrderId     Int?            
+  closingOrder       TradingOrder? @relation("OrderClosing", fields: [closingOrderId], references: [id])
+  
+  // Campo inverso para que Prisma entienda la relación 1 - 1 o 1 - n
+  closedByOrders     TradingOrder[] @relation("OrderClosing")
+
+  account            Account      @relation(fields: [accountId], references: [id])
+  executions         TradingExecution[]
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([accountId, symbol])
+  @@index([status])
 }
+
 
 enum OrderType {
   LIMIT
@@ -223,14 +240,15 @@ enum OrderStatus {
 
 // Ejecuciones de órdenes de trading
 model TradingExecution {
-  id             Int       @id @default(autoincrement())
+  id             Int           @id @default(autoincrement())
   orderId        Int
   tradePrice     Decimal
   tradeQuantity  Decimal
-  tradeTimestamp DateTime  @default(now())
+  tradeTimestamp DateTime      @default(now())
 
-  tradingOrder TradingOrder @relation(fields: [orderId], references: [id])
+  tradingOrder   TradingOrder  @relation(fields: [orderId], references: [id])
 }
+
 
 model TradingStrategy {
   id         Int          @id @default(autoincrement())

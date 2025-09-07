@@ -62,6 +62,7 @@ async fetchAndSaveBtcPrice() {
       // Comenzar en minBuyPrice y bajar por gridSpacing
       const level = minBuyPrice - i * this.gridSpacing;
       console.log(level);
+      /*
       const createOrderDto: CreateTradingOrderDto = {
         accountId: 2,           // Ajusta el ID de cuenta real aquí
         tradingPairId: 1,       // Ajusta el ID del par de trading aquí
@@ -72,10 +73,13 @@ async fetchAndSaveBtcPrice() {
         quantityRemaining: 1,
         status: 'OPEN',
       };
+      */
       try {
+        /*
         const order = await this.trading.createTradingOrder(createOrderDto, currentPrice);
         this.grids.push({ level, orderId: order.id, active: true });
         this.logger.log(`Grid creado en nivel ${level} con orden ID ${order.id}`);
+        */
       } catch (e) {
         this.logger.error(`Error creando orden en grid nivel ${level}`, e);
       }

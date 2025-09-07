@@ -24,14 +24,14 @@ export class TradingController {
     if (isNaN(cryptoPrice) || cryptoPrice <= 0) {
       throw new BadRequestException('cryptoPrice inválido o no proporcionado.');
     }
-    return this.tradingService.createTradingOrder(createDto, cryptoPrice);
+    return this.tradingService.createTradingOrder(createDto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las órdenes de trading' })
   @ApiResponse({ status: 200, description: 'Lista de órdenes obtenida correctamente.' })
   findAll() {
-  //  return this.tradingService.findAllTradingOrders();
+    return this.tradingService.findAllTradingOrders();
   }
 
   @Get(':id')

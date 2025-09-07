@@ -155,25 +155,74 @@ EXECUTE FUNCTION fn_after_order_filled();
 
 
 
-{
-  "symbol": "ETHFDUSD",
-  "orderId": 7935619,
-  "orderListId": -1,
-  "clientOrderId": "51TJcKtGMUo8dOtVXLEqV5",
-  "transactTime": 1755532065253,
-  "price": "5000.00000000",
-  "origQty": "0.20000000",
-  "executedQty": "0.00000000",
-  "origQuoteOrderQty": "0.00000000",
-  "cummulativeQuoteQty": "0.00000000",
-  "status": "NEW",
-  "timeInForce": "GTC",
-  "type": "LIMIT",
-  "side": "SELL",
-  "workingTime": 1755532065253,
-  "fills": [],
-  "selfTradePreventionMode": "EXPIRE_MAKER"
+  {
+    "symbol": "LINKFDUSD",
+    "orderId": 9488,
+    "orderListId": -1,
+    "clientOrderId": "XRyB3EkDBjd6Ay4G1HBtDz",
+    "price": "21.45000000",
+    "origQty": "0.27000000",
+    "executedQty": "0.00000000",
+    "cummulativeQuoteQty": "0.00000000",
+    "status": "CANCELED",
+    "timeInForce": "GTC",
+    "type": "LIMIT",
+    "side": "BUY",
+    "stopPrice": "0.00000000",
+    "icebergQty": "0.00000000",
+    "time": 1757103518795,
+    "updateTime": 1757107124198,
+    "isWorking": true,
+    "workingTime": 1757103518795,
+    "origQuoteOrderQty": "0.00000000",
+    "selfTradePreventionMode": "EXPIRE_MAKER"
+  },
+model TradingOrder {
+  id                String
+  symbol            String
+  orderId           number
+  accountId         Int
+  clientOrderId     String
+  orderType         OrderType
+  side              OrderSide
+  price             Decimal?   
+  quantity          Decimal
+  quantityRemaining Decimal
+  status            OrderStatus @default(OPEN)
+  createdAt         DateTime    @default(now())
+
+  account           Account     @relation(fields: [accountId], references: [id])
+  tradingPair       TradingPair @relation(fields: [tradingPairId], references: [id])
+  executions        TradingExecution[]
 }
+CREATE TABLE trading_orders (
+  id BIGSERIAL PRIMARY KEY,                          -- ID interno autoincremental
+  symbol VARCHAR(20) NOT NULL,                       -- Símbolo del activo (e.g. LINKFDUSD)
+  order_id BIGINT NOT NULL UNIQUE,                   -- ID de orden externo (orderId)
+  client_order_id VARCHAR(50),                       -- ID de cliente para la orden
+  price DECIMAL(18,8) NOT NULL,                      -- Precio de la orden
+  orig_qty DECIMAL(18,8) NOT NULL,                   -- Cantidad original ordenada
+  executed_qty DECIMAL(18,8) DEFAULT 0,              -- Cantidad ejecutada hasta ahora
+  cum_quote_qty DECIMAL(18,8) DEFAULT 0,             -- Valor acumulado en quote
+  status VARCHAR(20) NOT NULL,                        -- Estado (NEW, FILLED, CANCELED...)
+  time_in_force VARCHAR(10),                          -- Tipo de tiempo (GTC etc)
+  type VARCHAR(20),                                   -- Tipo orden (LIMIT, MARKET)
+  side VARCHAR(10) NOT NULL,                          -- Lado (BUY o SELL)
+  stop_price DECIMAL(18,8) DEFAULT 0,                 -- Precio stop si aplica
+  iceberg_qty DECIMAL(18,8) DEFAULT 0,                -- Cantidad iceberg si aplica
+  time BIGINT NOT NULL,                               -- Timestamp creación orden
+  update_time BIGINT NOT NULL,                        -- Timestamp actualización orden
+  is_working BOOLEAN DEFAULT TRUE,                    -- Orden activa o no
+  working_time BIGINT,                                -- Timestamp inicio estado activo
+  orig_quote_order_qty DECIMAL(18,8) DEFAULT 0,       -- Valor original total quote
+  self_trade_mode VARCHAR(20),                        -- Prevención auto-trade
+  profit_loss DECIMAL(18,8) DEFAULT 0,                 -- Ganancia o pérdida realizada (al cerrar)
+  closed_time BIGINT,                                 -- Timestamp cuando se cerró la operación
+  created_at TIMESTAMP DEFAULT now(),                 -- Fecha creación registro
+  updated_at TIMESTAMP DEFAULT now()                  -- Fecha última actualización
+);
+
+
 
 {
   "symbol": "LINKFDUSD",

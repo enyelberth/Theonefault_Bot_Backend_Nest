@@ -163,14 +163,23 @@ CREATE TABLE "TradingPair" (
 CREATE TABLE "TradingOrder" (
     "id" SERIAL NOT NULL,
     "accountId" INTEGER NOT NULL,
-    "tradingPairId" INTEGER NOT NULL,
-    "orderType" "OrderType" NOT NULL,
+    "symbol" TEXT NOT NULL,
+    "orderId" INTEGER NOT NULL,
+    "client_order_id" TEXT NOT NULL,
     "side" "OrderSide" NOT NULL,
     "price" DECIMAL(65,30),
     "quantity" DECIMAL(65,30) NOT NULL,
-    "quantityRemaining" DECIMAL(65,30) NOT NULL,
+    "quantityExecuted" DECIMAL(65,30) NOT NULL,
     "status" "OrderStatus" NOT NULL DEFAULT 'OPEN',
+    "type" "OrderType" NOT NULL,
+    "stopPrice" DECIMAL(65,30),
+    "quantityStop" DECIMAL(65,30),
+    "isWorking" BOOLEAN NOT NULL DEFAULT true,
+    "profit_loss" DECIMAL(65,30),
+    "closed_time" TIMESTAMP(3),
+    "closingOrderId" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TradingOrder_pkey" PRIMARY KEY ("id")
 );
@@ -184,6 +193,28 @@ CREATE TABLE "TradingExecution" (
     "tradeTimestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "TradingExecution_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TradingStrategy" (
+    "id" SERIAL NOT NULL,
+    "symbol" TEXT NOT NULL,
+    "typeId" INTEGER NOT NULL,
+    "config" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TradingStrategy_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "StrategyType" (
+    "id" SERIAL NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "StrategyType_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -206,6 +237,24 @@ CREATE UNIQUE INDEX "Transfer_journalEntryId_key" ON "Transfer"("journalEntryId"
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TradingPair_baseCurrencyCode_quoteCurrencyCode_key" ON "TradingPair"("baseCurrencyCode", "quoteCurrencyCode");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TradingOrder_orderId_key" ON "TradingOrder"("orderId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TradingOrder_client_order_id_key" ON "TradingOrder"("client_order_id");
+
+-- CreateIndex
+CREATE INDEX "TradingOrder_accountId_symbol_idx" ON "TradingOrder"("accountId", "symbol");
+
+-- CreateIndex
+CREATE INDEX "TradingOrder_status_idx" ON "TradingOrder"("status");
+
+-- CreateIndex
+CREATE INDEX "TradingStrategy_typeId_idx" ON "TradingStrategy"("typeId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "StrategyType_name_key" ON "StrategyType"("name");
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "Profile"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -265,10 +314,13 @@ ALTER TABLE "TradingPair" ADD CONSTRAINT "TradingPair_baseCurrencyCode_fkey" FOR
 ALTER TABLE "TradingPair" ADD CONSTRAINT "TradingPair_quoteCurrencyCode_fkey" FOREIGN KEY ("quoteCurrencyCode") REFERENCES "Currency"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "TradingOrder" ADD CONSTRAINT "TradingOrder_closingOrderId_fkey" FOREIGN KEY ("closingOrderId") REFERENCES "TradingOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "TradingOrder" ADD CONSTRAINT "TradingOrder_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "TradingOrder" ADD CONSTRAINT "TradingOrder_tradingPairId_fkey" FOREIGN KEY ("tradingPairId") REFERENCES "TradingPair"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TradingExecution" ADD CONSTRAINT "TradingExecution_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "TradingOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "TradingExecution" ADD CONSTRAINT "TradingExecution_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "TradingOrder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "TradingStrategy" ADD CONSTRAINT "TradingStrategy_typeId_fkey" FOREIGN KEY ("typeId") REFERENCES "StrategyType"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
