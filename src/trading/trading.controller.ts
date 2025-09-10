@@ -1,31 +1,45 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, ParseIntPipe, BadRequestException, Delete } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery, ApiBadRequestResponse, ApiNotFoundResponse, ApiCreatedResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  ParseIntPipe,
+  BadRequestException,
+  Delete,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
 import { TradingService } from './trading.service';
 import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
 import { UpdateTradingOrderDto } from './dto/update-tradingOrder.dto';
 import { OrderStatus } from '@prisma/client';
+import { Public } from 'src/authA/auth.guard';
 
 @ApiTags('trading-orders')
 @Controller('trading-orders')
 export class TradingController {
   constructor(private readonly tradingService: TradingService) {}
-
+  @Public()
   @Post()
   @ApiOperation({ summary: 'Crear una nueva orden de trading' })
   @ApiCreatedResponse({ description: 'Orden creada exitosamente.' })
-  @ApiBadRequestResponse({ description: 'Datos inválidos o saldo insuficiente.' })
-  @ApiNotFoundResponse({ description: 'Cuenta o par de trading no encontrado.' })
-  @ApiQuery({ name: 'cryptoPrice', description: 'Precio actual de la criptomoneda', required: true, type: Number })
-  async create(
-    @Body() createDto: CreateTradingOrderDto,
-    @Query('cryptoPrice') cryptoPriceStr: string,
-  ) {
-    const cryptoPrice = Number(cryptoPriceStr);
-    if (isNaN(cryptoPrice) || cryptoPrice <= 0) {
-      throw new BadRequestException('cryptoPrice inválido o no proporcionado.');
-    }
+  @ApiBadRequestResponse({ description: 'Datos inválidos o error en creación.' })
+  @ApiNotFoundResponse({ description: 'Cuenta o entidad relacionada no encontrada.' })
+  async create(@Body() createDto: CreateTradingOrderDto) {
     return this.tradingService.createTradingOrder(createDto);
   }
+  @Public()
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las órdenes de trading' })
@@ -33,25 +47,25 @@ export class TradingController {
   findAll() {
     return this.tradingService.findAllTradingOrders();
   }
-
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una orden por ID' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden' })
   @ApiResponse({ status: 200, description: 'Orden encontrada correctamente.' })
   @ApiNotFoundResponse({ description: 'Orden no encontrada.' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-   // return this.tradingService.findOneTradingOrder(id);
+    return this.tradingService.findOneTradingOrder(id);
   }
-
+  @Public()
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar detalles de una orden' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden a actualizar' })
   @ApiResponse({ status: 200, description: 'Orden actualizada correctamente.' })
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateTradingOrderDto,
   ) {
-  //  return this.tradingService.updateTradingOrder(id, updateDto);
+    return this.tradingService.updateTradingOrder(id, updateDto);
   }
 
   @Patch(':id/status')
@@ -68,7 +82,7 @@ export class TradingController {
     if (isNaN(cryptoPrice) || cryptoPrice <= 0) {
       throw new BadRequestException('cryptoPrice inválido o no proporcionado.');
     }
-  //  return this.tradingService.updateOrderStatus(id, newStatus, cryptoPrice);
+    return this.tradingService.updateTradingOrderStatus(id, newStatus, cryptoPrice);
   }
 
   @Delete(':id')
@@ -76,8 +90,10 @@ export class TradingController {
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden a eliminar' })
   @ApiResponse({ status: 200, description: 'Orden eliminada correctamente.' })
   @ApiNotFoundResponse({ description: 'Orden no encontrada.' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-   // return this.tradingService.removeTradingOrder(id);
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    // Si implementas la función removeTradingOrder, simplemente descomenta esta línea
+    // return this.tradingService.removeTradingOrder(id);
+    throw new BadRequestException('Función eliminar no implementada todavía');
   }
 
   @Post('monitor')
@@ -88,7 +104,8 @@ export class TradingController {
     if (isNaN(currentPrice) || currentPrice <= 0) {
       throw new BadRequestException('currentPrice inválido o no proporcionado.');
     }
-  //  await this.tradingService.monitorPricesAndCompleteOrders(currentPrice);
-   // return { message: 'Monitoreo ejecutado correctamente.' };
+    // Si implementas monitorPricesAndCompleteOrders, descomenta y ajusta esta llamada
+    // await this.tradingService.monitorPricesAndCompleteOrders(currentPrice);
+    return { message: 'Monitoreo ejecutado correctamente.' };
   }
 }

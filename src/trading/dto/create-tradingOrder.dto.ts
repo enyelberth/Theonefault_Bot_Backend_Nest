@@ -3,15 +3,15 @@ import { IsInt, IsEnum, IsOptional, IsDecimal, IsPositive, IsString } from 'clas
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTradingOrderDto {
-  @ApiProperty({ description: 'ID de la cuenta' })
+  @ApiProperty({ description: 'ID de la cuenta',example: 1 })
   @IsInt()
   accountId: number;
-
+/*
   @ApiProperty({ description: 'ID del par de trading' })
   @IsInt()
-  tradingPairId: number;
+  tradingPairId: number;*/
 
-  @ApiProperty({ description: 'Símbolo del activo' })
+  @ApiProperty({ description: 'Símbolo del activo',example: 'BTCUSDT' })
   @IsString()
   symbol: string;
 
@@ -19,7 +19,7 @@ export class CreateTradingOrderDto {
   @IsInt()
   orderId: number;
 
-  @ApiProperty({ description: 'ID único de cliente para la orden' })
+  @ApiProperty({ description: 'ID único de cliente para la orden', example: 'my_order_123' })
   @IsString()
   client_order_id: string;
 
@@ -69,4 +69,8 @@ export class CreateTradingOrderDto {
   @IsOptional()
   @IsInt()
   closingOrderId?: number | null;
+  @ApiPropertyOptional({ description: 'Ganancias o pérdidas', type: 'number', format: 'decimal' })
+  @IsOptional()
+  @IsDecimal()
+  profit_loss?: number | null;
 }

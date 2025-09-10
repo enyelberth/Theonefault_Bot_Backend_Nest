@@ -236,6 +236,7 @@ enum OrderStatus {
   PARTIALLY_FILLED
   FILLED
   CANCELED
+  CLOSED
 }
 
 // Ejecuciones de órdenes de trading

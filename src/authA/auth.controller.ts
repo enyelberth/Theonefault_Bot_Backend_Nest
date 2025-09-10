@@ -5,10 +5,11 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth, ApiProperty, ApiQuery } from '@nestjs/swagger';
 import { AuthGuard, Public } from './auth.guard';
 import { AuthService } from './auth.service';
 
@@ -35,16 +36,18 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Inicio de sesión exitoso.' })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas.' })
   signIn(@Body() signInDto: SignInDto) {
-  //  return this.authService.signIn(signInDto.username, signInDto.password);
+    return this.authService.signIn(signInDto.username, signInDto.password);
   }
 
-  @UseGuards(AuthGuard)
-  @Get('profile')
-  @ApiBearerAuth() // Indica que este endpoint requiere autenticación Bearer token
-  @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
-  @ApiResponse({ status: 200, description: 'Perfil del usuario obtenido correctamente.' })
-  @ApiResponse({ status: 401, description: 'No autorizado.' })
-  getProfile(@Request() req) {
-  //  return req.user;
+  @Public()
+  @Get('validate-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Validar token JWT' })
+  @ApiResponse({ status: 200, description: 'Token válido.' })
+  @ApiResponse({ status: 401, description: 'Token inválido o no autorizado.' })
+  @ApiQuery({ name: 'token', required: true, description: 'Token JWT a validar' })
+  async validateToken(@Query('token') token: string) {
+    const decoded = await this.authService.validateToken(token);
+    return { valid: true, decoded };
   }
 }

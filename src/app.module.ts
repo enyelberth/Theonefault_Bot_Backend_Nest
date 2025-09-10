@@ -22,8 +22,9 @@ import { CryptoPriceWatcherGateway } from './crypto-price-watcher/crypto-price-w
 import { HttpconfigModule } from './httpconfig/httpconfig.module';
 import { BotModule } from './bot/bot.module';
 import { StrategiesTradingModule } from './strategies-trading/strategies-trading.module';
+import { AuthModule } from './authA/auth.module';
 @Module({
-  imports: [ScheduleModule.forRoot(),BotModule,StrategiesTradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, TradingModule, HttpconfigModule],
+  imports: [AuthModule,ScheduleModule.forRoot(),BotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService, CryptoPriceWatcherGateway],
 })
