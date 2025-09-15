@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   BadRequestException,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,13 +20,16 @@ import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
   ApiCreatedResponse,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { TradingService } from './trading.service';
 import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
 import { UpdateTradingOrderDto } from './dto/update-tradingOrder.dto';
 import { OrderStatus } from '@prisma/client';
-import { Public } from 'src/authA/auth.guard';
+import { AuthGuard, Public } from 'src/authA/auth.guard';
 
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('trading-orders')
 @Controller('trading-orders')
 export class TradingController {

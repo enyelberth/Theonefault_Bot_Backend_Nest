@@ -1,9 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { CryptoPriceService } from './crypto-price.service';
 import { CreateCryptoPriceDto } from './dto/create-crypto-price.dto';
 import { UpdateCryptoPriceDto } from './dto/update-crypto-price.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from 'src/authA/auth.guard';
 
+
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('crypto-price') // Etiqueta para agrupar las rutas en la documentación de Swagger
 @Controller('crypto-price')
 export class CryptoPriceController {

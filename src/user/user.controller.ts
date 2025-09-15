@@ -49,7 +49,7 @@ export class UserController {
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.userService.remove(id);
   }
-
+  @Public()
   @Get('exists/email/:email')
   @ApiOperation({ summary: 'Check if email exists' })
   @ApiParam({ name: 'email', type: String })
@@ -57,6 +57,7 @@ export class UserController {
     const exists = await this.userService.existsByEmail(email);
     return { exists };
   }
+  @Public()
 
   @Get('exists/username/:username')
   @ApiOperation({ summary: 'Check if username exists' })

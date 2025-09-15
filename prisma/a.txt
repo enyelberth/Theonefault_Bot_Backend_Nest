@@ -1,0 +1,44 @@
+[
+  {
+    "symbol": "BNBFDUSD",
+    "config": {
+      "config": {
+        "gridCount": 10,
+        "lowerPrice": 800,
+        "upperPrice": 900,
+        "profitMargin": 0.0009,
+        "totalQuantity": 2
+      },
+      "openBuyOrders": {},
+      "openSellOrders": {},
+      "isRunning": true,
+      "skippedLevels": {},
+      "profitLoss": 0,
+      "logger": {
+        "context": "GridBuyStrategy",
+        "options": {},
+        "localInstanceRef": {
+          "options": {
+            "logLevels": [
+              "log",
+              "error",
+              "warn",
+              "debug",
+              "verbose",
+              "fatal"
+            ],
+            "colors": true,
+            "prefix": "Nest"
+          },
+          "inspectOptions": {
+            "depth": 5,
+            "compact": false,
+            "colors": true
+          },
+          "context": "GridBuyStrategy",
+          "originalContext": "GridBuyStrategy"
+        }
+      }
+    }
+  }
+]

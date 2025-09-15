@@ -225,6 +225,7 @@ CREATE TABLE trading_orders (
 
 
 {
+  "typeId": 1,
   "symbol": "LINKFDUSD",
   "strategyType": "gridBuy",
   "config": {
@@ -246,5 +247,40 @@ CREATE TABLE trading_orders (
     "overboughtThreshold": 70,
     "tradeQuantity": 10,
     "minSleepMs": 15000
+  }
+}
+
+
+{
+  "symbol": "LINKFDUSD",
+  "strategyType": "rsi",
+  "config": {
+    "rsiPeriod": 14,
+    "oversoldThreshold": 40,
+    "overboughtThreshold": 80,
+    "tradeQuantity": 20,
+    "minSleepMs": 15000,
+  "profitMargin": 0.0008,
+  "stopLossMargin": 2,
+  "maxOrderAgeMs": 900000,
+  "numBuyOrders" : 40
+  }
+}
+
+{
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridFull",
+  "config": {
+    "trading":true,
+    "lowerPrice": 25.0,
+    "upperPrice": 26.1,
+    "totalQuantity": 20,
+    "profitMargin": 0.0004,
+    "maxOrderAgeMs": 900000,
+    "stopLossMargin": 0.2,
+    "minSleepMs": 15000,
+    "maxSleepMs": 3600000,
+    "buySafetyMargin":0.0004
+
   }
 }

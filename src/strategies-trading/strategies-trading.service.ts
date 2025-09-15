@@ -5,12 +5,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import {
-  Prisma,
-  PrismaClient,
-  StrategyType,
-  TradingStrategy,
-} from '@prisma/client';
-import {
   UpdateStrategyTypeDto,
   UpdateTradingStrategyDto,
 } from './dto/update-strategies-trading.dto';
@@ -18,6 +12,7 @@ import {
   CreateStrategyTypeDto,
   CreateTradingStrategyDto,
 } from './dto/create-strategies-trading.dto';
+import { PrismaClient, StrategyType, TradingStrategy } from '@prisma/client';
 
 @Injectable()
 export class StrategiesTradingService {
@@ -46,13 +41,10 @@ export class StrategiesTradingService {
       return await this.prisma.tradingStrategy.findMany();
     } catch (error) {
       this.logger.error('Error fetching trading strategies', error);
-
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') {
-          throw new BadRequestException(
-            'Ya existe una estrategia con datos únicos duplicados.',
-          );
-        }
+      if ('code' in error && error.code === 'P2002') {
+        throw new BadRequestException(
+          'Ya existe una estrategia con datos únicos duplicados.',
+        );
       }
       throw new InternalServerErrorException(
         'Error inesperado al obtener las estrategias de trading.',
@@ -110,7 +102,7 @@ export class StrategiesTradingService {
   }
 
   // Strategy Type
-  async getTypeStrategies(): Promise<StrategyType[]> {
+  async getTypeStrategies(): Promise<any> {
     try {
       const types = await this.prisma.strategyType.findMany();
       if (types.length === 0) {

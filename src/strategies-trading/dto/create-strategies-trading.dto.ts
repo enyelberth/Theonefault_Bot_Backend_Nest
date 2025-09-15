@@ -14,8 +14,12 @@ export class CreateTradingStrategyDto {
   @ApiProperty({ description: 'Configuración específica de la estrategia en formato JSON' })
   @IsJSON()
   config: any;
-}
 
+  @ApiPropertyOptional({ description: 'Tipo de estrategia (opcional)' })
+  @IsOptional()
+  @IsString()
+  strategyType?: string|null;
+}
 
 
 

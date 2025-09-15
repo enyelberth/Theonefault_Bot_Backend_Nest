@@ -77,6 +77,13 @@ export class BinanceService {
     const params = { symbol, side, type: 'MARKET', quantity };
     return this.postSigned('/api/v3/order', params);
   }
+  async getSymbolTickSize(symbol: string): Promise<number> {
+    const { priceFilter } = await this.obtenerFiltrosSimbolo(symbol);
+    if (!priceFilter || !priceFilter.tickSize) {
+      throw new Error(`No se pudo obtener tickSize para el símbolo ${symbol}`);
+    }
+    return parseFloat(priceFilter.tickSize);
+  }
 
   async createOcoOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, stopPrice: string, stopLimitPrice: string, stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
     const serverTime = await this.getServerTime();
@@ -150,7 +157,7 @@ export class BinanceService {
   }
 
   // Función para obtener precio de la crypto según el par (símbolo)
-   async getSymbolPrice(symbol: string) {
+  async getSymbolPrice(symbol: string) {
     const params = { symbol };
 
     const query = new URLSearchParams();
@@ -166,21 +173,21 @@ export class BinanceService {
     return response.data;
   }
   async obtenerFiltrosSimbolo(symbol: string) {
-  const url = `${process.env.BASE_URL}/api/v3/exchangeInfo`;
-  const response = await axios.get(url, { httpsAgent: this.httpsAgent });
+    const url = `${process.env.BASE_URL}/api/v3/exchangeInfo`;
+    const response = await axios.get(url, { httpsAgent: this.httpsAgent });
 
-  const symbolInfo = response.data.symbols.find((s: any) => s.symbol === symbol);
-  if (!symbolInfo) {
-    throw new Error(`Símbolo ${symbol} no encontrado en exchangeInfo`);
+    const symbolInfo = response.data.symbols.find((s: any) => s.symbol === symbol);
+    if (!symbolInfo) {
+      throw new Error(`Símbolo ${symbol} no encontrado en exchangeInfo`);
+    }
+
+    const priceFilter = symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER');
+    const lotSizeFilter = symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE');
+
+    return { priceFilter, lotSizeFilter };
   }
 
-  const priceFilter = symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER');
-  const lotSizeFilter = symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE');
-
-  return { priceFilter, lotSizeFilter };
-}
-
-//Obtener saldos 
+  //Obtener saldos 
   async getAllOrders(symbol: string, limit = 500, fromId?: number) {
     const serverTime = await this.getServerTime();
     const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 10000 };
@@ -241,29 +248,29 @@ export class BinanceService {
 
     return response.data;
   }
-async getNonZeroBalances() {
-  const serverTime = await this.getServerTime();
-  const params = { timestamp: serverTime, recvWindow: 10000 };
+  async getNonZeroBalances() {
+    const serverTime = await this.getServerTime();
+    const params = { timestamp: serverTime, recvWindow: 10000 };
 
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
-  const queryString = query.toString();
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
 
-  const signature = this.sign(queryString);
-  const url = `${process.env.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
 
-  const response = await axios.get(url, {
-    headers: { 'X-MBX-APIKEY': this.API_KEY },
-    httpsAgent: this.httpsAgent,
-  });
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
 
-  // Filtra activos con balance libre o bloqueado mayor que 0
-  const balances = response.data.balances.filter(
-    (asset: any) => parseFloat(asset.free) > 0 || parseFloat(asset.locked) > 0
-  );
+    // Filtra activos con balance libre o bloqueado mayor que 0
+    const balances = response.data.balances.filter(
+      (asset: any) => parseFloat(asset.free) > 0 || parseFloat(asset.locked) > 0
+    );
 
-  return balances;
-}
+    return balances;
+  }
 
 
 
@@ -307,114 +314,114 @@ async getNonZeroBalances() {
     return response.data;
   }
   async createStopLossOrder(
-  symbol: string,
-  side: 'BUY' | 'SELL',
-  quantity: string,
-  stopPrice: string,
-  options: Record<string, any> = {},
-) {
-  const serverTime = await this.getServerTime();
-  const params = {
-    symbol,
-    side,
-    type: 'STOP_LOSS_LIMIT',
-    quantity,
-    price: stopPrice,
-    stopPrice,
-    timeInForce: 'GTC',
-    timestamp: serverTime,
-    recvWindow: 10000,
-    ...options,
-  };
-
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
-  const queryString = query.toString();
-
-  const signature = this.sign(queryString);
-  const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
-
-  const response = await axios.post(url, null, {
-    headers: { 'X-MBX-APIKEY': this.API_KEY },
-    httpsAgent: this.httpsAgent,
-  });
-
-  return response.data;
-}
-async getCandles(
-  symbol: string,
-  interval: string,
-  limit: number
-): Promise<{ open: string; high: string; low: string; close: string; volume: string; openTime: number; closeTime: number; }[]> {
-  const params = { symbol, interval, limit };
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
-  const queryString = query.toString();
-
-  const url = `${process.env.BASE_URL}/api/v3/klines?${queryString}`;
-
-  const response = await axios.get(url, {
-    httpsAgent: this.httpsAgent,
-  });
-
-  // El endpoint devuelve arrays por vela, con esta estructura:
-  // [
-  //   0 Open time,
-  //   1 Open,
-  //   2 High,
-  //   3 Low,
-  //   4 Close,
-  //   5 Volume,
-  //   6 Close time,
-  //   ...
-  // ]
-  
-  // Lo transformamos a objetos con propiedades explícitas
-  return response.data.map((kline: any[]) => ({
-    openTime: kline[0],
-    open: kline[1],
-    high: kline[2],
-    low: kline[3],
-    close: kline[4],
-    volume: kline[5],
-    closeTime: kline[6],
-  }));
-}
-
-
-  async cancelAllOrders(symbol: string) {
-  try {
-    // 1. Obtener todas las órdenes abiertas para el símbolo
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    stopPrice: string,
+    options: Record<string, any> = {},
+  ) {
     const serverTime = await this.getServerTime();
-    const params = { symbol, timestamp: serverTime, recvWindow: 10000 };
+    const params = {
+      symbol,
+      side,
+      type: 'STOP_LOSS_LIMIT',
+      quantity,
+      price: stopPrice,
+      stopPrice,
+      timeInForce: 'GTC',
+      timestamp: serverTime,
+      recvWindow: 10000,
+      ...options,
+    };
+
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/openOrders?${queryString}&signature=${signature}`;
+    const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
 
-    const response = await axios.get(url, {
+    const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
       httpsAgent: this.httpsAgent,
     });
 
-    const openOrders = response.data;
-
-    // 2. Cancelar cada orden abierta
-    const cancelPromises = openOrders.map((order: any) => this.cancelOrder(symbol, order.orderId));
-
-    // Esperar a que se cancelen todas las órdenes
-    await Promise.all(cancelPromises);
-
-    return {
-      message: `Se cancelaron ${openOrders.length} órdenes para el símbolo ${symbol}`,
-      canceledOrdersCount: openOrders.length,
-    };
-  } catch (error) {
-    throw new Error('Error cancelando todas las órdenes: ' + error.message);
+    return response.data;
   }
-}
+  async getCandles(
+    symbol: string,
+    interval: string,
+    limit: number
+  ): Promise<{ open: string; high: string; low: string; close: string; volume: string; openTime: number; closeTime: number; }[]> {
+    const params = { symbol, interval, limit };
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const url = `${process.env.BASE_URL}/api/v3/klines?${queryString}`;
+
+    const response = await axios.get(url, {
+      httpsAgent: this.httpsAgent,
+    });
+
+    // El endpoint devuelve arrays por vela, con esta estructura:
+    // [
+    //   0 Open time,
+    //   1 Open,
+    //   2 High,
+    //   3 Low,
+    //   4 Close,
+    //   5 Volume,
+    //   6 Close time,
+    //   ...
+    // ]
+
+    // Lo transformamos a objetos con propiedades explícitas
+    return response.data.map((kline: any[]) => ({
+      openTime: kline[0],
+      open: kline[1],
+      high: kline[2],
+      low: kline[3],
+      close: kline[4],
+      volume: kline[5],
+      closeTime: kline[6],
+    }));
+  }
+
+
+  async cancelAllOrders(symbol: string) {
+    try {
+      // 1. Obtener todas las órdenes abiertas para el símbolo
+      const serverTime = await this.getServerTime();
+      const params = { symbol, timestamp: serverTime, recvWindow: 10000 };
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+      const queryString = query.toString();
+
+      const signature = this.sign(queryString);
+      const url = `${process.env.BASE_URL}/api/v3/openOrders?${queryString}&signature=${signature}`;
+
+      const response = await axios.get(url, {
+        headers: { 'X-MBX-APIKEY': this.API_KEY },
+        httpsAgent: this.httpsAgent,
+      });
+
+      const openOrders = response.data;
+
+      // 2. Cancelar cada orden abierta
+      const cancelPromises = openOrders.map((order: any) => this.cancelOrder(symbol, order.orderId));
+
+      // Esperar a que se cancelen todas las órdenes
+      await Promise.all(cancelPromises);
+
+      return {
+        message: `Se cancelaron ${openOrders.length} órdenes para el símbolo ${symbol}`,
+        canceledOrdersCount: openOrders.length,
+      };
+    } catch (error) {
+      throw new Error('Error cancelando todas las órdenes: ' + error.message);
+    }
+  }
 
 
 

@@ -23,4 +23,23 @@ export interface RsiStrategyConfig {
   overboughtThreshold: number;
   tradeQuantity: number;
   minSleepMs?: number;
+  profitMargin?: number;
+  stopLossMargin?: number;
+  maxOrderAgeMs?: number;
+  numBuyOrders?: number;
+}
+export interface GridFullStrategyConfig {
+  trading?: boolean;
+  gridCount: number;
+  lowerPrice: number;
+  upperPrice: number;
+  totalQuantity: number;
+  profitMargin: number;
+
+  maxOrderAgeMs?: number;
+  stopLossMargin?: number;
+  minSleepMs?: number;
+  maxSleepMs?: number;
+  buySafetyMargin?: number; // P
+
 }

@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Param, Body, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { BinanceService } from './binance.service';
 import { CreateLimitOrderDto, CreateMarketOrderDto, CreateOcoOrderDto } from './dto/create-binance.dto';
-
+import { AuthGuard } from 'src/authA/auth.guard';
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('binance')
 @Controller('binance')
 export class BinanceController {

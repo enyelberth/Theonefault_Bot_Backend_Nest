@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import { TransactionService } from './transaction.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -19,10 +20,13 @@ import {
   ApiCreatedResponse,
   ApiBadRequestResponse,
   ApiNotFoundResponse,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
 import { CreateTransferDto } from './dto/create-tranfer.dto';
 import { UpdateTransferDto } from './dto/update-tranfer.dto';
-
+import { AuthGuard } from 'src/authA/auth.guard';
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('transfers')
 @Controller('transfers')
 export class TransactionController {
