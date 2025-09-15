@@ -14,3 +14,273 @@ CREATE TRIGGER account_after_insert
 AFTER INSERT ON "Account"
 FOR EACH ROW
 EXECUTE PROCEDURE create_account_balances();
+
+
+
+
+
+
+
+
+
+
+
+//////////////////
+CREATE OR REPLACE FUNCTION insert_journal_entry(
+    p_entryDate timestamp,
+    p_description text,
+    p_createdBy text,
+    p_statusId int,
+    p_lines jsonb -- las líneas enviadas en formato JSONB
+) RETURNS int AS $$
+DECLARE
+    v_entryId int;
+    line jsonb;
+BEGIN
+    -- Insertar en JournalEntry y obtener id generado
+    INSERT INTO "JournalEntry" ("entryDate", "description", "createdBy", "statusId", "createdAt")
+    VALUES (p_entryDate, p_description, p_createdBy, p_statusId, now())
+    RETURNING id INTO v_entryId;
+
+    -- Iterar por cada línea del JSONB para insertarla
+    FOR line IN SELECT * FROM jsonb_array_elements(p_lines)
+    LOOP
+        INSERT INTO "JournalEntryLine" ("entryId", "accountId", "currencyCode", "amount", "entryType")
+        VALUES (
+            v_entryId,
+            (line ->> 'accountId')::int,
+            line ->> 'currencyCode',
+            (line ->> 'amount')::numeric,
+            (line ->> 'entryType')::text
+        );
+    END LOOP;
+
+    RETURN v_entryId; -- Retornas el id de la entrada creada
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+const p_lines = JSON.stringify(createJournalEntryDto.lines);
+
+const result = await prisma.$queryRaw`
+  SELECT insert_journal_entry(
+    ${createJournalEntryDto.entryDate},
+    ${createJournalEntryDto.description},
+    ${createJournalEntryDto.createdBy},
+    ${createJournalEntryDto.statusId ?? 1},
+    ${p_lines}::jsonb
+  )
+`;
+
+
+
+
+
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION insertar_journal_entry_con_lineas(
+    p_entryDate TIMESTAMP,
+    p_description TEXT,
+    p_createdBy TEXT,
+    p_statusId INT,
+    p_accountId INT,
+    p_currencyCode VARCHAR(5),
+    p_amount NUMERIC,
+    p_entryType TEXT
+)
+RETURNS INT AS $$
+DECLARE
+    v_entryId INT;
+BEGIN
+    -- Inserta en JournalEntry y retorna el id
+    INSERT INTO "JournalEntry" ("entryDate", "description", "createdBy", "statusId", "createdAt")
+    VALUES (p_entryDate, p_description, p_createdBy, p_statusId, NOW())
+    RETURNING id INTO v_entryId;
+
+    -- Inserta en JournalEntryLine con el id retornado
+    INSERT INTO "JournalEntryLine" ("entryId", "accountId", "currencyCode", "amount", "entryType")
+    VALUES (v_entryId, p_accountId, p_currencyCode, p_amount, p_entryType);
+
+    RETURN v_entryId;
+END;
+$$ LANGUAGE plpgsql;
+
+--PRasda
+
+
+
+SELECT insertar_journal_entry_con_lineas(
+    '2025-08-16 20:00:00',
+    'Descripción de la entrada',
+    'usuario_creador',
+    1,
+    1,
+    'USDT',
+    100.00,
+    'INGRESO'
+);
+
+
+
+
+CREATE OR REPLACE FUNCTION fn_after_order_filled()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'FILLED' THEN
+    INSERT INTO "TradingExecution" ("orderId", "tradePrice", "tradeQuantity", "tradeTimestamp")
+    VALUES (NEW.id, COALESCE(NEW.price, 0), NEW.quantity, NOW());
+    -- Aquí podrías agregar lógica adicional para actualizar saldos o generar contraparte
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_after_order_update
+AFTER UPDATE ON "TradingOrder"
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status)
+EXECUTE FUNCTION fn_after_order_filled();
+
+
+
+
+
+
+
+
+
+  {
+    "symbol": "LINKFDUSD",
+    "orderId": 9488,
+    "orderListId": -1,
+    "clientOrderId": "XRyB3EkDBjd6Ay4G1HBtDz",
+    "price": "21.45000000",
+    "origQty": "0.27000000",
+    "executedQty": "0.00000000",
+    "cummulativeQuoteQty": "0.00000000",
+    "status": "CANCELED",
+    "timeInForce": "GTC",
+    "type": "LIMIT",
+    "side": "BUY",
+    "stopPrice": "0.00000000",
+    "icebergQty": "0.00000000",
+    "time": 1757103518795,
+    "updateTime": 1757107124198,
+    "isWorking": true,
+    "workingTime": 1757103518795,
+    "origQuoteOrderQty": "0.00000000",
+    "selfTradePreventionMode": "EXPIRE_MAKER"
+  },
+model TradingOrder {
+  id                String
+  symbol            String
+  orderId           number
+  accountId         Int
+  clientOrderId     String
+  orderType         OrderType
+  side              OrderSide
+  price             Decimal?   
+  quantity          Decimal
+  quantityRemaining Decimal
+  status            OrderStatus @default(OPEN)
+  createdAt         DateTime    @default(now())
+
+  account           Account     @relation(fields: [accountId], references: [id])
+  tradingPair       TradingPair @relation(fields: [tradingPairId], references: [id])
+  executions        TradingExecution[]
+}
+CREATE TABLE trading_orders (
+  id BIGSERIAL PRIMARY KEY,                          -- ID interno autoincremental
+  symbol VARCHAR(20) NOT NULL,                       -- Símbolo del activo (e.g. LINKFDUSD)
+  order_id BIGINT NOT NULL UNIQUE,                   -- ID de orden externo (orderId)
+  client_order_id VARCHAR(50),                       -- ID de cliente para la orden
+  price DECIMAL(18,8) NOT NULL,                      -- Precio de la orden
+  orig_qty DECIMAL(18,8) NOT NULL,                   -- Cantidad original ordenada
+  executed_qty DECIMAL(18,8) DEFAULT 0,              -- Cantidad ejecutada hasta ahora
+  cum_quote_qty DECIMAL(18,8) DEFAULT 0,             -- Valor acumulado en quote
+  status VARCHAR(20) NOT NULL,                        -- Estado (NEW, FILLED, CANCELED...)
+  time_in_force VARCHAR(10),                          -- Tipo de tiempo (GTC etc)
+  type VARCHAR(20),                                   -- Tipo orden (LIMIT, MARKET)
+  side VARCHAR(10) NOT NULL,                          -- Lado (BUY o SELL)
+  stop_price DECIMAL(18,8) DEFAULT 0,                 -- Precio stop si aplica
+  iceberg_qty DECIMAL(18,8) DEFAULT 0,                -- Cantidad iceberg si aplica
+  time BIGINT NOT NULL,                               -- Timestamp creación orden
+  update_time BIGINT NOT NULL,                        -- Timestamp actualización orden
+  is_working BOOLEAN DEFAULT TRUE,                    -- Orden activa o no
+  working_time BIGINT,                                -- Timestamp inicio estado activo
+  orig_quote_order_qty DECIMAL(18,8) DEFAULT 0,       -- Valor original total quote
+  self_trade_mode VARCHAR(20),                        -- Prevención auto-trade
+  profit_loss DECIMAL(18,8) DEFAULT 0,                 -- Ganancia o pérdida realizada (al cerrar)
+  closed_time BIGINT,                                 -- Timestamp cuando se cerró la operación
+  created_at TIMESTAMP DEFAULT now(),                 -- Fecha creación registro
+  updated_at TIMESTAMP DEFAULT now()                  -- Fecha última actualización
+);
+
+
+
+{
+  "typeId": 1,
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridBuy",
+  "config": {
+    "gridCount": 20,
+    "lowerPrice": 25.0,
+    "upperPrice": 26.1,
+    "totalQuantity": 20,
+    "profitMargin": 0.00151,
+  }
+}
+
+
+{
+  "symbol": "BNBFDUSD",
+  "strategyType": "rsi",
+  "config": {
+    "rsiPeriod": 14,
+    "oversoldThreshold": 30,
+    "overboughtThreshold": 70,
+    "tradeQuantity": 10,
+    "minSleepMs": 15000
+  }
+}
+
+
+{
+  "symbol": "LINKFDUSD",
+  "strategyType": "rsi",
+  "config": {
+    "rsiPeriod": 14,
+    "oversoldThreshold": 40,
+    "overboughtThreshold": 80,
+    "tradeQuantity": 20,
+    "minSleepMs": 15000,
+  "profitMargin": 0.0008,
+  "stopLossMargin": 2,
+  "maxOrderAgeMs": 900000,
+  "numBuyOrders" : 40
+  }
+}
+
+{
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridFull",
+  "config": {
+    "trading":true,
+    "lowerPrice": 25.0,
+    "upperPrice": 26.1,
+    "totalQuantity": 20,
+    "profitMargin": 0.0004,
+    "maxOrderAgeMs": 900000,
+    "stopLossMargin": 0.2,
+    "minSleepMs": 15000,
+    "maxSleepMs": 3600000,
+    "buySafetyMargin":0.0004
+
+  }
+}

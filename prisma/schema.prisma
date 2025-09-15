@@ -3,63 +3,63 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"   // o "postgresql", según tu base de datos
+  provider = "postgresql" // o "postgresql", según tu base de datos
   url      = env("DATABASE_URL")
 }
 
 // Usuarios y notificaciones para gestión de acceso y comunicación
 model User {
-  id            Int            @id @default(autoincrement())
-  email         String         @unique
-  password      String
-  username      String
-  key             String?
-  secretKey       String?
-  createdAt     DateTime  @default(now())
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  username  String
+  key       String?
+  secretKey String?
+  createdAt DateTime @default(now())
 
   profile       Profile?       @relation(fields: [profileId], references: [id])
   profileId     Int?           @unique
   sessions      Session[]
   notifications Notification[]
-  accounts      Account[]      // Relación con cuentas
+  accounts      Account[] // Relación con cuentas
 }
 
 model Profile {
-  id          Int      @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  phone       String?
-  birthDate   DateTime?
-  address     String?
-  createdAt   DateTime  @default(now())
+  id        Int       @id @default(autoincrement())
+  firstName String
+  lastName  String
+  phone     String?
+  birthDate DateTime?
+  address   String?
+  createdAt DateTime  @default(now())
 
-  user        User?    @relation
+  user User? @relation
 }
 
 model Session {
-  id          Int       @id @default(autoincrement())
-  user        User      @relation(fields: [userId], references: [id])
-  userId      Int
-  token       String    @unique
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime
-  userAgent   String?
-  ipAddress   String?
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  token     String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userAgent String?
+  ipAddress String?
 }
 
 model Notification {
-  id          Int       @id @default(autoincrement())
-  user        User      @relation(fields: [userId], references: [id])
-  userId      Int
-  title       String
-  message     String
-  read        Boolean   @default(false)
-  createdAt   DateTime  @default(now())
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 // Tipos de cuentas bancarias (ahorro, spot, margin, cruzado, etc.)
 model BankAccountType {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   typeName    String
   description String?
   createdAt   DateTime  @default(now())
@@ -70,55 +70,55 @@ model BankAccountType {
 model Currency {
   code        String   @id @db.VarChar(5)
   description String?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime @default(now())
 
-  accountBalances AccountBalance[]
-  tradingPairsBase  TradingPair[] @relation("BaseCurrency")
-  tradingPairsQuote TradingPair[] @relation("QuoteCurrency")
+  accountBalances   AccountBalance[]
+  tradingPairsBase  TradingPair[]      @relation("BaseCurrency")
+  tradingPairsQuote TradingPair[]      @relation("QuoteCurrency")
   journalEntryLines JournalEntryLine[]
   transfers         Transfer[]
 }
 
 // Cuentas bancarias jerárquicas con claves de acceso, ligadas a usuario
 model Account {
-  id              Int       @id @default(autoincrement())
-  userId          Int
-  parentAccountId Int?
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  parentAccountId   Int?
   bankAccountTypeId Int
-  key             String
-  secretKey       String
-  email           String    @unique
-  password        String
-  createdAt       DateTime  @default(now())
+  key               String
+  secretKey         String
+  email             String   @unique
+  password          String
+  createdAt         DateTime @default(now())
 
-  user            User      @relation(fields: [userId], references: [id])
-  parentAccount    Account?  @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
-  subAccounts      Account[] @relation("AccountHierarchy")
-  bankAccountType  BankAccountType @relation(fields: [bankAccountTypeId], references: [id])
-  accountBalances  AccountBalance[]
+  user              User               @relation(fields: [userId], references: [id])
+  parentAccount     Account?           @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  subAccounts       Account[]          @relation("AccountHierarchy")
+  bankAccountType   BankAccountType    @relation(fields: [bankAccountTypeId], references: [id])
+  accountBalances   AccountBalance[]
   journalEntryLines JournalEntryLine[]
-  fromTransfers    Transfer[] @relation("FromAccount")
-  toTransfers      Transfer[] @relation("ToAccount")
-  tradingOrders    TradingOrder[]
+  fromTransfers     Transfer[]         @relation("FromAccount")
+  toTransfers       Transfer[]         @relation("ToAccount")
+  tradingOrders     TradingOrder[]
 }
 
 // Saldo de cada cuenta por moneda
 model AccountBalance {
-  id          Int      @id @default(autoincrement())
-  accountId   Int
-  currencyCode String   @db.VarChar(5)
-  balance     Decimal  @default(0)
+  id           Int     @id @default(autoincrement())
+  accountId    Int
+  currencyCode String  @db.VarChar(5)
+  balance      Decimal @default(0)
 
-  account   Account  @relation(fields: [accountId], references: [id])
-  currency  Currency @relation(fields: [currencyCode], references: [code])
+  account  Account  @relation(fields: [accountId], references: [id])
+  currency Currency @relation(fields: [currencyCode], references: [code])
 
   @@unique([accountId, currencyCode])
 }
 
 // Estados para transacciones y transferencias
 model TransactionStatus {
-  id         Int     @id @default(autoincrement())
-  statusName String
+  id             Int            @id @default(autoincrement())
+  statusName     String
   journalEntries JournalEntry[]
   transfers      Transfer[]
 }
@@ -132,28 +132,23 @@ model JournalEntry {
   statusId    Int      @default(1)
   createdAt   DateTime @default(now())
 
-  status      TransactionStatus @relation(fields: [statusId], references: [id])
-  lines       JournalEntryLine[]
-  transfer    Transfer?
+  status   TransactionStatus  @relation(fields: [statusId], references: [id])
+  lines    JournalEntryLine[]
+  transfer Transfer?
 }
 
 // Detalles de asiento contable con partidas dobles
 model JournalEntryLine {
-  id           Int      @id @default(autoincrement())
+  id           Int     @id @default(autoincrement())
   entryId      Int
-  accountId    Int
-  currencyCode String   @db.VarChar(5)
+  accountId    Int     @map("accountId")
+  currencyCode String  @db.VarChar(5)
   amount       Decimal
-  entryType    EntryType
+  entryType    String
 
   journalEntry JournalEntry @relation(fields: [entryId], references: [id])
   account      Account      @relation(fields: [accountId], references: [id])
   currency     Currency     @relation(fields: [currencyCode], references: [code])
-}
-
-enum EntryType {
-  DEBE
-  HABER
 }
 
 // Transferencias entre cuentas
@@ -168,42 +163,58 @@ model Transfer {
   description    String?
   statusId       Int      @default(1)
 
-  fromAccount    Account  @relation("FromAccount", fields: [fromAccountId], references: [id])
-  toAccount      Account  @relation("ToAccount", fields: [toAccountId], references: [id])
-  currency       Currency @relation(fields: [currencyCode], references: [code])
-  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
-  status         TransactionStatus @relation(fields: [statusId], references: [id])
+  fromAccount  Account           @relation("FromAccount", fields: [fromAccountId], references: [id])
+  toAccount    Account           @relation("ToAccount", fields: [toAccountId], references: [id])
+  currency     Currency          @relation(fields: [currencyCode], references: [code])
+  journalEntry JournalEntry      @relation(fields: [journalEntryId], references: [id])
+  status       TransactionStatus @relation(fields: [statusId], references: [id])
 }
 
 // Pares de trading spot
 model TradingPair {
-  id           Int      @id @default(autoincrement())
-  baseCurrencyCode  String  @db.VarChar(5)
-  quoteCurrencyCode String  @db.VarChar(5)
+  id                Int    @id @default(autoincrement())
+  baseCurrencyCode  String @db.VarChar(5)
+  quoteCurrencyCode String @db.VarChar(5)
 
   baseCurrency  Currency @relation("BaseCurrency", fields: [baseCurrencyCode], references: [code])
   quoteCurrency Currency @relation("QuoteCurrency", fields: [quoteCurrencyCode], references: [code])
-  tradingOrders TradingOrder[]
 
   @@unique([baseCurrencyCode, quoteCurrencyCode])
 }
 
 // Órdenes de trading spot
 model TradingOrder {
-  id                Int        @id @default(autoincrement())
-  accountId         Int
-  tradingPairId     Int
-  orderType         OrderType
-  side              OrderSide
-  price             Decimal?   
-  quantity          Decimal
-  quantityRemaining Decimal
-  status            OrderStatus @default(OPEN)
-  createdAt         DateTime    @default(now())
+  id               Int         @id @default(autoincrement())
+  accountId        Int
+  symbol           String
+  orderId          Int         @unique
+  client_order_id  String      @unique
+  side             OrderSide
+  price            Decimal?
+  quantity         Decimal
+  quantityExecuted Decimal
+  status           OrderStatus @default(OPEN)
+  type             OrderType
+  stopPrice        Decimal?
+  quantityStop     Decimal?
+  isWorking        Boolean     @default(true)
+  profit_loss      Decimal?
+  closed_time      DateTime?
 
-  account           Account     @relation(fields: [accountId], references: [id])
-  tradingPair       TradingPair @relation(fields: [tradingPairId], references: [id])
-  executions        TradingExecution[]
+  closingOrderId Int?
+  closingOrder   TradingOrder? @relation("OrderClosing", fields: [closingOrderId], references: [id])
+
+  // Campo inverso para que Prisma entienda la relación 1 - 1 o 1 - n
+  closedByOrders TradingOrder[] @relation("OrderClosing")
+
+  account    Account            @relation(fields: [accountId], references: [id])
+  executions TradingExecution[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, symbol])
+  @@index([status])
 }
 
 enum OrderType {
@@ -222,15 +233,37 @@ enum OrderStatus {
   PARTIALLY_FILLED
   FILLED
   CANCELED
+  CLOSED
 }
 
 // Ejecuciones de órdenes de trading
 model TradingExecution {
-  id             Int       @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   orderId        Int
   tradePrice     Decimal
   tradeQuantity  Decimal
-  tradeTimestamp DateTime  @default(now())
+  tradeTimestamp DateTime @default(now())
 
   tradingOrder TradingOrder @relation(fields: [orderId], references: [id])
+}
+
+model TradingStrategy {
+  id           Int          @id @default(autoincrement())
+  symbol       String
+  typeId       Int
+  type         StrategyType @relation(fields: [typeId], references: [id])
+  strategyType String?
+  config       Json // Guarda configuración específica como JSON
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([typeId]) // Índice para mejorar consultas por tipo
+}
+
+model StrategyType {
+  id          Int               @id @default(autoincrement())
+  name        String            @unique
+  description String?
+  createdAt   DateTime          @default(now())
+  strategies  TradingStrategy[] // Relación uno a muchos
 }

@@ -13,7 +13,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient) { }
 
   async create(createAccountDto: CreateAccountDto) {
     try {
@@ -33,6 +33,30 @@ export class AccountService {
       throw new InternalServerErrorException('Error inesperado al crear la cuenta.');
     }
   }
+  async findAllAccountBalance(id: number) {
+    try {
+      const accounts = await this.prisma.$queryRaw<
+        Array<{ id: number; email: string; balance: number; currencyCode: string; typeName: string }>
+      >`
+select "Account".id,"Account".email,"AccountBalance".balance,"AccountBalance"."currencyCode","BankAccountType"."typeName"    from "Account" 
+	inner join "AccountBalance" on "Account".id = "AccountBalance"."accountId"
+	inner join "BankAccountType" on "Account".id = "BankAccountType"."id" where "Account".id = ${id} and balance > 0;
+    `;
+
+      if (accounts.length === 0) {
+        throw new NotFoundException(`Cuenta con id ${id} no encontrada o sin saldo positivo`);
+      }
+
+      return accounts;
+    
+    } catch (error) {
+      this.logger.error(`Error buscando saldo de cuenta con id ${id}`, error);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Error inesperado al buscar el saldo de la cuenta.');
+    }
+  }
+
+
 
   async findAll() {
     try {

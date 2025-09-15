@@ -1,9 +1,12 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { CryptoPairService } from './crypto-pair.service';
 import { CreateCryptoPairDto } from './dto/create-crypto-pair.dto';
 import { UpdateCryptoPairDto } from './dto/update-crypto-pair.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from 'src/authA/auth.guard';
 
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('crypto-pair') // Etiqueta para agrupar las rutas en la documentación de Swagger
 @Controller('crypto-pair')
 export class CryptoPairController {

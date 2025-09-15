@@ -8,6 +8,7 @@ async function bootstrap() {
   // Activar CORS con configuración básica (permite todos los orígenes)
   app.enableCors();
 
+  // Configuración Swagger con autenticación Bearer JWT
   const config = new DocumentBuilder()
     .setTitle('Theonefault API')
     .setDescription('Documentación API con theonefault')
@@ -21,7 +22,7 @@ async function bootstrap() {
         name: 'Authorization',
         in: 'header',
       },
-      'BearerAuth',
+      'BearerAuth', // Nombre que usarás en @ApiBearerAuth()
     )
     .build();
 
