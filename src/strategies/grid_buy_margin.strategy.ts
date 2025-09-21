@@ -23,7 +23,7 @@ const COLORS = {
 };
 
 @Injectable()
-export class GridBuyStrategy implements TradingStrategy {
+export class GridBuyMarginStrategy implements TradingStrategy {
   id: string;
   symbol: string;
   config: {
@@ -39,7 +39,7 @@ export class GridBuyStrategy implements TradingStrategy {
     buySafetyMargin?: number; // Porcentaje (ej. 0.001 = 0.1%)
   };
 
-  private readonly logger = new Logger(GridBuyStrategy.name);
+  private readonly logger = new Logger(GridBuyMarginStrategy.name);
   private openBuyOrders = new Map<number, Order>();
   private openSellOrders = new Map<number, Order>();
   private isRunning = true;
@@ -47,7 +47,7 @@ export class GridBuyStrategy implements TradingStrategy {
 
   private profitLoss = 0; // Variable para acumulación de ganancia/pérdida
 
-  constructor(private readonly binanceService: BinanceService) { }
+  constructor(private readonly binanceService: BinanceService) {}
 
   async run() {
     this.logInfo(`Starting Grid Buy on ${this.symbol} with config: ${JSON.stringify(this.config)}`);
@@ -92,7 +92,7 @@ export class GridBuyStrategy implements TradingStrategy {
 
   private async cancelExistingOrdersInRange(lowerPrice: number, upperPrice: number) {
     try {
-      const allOrders = await this.binanceService.getAllOrders(this.symbol, 500);
+      const allOrders = await this.binanceService.getAllCrossMarginOrders(this.symbol, 500);
       for (const o of allOrders) {
         const status = o.status;
         if (['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(status)) continue;
@@ -100,7 +100,7 @@ export class GridBuyStrategy implements TradingStrategy {
         if (!Number.isFinite(p)) continue;
         if (p >= lowerPrice && p <= upperPrice) {
           try {
-            await this.binanceService.cancelOrder(this.symbol, o.orderId);
+            await this.binanceService.cancelCrossMarginOrder(this.symbol, o.orderId);
             this.logWarn(`ALERTA: Orden abierta cancelada ID ${o.orderId} precio ${o.price} dentro del rango [${lowerPrice}, ${upperPrice}]`);
           } catch (err) {
             this.logError(`Error al cancelar orden ID ${o.orderId}:`, err);
@@ -151,7 +151,7 @@ export class GridBuyStrategy implements TradingStrategy {
       this.logInfo(`Placing LIMIT BUY order level ${i}, price ${placePriceNum} (nivel raw ${buyPriceRaw.toFixed(8)}), quantity ${adjQuantity}`);
 
       try {
-        const order = await this.binanceService.createLimitOrder(this.symbol, 'BUY', adjQuantity.toString(), placePriceNum.toString(), 'GTC');
+        const order = await this.binanceService.createCrossMarginLimitOrder(this.symbol, 'BUY', adjQuantity.toString(), placePriceNum.toString(), 'GTC');
         const normalizedOrder: Order = {
           orderId: Number(order.orderId),
           price: String(order.price ?? placePriceNum),
@@ -191,7 +191,7 @@ export class GridBuyStrategy implements TradingStrategy {
         this.logInfo(`ALERTA: Precio subió a ${currentPrice} — intentando colocar nivel ${i} a ${placePriceNum} (nivel raw ${buyPriceRaw.toFixed(8)})`);
         try {
           const quantity = this.roundToStep(this.config.totalQuantity / this.config.gridCount, lotSizeFilter.stepSize);
-          const order = await this.binanceService.createLimitOrder(this.symbol, 'BUY', quantity.toString(), placePriceNum.toString(), 'GTC');
+          const order = await this.binanceService.createCrossMarginLimitOrder(this.symbol, 'BUY', quantity.toString(), placePriceNum.toString(), 'GTC');
           const normalizedOrder: Order = {
             orderId: Number(order.orderId),
             price: String(order.price ?? placePriceNum),
@@ -219,7 +219,7 @@ export class GridBuyStrategy implements TradingStrategy {
 
     for (const [i, order] of Array.from(this.openBuyOrders.entries())) {
       try {
-        const statusData = await this.binanceService.checkOrderStatus(this.symbol, order.orderId);
+        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
 
         if (statusData.status === 'FILLED') {
           this.logSuccess(`Order BUY level ${i} completed ID: ${order.orderId}`);
@@ -237,7 +237,7 @@ export class GridBuyStrategy implements TradingStrategy {
 
           // Intentar crear orden de venta con manejo robusto
           try {
-            const sellOrder = await this.binanceService.createLimitOrder(
+            const sellOrder = await this.binanceService.createCrossMarginLimitOrder(
               this.symbol,
               'SELL',
               quantityRaw.toString(),
@@ -261,7 +261,7 @@ export class GridBuyStrategy implements TradingStrategy {
             const stopLossPriceRaw = buyPrice * (1 - stopLossMargin);
             const stopLossPrice = this.roundToStep(stopLossPriceRaw, priceFilter.tickSize);
             try {
-              await this.binanceService.createStopLossOrder(this.symbol, 'SELL', quantityRaw.toString(), stopLossPrice.toString());
+              await this.binanceService.createCrossMarginStopLossOrder(this.symbol, 'SELL', quantityRaw.toString(), stopLossPrice.toString());
               this.logInfo(`Stop Loss order created at ${stopLossPrice} for level ${i}`);
             } catch (err) {
               this.logError(`Error creating Stop Loss order level ${i}:`, err);
@@ -270,7 +270,7 @@ export class GridBuyStrategy implements TradingStrategy {
         } else if (Date.now() - order.timestamp > maxAgeMs) {
           this.logWarn(`Order ID ${order.orderId} level ${i} is stuck, canceling...`);
           try {
-            await this.binanceService.cancelOrder(this.symbol, order.orderId);
+            await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
             this.openBuyOrders.delete(i);
             toReinsertLevels.add(i);
           } catch (e) {
@@ -294,7 +294,7 @@ export class GridBuyStrategy implements TradingStrategy {
 
     for (const [i, order] of Array.from(this.openSellOrders.entries())) {
       try {
-        const statusData = await this.binanceService.checkOrderStatus(this.symbol, order.orderId);
+        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
 
         if (statusData.status === 'FILLED') {
           this.logSuccess(`Order SELL level ${i} completed ID: ${order.orderId}`);
@@ -303,7 +303,7 @@ export class GridBuyStrategy implements TradingStrategy {
         } else if (Date.now() - order.timestamp > maxAgeMs) {
           this.logWarn(`SELL order ID ${order.orderId} level ${i} stuck, canceling...`);
           try {
-            await this.binanceService.cancelOrder(this.symbol, order.orderId);
+            await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
             this.openSellOrders.delete(i);
             // Opcional: reinsertar órdenes de compra o manejar según diseño
           } catch (e) {
@@ -335,7 +335,7 @@ export class GridBuyStrategy implements TradingStrategy {
       this.logInfo(`Reinserting LIMIT BUY order level ${i}, price ${buyPrice}, quantity ${quantity}`);
 
       try {
-        const order = await this.binanceService.createLimitOrder(this.symbol, 'BUY', quantity.toString(), buyPrice.toString(), 'GTC');
+        const order = await this.binanceService.createCrossMarginLimitOrder(this.symbol, 'BUY', quantity.toString(), buyPrice.toString(), 'GTC');
         const normalizedOrder: Order = {
           orderId: Number(order.orderId),
           price: String(order.price),

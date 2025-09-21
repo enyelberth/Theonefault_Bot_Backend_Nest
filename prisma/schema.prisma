@@ -248,7 +248,7 @@ model TradingExecution {
 }
 
 model TradingStrategy {
-  id           Int          @id @default(autoincrement())
+  id           String       @unique
   symbol       String
   typeId       Int
   type         StrategyType @relation(fields: [typeId], references: [id])

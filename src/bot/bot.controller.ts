@@ -27,18 +27,20 @@ export class BotController {
     },
   })
   @ApiResponse({ status: 201, description: 'Bot iniciado correctamente.' })
-  async startBot(@Body() body: { symbol: string; typeId: number; strategyType: string; config: any }) {
-    await this.botService.startStrategy(body.symbol, body.typeId, body.strategyType, body.config);
+  async startBot(@Body() body: { symbol: string; id: string; typeId: number; strategyType: string; config: any }) {
+   //console.log(body.symbol)
+    await this.botService.startStrategy(body.symbol, body.typeId, body.strategyType, body.config, body.id);
     return { message: `Bot iniciado para ${body.symbol} con estrategia ${body.strategyType}` };
   }
 
-  @Delete('stop/:symbol')
+  @Delete('stop/:id')
   @ApiOperation({ summary: 'Parar un bot activo' })
-  @ApiParam({ name: 'symbol', required: true, description: 'Símbolo del bot a detener', example: 'BTCUSDT' })
+  @ApiParam({ name: 'id', required: true, description: 'Símbolo del bot a detener', example: 'BTCUSDT' })
   @ApiResponse({ status: 200, description: 'Bot detenido correctamente.' })
-  async stopBot(@Param('symbol') symbol: string) {
-    await this.botService.stopStrategy(symbol);
-    return { message: `Bot detenido para ${symbol}` };
+  async stopBot(@Param('id') id: string) {
+   // console.log(`Deteniendo bot con id: ${id}`);
+    await this.botService.stopStrategy(id);
+    return { message: `Bot detenido para ${id}` };
   }
 
   @Get('active')
@@ -59,8 +61,7 @@ export class BotController {
   getBotActiveInfo() {
     const data = this.botService.getBotss();
 
-    console.log(data)
-
+   
 
     interface Order {
       orderId: number;
@@ -84,7 +85,7 @@ export class BotController {
 
     const resultado: { [key: number]: any } = {};
     const orderSellarray: { [key: number]: any } = {};
-        const skippedLevelsarray: { [key: number]: any } = {};
+    const skippedLevelsarray: { [key: number]: any } = {};
 
     nuevoArray.forEach((botNuevo, index) => {
       const estrategia = data[index].strategy as any;
@@ -108,7 +109,7 @@ export class BotController {
       }
       if (estrategia && estrategia.skippedLevels instanceof Map) {
         skippedLevelsarray[index] = Array.from(estrategia.skippedLevels.values()).map((order: any) => ({
-           "level":order
+          "level": order
         }));
       }
     });

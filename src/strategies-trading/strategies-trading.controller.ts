@@ -18,7 +18,7 @@ import { AuthGuard } from 'src/authA/auth.guard';
 @ApiTags('strategies')
 @Controller('strategies-trading')
 export class StrategiesTradingController {
-  constructor(private readonly strategiesTradingService: StrategiesTradingService) {}
+  constructor(private readonly strategiesTradingService: StrategiesTradingService) { }
 
   @ApiOperation({ summary: 'Crear una nueva estrategia de trading' })
   @ApiBody({ type: CreateTradingStrategyDto })
@@ -41,7 +41,7 @@ export class StrategiesTradingController {
   @ApiResponse({ status: 200, description: 'Estrategia de trading encontrada', type: CreateTradingStrategyDto })
   @ApiBadRequestResponse({ description: 'ID inválido' })
   @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<TradingStrategy> {
+  async findOne(@Param('id', ParseIntPipe) id: string): Promise<TradingStrategy> {
     return await this.strategiesTradingService.getStrategyById(id);
   }
 
@@ -50,7 +50,7 @@ export class StrategiesTradingController {
   @ApiResponse({ status: 200, description: 'Estrategia actualizada', type: CreateTradingStrategyDto })
   @Patch(':id')
   async update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIntPipe) id: string,
     @Body() updateStrategiesTradingDto: UpdateTradingStrategyDto,
   ): Promise<TradingStrategy> {
     return await this.strategiesTradingService.updateStrategy(id, updateStrategiesTradingDto);
@@ -59,7 +59,7 @@ export class StrategiesTradingController {
   @ApiOperation({ summary: 'Eliminar una estrategia de trading' })
   @ApiResponse({ status: 200, description: 'Estrategia eliminada', type: CreateTradingStrategyDto })
   @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<TradingStrategy> {
+  async remove(@Param('id', ParseIntPipe) id: string): Promise<TradingStrategy> {
     return await this.strategiesTradingService.removeStrategy(id);
   }
 

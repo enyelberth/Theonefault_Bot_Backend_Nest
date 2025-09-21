@@ -1,6 +1,7 @@
 export interface TradingStrategy<TConfig = any> {
   symbol: string;
   config: TConfig;
+  id: string;
 
   run(): Promise<void>;
   stop?(): Promise<void>;
