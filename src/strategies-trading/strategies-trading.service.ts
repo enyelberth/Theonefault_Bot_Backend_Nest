@@ -18,7 +18,7 @@ import { PrismaClient, StrategyType, TradingStrategy } from '@prisma/client';
 export class StrategiesTradingService {
   private readonly logger = new Logger(StrategiesTradingService.name);
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient) { }
 
   // Trading Strategy
   async createStrategies(
@@ -52,7 +52,7 @@ export class StrategiesTradingService {
     }
   }
 
-  async getStrategyById(id: number): Promise<TradingStrategy> {
+  async getStrategyById(id: string): Promise<TradingStrategy> {
     try {
       const strategy = await this.prisma.tradingStrategy.findUnique({
         where: { id },
@@ -72,7 +72,7 @@ export class StrategiesTradingService {
   }
 
   async updateStrategy(
-    id: number,
+    id: string,
     updateTradingStrategyDto: UpdateTradingStrategyDto,
   ): Promise<TradingStrategy> {
     try {
@@ -88,7 +88,7 @@ export class StrategiesTradingService {
     }
   }
 
-  async removeStrategy(id: number): Promise<TradingStrategy> {
+  async removeStrategy(id: string): Promise<TradingStrategy> {
     try {
       return await this.prisma.tradingStrategy.delete({
         where: { id },

@@ -186,6 +186,83 @@ export class BinanceService {
 
     return { priceFilter, lotSizeFilter };
   }
+  // Saldo Spot (ya tienes función getAccountInfo que lo devuelve pero aquí es directo a balances)
+  async getSpotBalances() {
+    const accountInfo = await this.getAccountInfo();
+    return accountInfo.balances.filter((asset: any) => parseFloat(asset.free) > 0 || parseFloat(asset.locked) > 0);
+  }
+
+  // Saldo Margin Cruzado
+  async getCrossMarginBalances() {
+    const crossMarginInfo = await this.getCrossMarginAccountInfo();
+    return crossMarginInfo.userAssets.filter((asset: any) => parseFloat(asset.free) > 0 || parseFloat(asset.borrowed) > 0 || parseFloat(asset.netAsset) > 0);
+  }
+  async borrowCrossMargin(asset: string, amount: string) {
+    const serverTime = await this.getServerTime();
+    const params = { asset, amount, timestamp: serverTime, recvWindow: 10000 };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/loan?${queryString}&signature=${signature}`;
+
+    const response = await axios.post(url, null, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+  async repayCrossMargin(asset: string, amount: string) {
+    const serverTime = await this.getServerTime();
+    const params = { asset, amount, timestamp: serverTime, recvWindow: 10000 };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/repay?${queryString}&signature=${signature}`;
+
+    const response = await axios.post(url, null, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+
+
+  // Saldo Margin Aislado
+  async getIsolatedMarginBalances() {
+    const isolatedMarginInfo = await this.getAccountBalanceMarginIsolated();
+    // La función getAccountBalanceMarginIsolated ya devuelve las assets aisladas, puedes filtrar si quieres
+    return isolatedMarginInfo.filter((asset: any) =>
+      (asset.baseAsset && (parseFloat(asset.baseAsset.free) > 0 || parseFloat(asset.baseAsset.locked) > 0)) ||
+      (asset.quoteAsset && (parseFloat(asset.quoteAsset.free) > 0 || parseFloat(asset.quoteAsset.locked) > 0))
+    );
+  }
+  async transferBetweenSpotAndCrossMargin(asset: string, amount: string, type: 1 | 2) {
+    const serverTime = await this.getServerTime();
+    const params = { asset, amount, type, timestamp: serverTime, recvWindow: 10000 };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/transfer?${queryString}&signature=${signature}`;
+
+    const response = await axios.post(url, null, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+
 
   //Obtener saldos 
   async getAllOrders(symbol: string, limit = 500, fromId?: number) {
@@ -229,6 +306,19 @@ export class BinanceService {
 
     return response.data;
   }
+  async getFullCrossMarginBalance() {
+    const serverTime = await this.getServerTime();
+    const params = { timestamp: serverTime, recvWindow: 10000 };
+    return this.getSigned('/sapi/v1/margin/account', params);
+  }
+  async getCrossMarginLoans() {
+    const accountInfo = await this.getCrossMarginAccountInfo();
+    //console.log(accountInfo)
+    const loans = accountInfo.userAssets.filter((asset: any) => parseFloat(asset.borrowed) > 0);
+    return loans;
+  }
+
+
   async getCrossMarginAccountInfo() {
     const serverTime = await this.getServerTime();
     const params = { timestamp: serverTime, recvWindow: 10000 };
@@ -445,6 +535,46 @@ export class BinanceService {
 
     return response.data;
   }
+  async createCrossMarginLimitOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    price: string,
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
+  ) {
+    const params = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
+    return this.postSigned('/sapi/v1/margin/order', params);
+  }
+
+  async createCrossMarginMarketOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string
+  ) {
+    const params = { symbol, side, type: 'MARKET', quantity };
+    return this.postSigned('/sapi/v1/margin/order', params);
+  }
+
+
+  async createIsolatedMarginLimitOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    price: string,
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
+  ) {
+    const params = { symbol, side, type: 'LIMIT', quantity, price, timeInForce, isIsolated: 'TRUE' };
+    return this.postSigned('/sapi/v1/margin/isolated/order', params);
+  }
+
+  async createIsolatedMarginMarketOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string
+  ) {
+    const params = { symbol, side, type: 'MARKET', quantity, isIsolated: 'TRUE' };
+    return this.postSigned('/sapi/v1/margin/isolated/order', params);
+  }
 
   async getAccountBalanceMarginIsolated() {
     const serverTime = await this.getServerTime();
@@ -464,6 +594,130 @@ export class BinanceService {
 
     return response.data.assets;
   }
+  // Obtener todas las órdenes abiertas en margin cruzado para un símbolo
+  async getAllCrossMarginOrders(symbol: string, limit = 500, fromId?: number) {
+    const serverTime = await this.getServerTime();
+    const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 10000 };
+    if (fromId !== undefined) params.fromId = fromId;
+
+    return this.getSigned('/sapi/v1/margin/allOrders', params);
+  }
+
+  // Consultar una orden específica margin cruzado
+  async getCrossMarginOrderStatus(symbol: string, orderId: number) {
+    const serverTime = await this.getServerTime();
+    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
+    return this.getSigned('/sapi/v1/margin/order', params);
+  }
+
+  // Cancelar todas las órdenes abiertas margin cruzado para un símbolo
+  async cancelAllCrossMarginOrders(symbol: string) {
+    try {
+      const serverTime = await this.getServerTime();
+      const params = { symbol, timestamp: serverTime, recvWindow: 10000 };
+      const queryString = new URLSearchParams(params as any).toString();
+      const signature = this.sign(queryString);
+      const url = `${process.env.BASE_URL}/sapi/v1/margin/openOrders?${queryString}&signature=${signature}`;
+      const response = await axios.get(url, {
+        headers: { 'X-MBX-APIKEY': this.API_KEY },
+        httpsAgent: this.httpsAgent,
+      });
+      const openOrders = response.data;
+      // Cancelar cada orden
+      const cancelPromises = openOrders.map((order: any) => this.cancelCrossMarginOrder(symbol, order.orderId));
+      await Promise.all(cancelPromises);
+      return {
+        message: `Se cancelaron ${openOrders.length} órdenes de margin cruzado para el símbolo ${symbol}`,
+        canceledOrdersCount: openOrders.length,
+      };
+    } catch (error) {
+      throw new Error('Error cancelando todas las órdenes de margin cruzado: ' + (error as Error).message);
+    }
+  }
+
+  // Función auxiliar para cancelar una orden margin cruzado
+
+  async cancelCrossMarginOrder(symbol: string, orderId: number) {
+    const serverTime = await this.getServerTime();
+    const params: Record<string, string | number> = {
+      symbol,
+      orderId,
+      timestamp: serverTime,
+      recvWindow: 10000,
+    };
+
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+
+    const response = await axios.delete(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
+
+    return response.data;
+  }
+  async checkCrossMarginOrderStatus(symbol: string, orderId: number) {
+  const serverTime = await this.getServerTime();
+  const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
+
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+  const queryString = query.toString();
+
+  const signature = this.sign(queryString);
+  const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+
+  const response = await axios.get(url, {
+    headers: { 'X-MBX-APIKEY': this.API_KEY },
+    httpsAgent: this.httpsAgent,
+  });
+
+  return response.data;
+}
+async createCrossMarginStopLossOrder(
+  symbol: string,
+  side: 'BUY' | 'SELL',
+  quantity: string,
+  stopPrice: string,
+  options: Record<string, any> = {}
+) {
+  const serverTime = await this.getServerTime();
+  const params = {
+    symbol,
+    side,
+    type: 'STOP_LOSS_LIMIT',
+    quantity,
+    price: stopPrice,
+    stopPrice,
+    timeInForce: 'GTC',
+    timestamp: serverTime,
+    recvWindow: 10000,
+    ...options,
+  };
+
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+  const queryString = query.toString();
+
+  const signature = this.sign(queryString);
+  const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+
+  const response = await axios.post(url, null, {
+    headers: { 'X-MBX-APIKEY': this.API_KEY },
+    httpsAgent: this.httpsAgent,
+  });
+
+  return response.data;
+}
+
+
+
+
+
 
   async firmar() {
     // Función vacía o con la lógica que necesites implementar

@@ -13,14 +13,16 @@ export class BotService {
     private readonly strategiesTradingService: StrategiesTradingService
   ) { }
 
-  async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id?: number) {
+  async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id: string) {
+
     if (this.activeStrategies.has(symbol)) {
-      throw new Error(`Estrategia ya activa para ${symbol}`);
+      throw new Error(`Estrategia ya activa con este simbol  ${symbol} y el id ${id} `);
     }
 
     const strategy: TradingStrategy = StrategyFactory.createStrategy(
       strategyType,
       this.binanceService,
+      id,
       symbol,
       config
     );
@@ -29,11 +31,13 @@ export class BotService {
       symbol: symbol,
       typeId: typeId,
       config: config,
-      strategyType: strategyType
+      strategyType: strategyType,
+      id: id,
+
 
     }
 
-   /* this.strategiesTradingService.createStrategies(createTradingStrategyDto)*/
+    /* this.strategiesTradingService.createStrategies(createTradingStrategyDto)*/
     this.activeStrategies.set(symbol, strategy);
 
     await strategy.run();
@@ -50,17 +54,17 @@ export class BotService {
   getActiveBots(): string[] {
     return Array.from(this.activeStrategies.keys());
   }
-  async getActiveBotsData()  {
- const strategies = Array.from(this.activeStrategies.values());
+  async getActiveBotsData() {
+    const strategies = Array.from(this.activeStrategies.values());
 
-const newStrategiesData = strategies.map(strategy => ({
-  symbol: strategy.symbol,
-  config: strategy.config,
-  strategyType: strategy.constructor,
-}));
-console.log(newStrategiesData)
-return newStrategiesData
-   
+    const newStrategiesData = strategies.map(strategy => ({
+      symbol: strategy.symbol,
+      config: strategy.config,
+      strategyType: strategy.constructor,
+    }));
+    console.log(newStrategiesData)
+    return newStrategiesData
+
 
   }
   getBots() {

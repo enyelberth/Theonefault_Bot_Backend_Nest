@@ -24,7 +24,7 @@ const COLORS = {
 
 @Injectable()
 export class GridFullStrategy implements TradingStrategy {
-  id?: number;
+  id: string;
   symbol: string;
   config: {
     trading: boolean; // true = GRID BUY, false = GRID SELL
@@ -47,7 +47,7 @@ export class GridFullStrategy implements TradingStrategy {
   private skippedLevels = new Set<number>();
   private profitLoss = 0;
 
-  constructor(private readonly binanceService: BinanceService) {}
+  constructor(private readonly binanceService: BinanceService) { }
 
   async run() {
     this.trading = this.config.trading ?? true;
@@ -79,7 +79,7 @@ export class GridFullStrategy implements TradingStrategy {
         const sleepDuration = this.calculateSleepDuration();
         this.logInfo(`Sleeping ${sleepDuration} ms`);
         await this.sleep(sleepDuration);
-        
+
       } catch (error) {
         this.logError('Error in monitoring loop:', error);
         await this.exponentialBackoff(30000, 5);
@@ -135,7 +135,7 @@ export class GridFullStrategy implements TradingStrategy {
       const levelPriceNum = Number(levelPriceStr);
 
       if ((this.trading && (levelPriceNum >= safeThreshold || levelPriceNum >= currentPrice)) ||
-          (!this.trading && (levelPriceNum <= safeThreshold || levelPriceNum <= currentPrice))) {
+        (!this.trading && (levelPriceNum <= safeThreshold || levelPriceNum <= currentPrice))) {
         this.logWarn(`Skipping level ${i} at price ${levelPriceStr} due to safety or price threshold.`);
         this.skippedLevels.add(i);
         continue;
@@ -149,8 +149,8 @@ export class GridFullStrategy implements TradingStrategy {
       const adjQuantity = this.ajustarAlStep(quantity, lotSizeFilter.stepSize);
 
       const placePriceNum = this.trading ?
-          Math.min(levelPriceNum, safeThreshold - parseFloat(priceFilter.tickSize)) :
-          Math.max(levelPriceNum, safeThreshold + parseFloat(priceFilter.tickSize));
+        Math.min(levelPriceNum, safeThreshold - parseFloat(priceFilter.tickSize)) :
+        Math.max(levelPriceNum, safeThreshold + parseFloat(priceFilter.tickSize));
       const placePriceStr = this.ajustarAlStep(placePriceNum, priceFilter.tickSize);
 
       const side = this.trading ? 'BUY' : 'SELL';
@@ -195,10 +195,10 @@ export class GridFullStrategy implements TradingStrategy {
       const levelPriceNum = Number(this.ajustarAlStep(levelPriceRaw, priceFilter.tickSize));
 
       if ((this.trading && levelPriceNum < safeThreshold && levelPriceNum < currentPrice) ||
-          (!this.trading && levelPriceNum > safeThreshold && levelPriceNum > currentPrice)) {
+        (!this.trading && levelPriceNum > safeThreshold && levelPriceNum > currentPrice)) {
         const placePriceNum = this.trading ?
-            Math.min(levelPriceNum, safeThreshold - parseFloat(priceFilter.tickSize)) :
-            Math.max(levelPriceNum, safeThreshold + parseFloat(priceFilter.tickSize));
+          Math.min(levelPriceNum, safeThreshold - parseFloat(priceFilter.tickSize)) :
+          Math.max(levelPriceNum, safeThreshold + parseFloat(priceFilter.tickSize));
         const placePriceStr = this.ajustarAlStep(placePriceNum, priceFilter.tickSize);
         this.logInfo(`Trying skipped level ${i} at price ${placePriceStr}`);
 

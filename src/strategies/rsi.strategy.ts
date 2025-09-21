@@ -11,6 +11,7 @@ interface Order {
 
 @Injectable()
 export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
+  id:string;
   symbol: string;
   config: RsiStrategyConfig;
 
