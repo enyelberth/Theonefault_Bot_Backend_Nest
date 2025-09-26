@@ -50,7 +50,7 @@ export class StrategiesTradingController {
   @ApiResponse({ status: 200, description: 'Estrategia actualizada', type: CreateTradingStrategyDto })
   @Patch(':id')
   async update(
-    @Param('id', ParseIntPipe) id: string,
+    @Param('id') id: string,
     @Body() updateStrategiesTradingDto: UpdateTradingStrategyDto,
   ): Promise<TradingStrategy> {
     return await this.strategiesTradingService.updateStrategy(id, updateStrategiesTradingDto);
@@ -59,7 +59,7 @@ export class StrategiesTradingController {
   @ApiOperation({ summary: 'Eliminar una estrategia de trading' })
   @ApiResponse({ status: 200, description: 'Estrategia eliminada', type: CreateTradingStrategyDto })
   @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: string): Promise<TradingStrategy> {
+  async remove(@Param('id') id: string): Promise<TradingStrategy> {
     return await this.strategiesTradingService.removeStrategy(id);
   }
 

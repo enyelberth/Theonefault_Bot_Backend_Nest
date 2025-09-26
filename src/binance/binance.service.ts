@@ -314,8 +314,8 @@ export class BinanceService {
   async getCrossMarginLoans() {
     const accountInfo = await this.getCrossMarginAccountInfo();
     //console.log(accountInfo)
-    const loans = accountInfo.userAssets.filter((asset: any) => parseFloat(asset.borrowed) > 0);
-    return loans;
+//const loans = accountInfo.userAssets.filter((asset: any) => parseFloat(asset.borrowed) > 0);
+    return accountInfo;
   }
 
 
@@ -600,7 +600,7 @@ export class BinanceService {
     const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 10000 };
     if (fromId !== undefined) params.fromId = fromId;
 
-    return this.getSigned('/sapi/v1/margin/allOrders', params);
+    return this.getSigned('/sapi/v1/margin/openOrders', params);
   }
 
   // Consultar una orden específica margin cruzado
@@ -660,59 +660,86 @@ export class BinanceService {
 
     return response.data;
   }
+async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
+  try {
+    const openOrders = await this.getAllCrossMarginOrders(symbol);
+    const ordersToCancel = openOrders.filter((order: any) => order.side === side);
+
+    const cancelResults = await Promise.allSettled(
+      ordersToCancel.map((order: any) =>
+        this.cancelCrossMarginOrder(symbol, order.orderId)
+      )
+    );
+
+    const rejected = cancelResults.filter(r => r.status === 'rejected');
+    if (rejected.length > 0) {
+      // Puedes loggear o manejar estos errores individualmente.
+      console.warn(`Falló la cancelación de ${rejected.length} órdenes.`);
+    }
+
+    return {
+      message: `Se intentaron cancelar ${ordersToCancel.length} órdenes. Éxitos: ${cancelResults.length - rejected.length}, Fallos: ${rejected.length}`,
+      canceledOrdersCount: cancelResults.length - rejected.length,
+      failedOrdersCount: rejected.length,
+    };
+  } catch (error) {
+    throw new Error('Error cancelando órdenes margin cruzado por lado: ' + (error as Error).message);
+  }
+}
+
   async checkCrossMarginOrderStatus(symbol: string, orderId: number) {
-  const serverTime = await this.getServerTime();
-  const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
+    const serverTime = await this.getServerTime();
+    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
 
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
-  const queryString = query.toString();
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
 
-  const signature = this.sign(queryString);
-  const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
 
-  const response = await axios.get(url, {
-    headers: { 'X-MBX-APIKEY': this.API_KEY },
-    httpsAgent: this.httpsAgent,
-  });
+    const response = await axios.get(url, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
 
-  return response.data;
-}
-async createCrossMarginStopLossOrder(
-  symbol: string,
-  side: 'BUY' | 'SELL',
-  quantity: string,
-  stopPrice: string,
-  options: Record<string, any> = {}
-) {
-  const serverTime = await this.getServerTime();
-  const params = {
-    symbol,
-    side,
-    type: 'STOP_LOSS_LIMIT',
-    quantity,
-    price: stopPrice,
-    stopPrice,
-    timeInForce: 'GTC',
-    timestamp: serverTime,
-    recvWindow: 10000,
-    ...options,
-  };
+    return response.data;
+  }
+  async createCrossMarginStopLossOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    stopPrice: string,
+    options: Record<string, any> = {}
+  ) {
+    const serverTime = await this.getServerTime();
+    const params = {
+      symbol,
+      side,
+      type: 'STOP_LOSS_LIMIT',
+      quantity,
+      price: stopPrice,
+      stopPrice,
+      timeInForce: 'GTC',
+      timestamp: serverTime,
+      recvWindow: 10000,
+      ...options,
+    };
 
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
-  const queryString = query.toString();
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
 
-  const signature = this.sign(queryString);
-  const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
 
-  const response = await axios.post(url, null, {
-    headers: { 'X-MBX-APIKEY': this.API_KEY },
-    httpsAgent: this.httpsAgent,
-  });
+    const response = await axios.post(url, null, {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    });
 
-  return response.data;
-}
+    return response.data;
+  }
 
 
 
