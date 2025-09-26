@@ -82,6 +82,7 @@ export class BinanceController {
   @ApiCreatedResponse({ description: 'Orden limit margin cruzado creada correctamente.', type: CreateLimitOrderDto })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createCrossMarginLimitOrder(@Body() dto: CreateLimitOrderDto) {
+    console.log('Received DTO:', dto);
     return this.binanceService.createCrossMarginLimitOrder(dto.symbol, dto.side, dto.quantity, dto.price, dto.timeInForce);
   }
 
@@ -120,6 +121,17 @@ export class BinanceController {
     @Param('orderId', ParseIntPipe) orderId: number
   ) {
     return this.binanceService.checkOrderStatus(symbol, orderId);
+  }
+  @Post('margin-cross/orders/cancel/:symbol')
+  @ApiOperation({ summary: 'Cancelar todas las órdenes margin cruzado abiertas para un símbolo y lado' })
+  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiQuery({ name: 'side', required: true, enum: ['BUY', 'SELL'], description: 'Lado de la orden a cancelar: BUY o SELL' })
+  @ApiResponse({ status: 200, description: 'Órdenes margin cruzado canceladas correctamente.' })
+  async cancelAllCrossMarginOrdersBySide(
+    @Param('symbol') symbol: string,
+    @Query('side') side: 'BUY' | 'SELL'
+  ) {
+    return this.binanceService.cancelAllCrossMarginOrdersBySide(symbol, side);
   }
 
   @Get('orders/:symbol')
