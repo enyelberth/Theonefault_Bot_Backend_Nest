@@ -67,7 +67,7 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
 
           // Emitir actualización a clientes conectados
           this.server.emit(`${symbol}-price-update`, price);
-          console.log(`Precio guardado y emitido para ${symbol}: ${price}`);
+         // console.log(`Precio guardado y emitido para ${symbol}: ${price}`);
         } catch (err) {
           console.error(`Error procesando mensaje de ${symbol}:`, err);
         }
