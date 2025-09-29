@@ -43,6 +43,18 @@ export class NotificationService {
       data: updateNotificationDto,
     });
   }
+  async markAsRead(id: number): Promise<Notification> {
+    this.logger.log(`Marking notification with id ${id} as read`);
+    const notification = await this.findOne(id);
+    if (notification.read) {
+      return notification; // Ya está marcada como leída
+    }
+    return this.prisma.notification.update({
+      where: { id },
+      data: { read: true },
+    });
+  }
+
 
   async remove(id: number): Promise<Notification> {
     this.logger.log(`Removing notification with id ${id}`);

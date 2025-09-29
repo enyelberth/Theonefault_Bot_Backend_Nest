@@ -1,14 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { Notification } from '@prisma/client';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { AuthGuard } from 'src/authA/auth.guard';
 
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('notification')
 @Controller('notification')
 export class NotificationController {
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(private readonly notificationService: NotificationService) { }
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva notificación' })
@@ -17,6 +20,14 @@ export class NotificationController {
   async create(@Body() createNotificationDto: CreateNotificationDto): Promise<Notification> {
     return await this.notificationService.create(createNotificationDto);
   }
+  @Patch(':id/read')
+  @ApiOperation({ summary: 'Marcar notificación como leída' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, description: 'Notificación marcada como leída' })
+  async markAsRead(@Param('id') id: string): Promise<Notification> {
+    return await this.notificationService.markAsRead(+id);
+  }
+
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las notificaciones' })
@@ -36,7 +47,7 @@ export class NotificationController {
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar notificación por ID' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Notificación actualizada'})
+  @ApiResponse({ status: 200, description: 'Notificación actualizada' })
   @ApiBody({ type: UpdateNotificationDto })
   async update(
     @Param('id') id: string,
