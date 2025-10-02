@@ -16,6 +16,7 @@ RUN npm run build
 #ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 
 RUN npx prisma generate
+#RUN npm run seed
 
 EXPOSE 3000
 
