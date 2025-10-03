@@ -77,6 +77,21 @@ export class BinanceController {
       dto.stopLimitTimeInForce,
     );
   }
+   @Post('order/oco/cross-margin')
+  @ApiOperation({ summary: 'Crear orden OCO en margin cruzado' })
+  @ApiCreatedResponse({ description: 'Orden OCO margin cruzado creada correctamente.' })
+  @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
+  async createCrossMarginOcoOrder(@Body() dto: CreateOcoOrderDto) {
+    return this.binanceService.createCrossMarginOcoOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+      dto.price,
+      dto.stopPrice,
+      dto.stopLimitPrice,
+      dto.stopLimitTimeInForce,
+    );
+  }
   @Post('order/limit/cross')
   @ApiOperation({ summary: 'Crear una orden limit en margin cruzado' })
   @ApiCreatedResponse({ description: 'Orden limit margin cruzado creada correctamente.', type: CreateLimitOrderDto })

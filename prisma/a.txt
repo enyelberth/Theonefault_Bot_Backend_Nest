@@ -1,44 +1,78 @@
 [
   {
+    "typeId": 1,
+    "id": "asdasda"
+    "strategyType": "gridSellMarginFixed",
     "symbol": "BNBFDUSD",
     "config": {
       "config": {
+        "ordersLevels":[
+          {
+            "id": 1,
+            "price": 25,
+            "quantity": 1
+          },
+          {
+            "id": 2,
+            "price": 26,
+            "quantity": 1
+          },
+        ]
         "gridCount": 10,
         "lowerPrice": 800,
         "upperPrice": 900,
         "profitMargin": 0.0009,
         "totalQuantity": 2
       },
-      "openBuyOrders": {},
-      "openSellOrders": {},
-      "isRunning": true,
-      "skippedLevels": {},
-      "profitLoss": 0,
-      "logger": {
-        "context": "GridBuyStrategy",
-        "options": {},
-        "localInstanceRef": {
-          "options": {
-            "logLevels": [
-              "log",
-              "error",
-              "warn",
-              "debug",
-              "verbose",
-              "fatal"
-            ],
-            "colors": true,
-            "prefix": "Nest"
-          },
-          "inspectOptions": {
-            "depth": 5,
-            "compact": false,
-            "colors": true
-          },
-          "context": "GridBuyStrategy",
-          "originalContext": "GridBuyStrategy"
-        }
-      }
     }
   }
 ]
+{
+  "typeId": 1,
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridSellMarginFixed",
+  "config": {
+        "ordersLevels":[
+          {
+            "id": 1,
+            "price": 25,
+            "quantity": 1
+          },
+          {
+            "id": 2,
+            "price": 26,
+            "quantity": 1
+          },
+        ]
+        "gridCount": 10,
+        "lowerPrice": 800,
+        "upperPrice": 900,
+        "profitMargin": 0.0009,
+        "totalQuantity": 2
+      }
+}
+
+{
+  "typeId": 1,
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridSellMarginFixed",
+  "config": {
+    "ordersLevels": [
+      {
+        "id": 1,
+        "price": 25.00,
+        "quantity": 1
+      },
+      {
+        "id": 2,
+        "price": 26.00,
+        "quantity": 1
+      }
+    ],
+    "gridCount": 10,
+    "lowerPrice": 800,
+    "upperPrice": 900,
+    "profitMargin": 0.0009,
+    "totalQuantity": 2
+  }
+}

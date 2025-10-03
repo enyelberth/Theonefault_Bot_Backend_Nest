@@ -741,6 +741,45 @@ async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
     return response.data;
   }
 
+async createCrossMarginOcoOrder(
+  symbol: string,
+  side: 'BUY' | 'SELL',
+  quantity: string,
+  price: string,
+  stopPrice: string,
+  stopLimitPrice: string,
+  stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
+) {
+  const serverTime = await this.getServerTime();
+  const allParams = {
+    symbol,
+    side,
+    quantity,
+    price,
+    stopPrice,
+    stopLimitPrice,
+    stopLimitTimeInForce,
+    timestamp: serverTime,
+    recvWindow: 10000,
+  };
+
+  const query = new URLSearchParams();
+  Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+  const queryString = query.toString();
+
+  const signature = this.sign(queryString);
+  const url = `${process.env.BASE_URL}/sapi/v1/margin/order/oco?${queryString}&signature=${signature}`;
+
+  const response = await axios.post(url, null, {
+    headers: { 'X-MBX-APIKEY': this.API_KEY },
+    httpsAgent: this.httpsAgent,
+  });
+
+  return response.data;
+}
+
+
+
 
 
 
