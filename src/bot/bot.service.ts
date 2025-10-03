@@ -15,7 +15,7 @@ export class BotService {
 
   async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id: string) {
 
-    if (this.activeStrategies.has(symbol)) {
+    if (this.activeStrategies.has(id)) {
       throw new Error(`Estrategia ya activa con este simbol  ${symbol} y el id ${id} `);
     }
 

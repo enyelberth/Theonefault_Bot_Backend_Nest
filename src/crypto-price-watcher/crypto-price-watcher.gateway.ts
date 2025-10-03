@@ -4,9 +4,9 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
+import { IndicatorsService } from 'src/indicators/indicators.service';
 import * as WebSocket from 'ws';
-import { TradingService } from 'src/trading/trading.service';
-import { BinanceService } from 'src/binance/binance.service';
+
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -16,21 +16,12 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
   server: Server;
 
   private readonly binanceSockets: Record<string, WebSocket> = {};
-  private readonly symbols = ['linkfdusd'];
+  private readonly symbols = ['btcfdusd','linkfdusd','dogefdusd','xrpfdusd','bnbfdusd','dogefdusd','solfdusd']; // Puedes incluir más símbolos
 
-  // Mapea símbolo -> tradingPairId en tu DB
-  private readonly symbolToPairId: Record<string, number> = {
-    linkfdusd: 1,
-  };
-
-  // Control de frecuencia (debounce)
   private readonly lastRunAt: Record<string, number> = {};
-  private readonly MIN_INTERVAL_MS = 200; // Máx 5 ticks/seg por símbolo
+  private readonly MIN_INTERVAL_MS = 60 * 1000; // 1 minuto
 
-  constructor(private readonly tradingService: TradingService,
-    private readonly binanceService: BinanceService
-  ) {
-    // Conectar sockets de Binance
+  constructor(private readonly indicatorsService: IndicatorsService) {
     this.symbols.forEach((symbol) => {
       const wsUrl = `wss://stream.binance.com:9443/ws/${symbol}@trade`;
       const ws = new WebSocket(wsUrl);
@@ -45,44 +36,38 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
       const ws = this.binanceSockets[symbol];
 
       ws.on('open', () => {
-     //   console.log(process.env.BASE_URL);
-      //  console.log(`Conectado a Binance WS para ${symbol}`);
+        console.log(`Conectado a Binance WS para ${symbol}`);
       });
 
       ws.on('message', async (data: WebSocket.RawData) => {
         try {
           const tradeData = JSON.parse(data.toString());
-          const price = parseFloat(tradeData?.p); // Binance manda 'p' como string
+          const price = parseFloat(tradeData?.p); // Precio actual
 
-          // Validar precio
           if (!isFinite(price)) return;
 
-          // Debounce para evitar exceso de transacciones
           const now = Date.now();
           const last = this.lastRunAt[symbol] ?? 0;
+
+          // Solo guardar máximo cada minuto
           if (now - last < this.MIN_INTERVAL_MS) {
+            // Emitir valor en tiempo real sin guardar
             this.server.emit(`${symbol}-price-update`, price);
             return;
           }
           this.lastRunAt[symbol] = now;
 
-          // Obtener tradingPairId del mapa
-          const tradingPairId = this.symbolToPairId[symbol];
-          if (!tradingPairId) {
-            console.warn(`No hay tradingPairId configurado para ${symbol}`);
-            return;
-          }
-          
-        //  const a =  await this.binanceService.getAccountBalance();
-     //     console.log(a);
+          // Guardar precio en la base de datos
+          await this.indicatorsService.createCryptoPrice({
+            symbol: symbol.toUpperCase(),
+            price,
+            volume: parseFloat(tradeData.q), // Volumen del trade
+            timestamp: new Date(tradeData.T),
+          });
 
-          // Procesar tick de precio (esperando a que termine)
-         // console.log(price)
-       //   await this.tradingService.processPriceTick(1, price);
-
-          // Enviar precio a los clientes conectados
+          // Emitir actualización a clientes conectados
           this.server.emit(`${symbol}-price-update`, price);
-
+         // console.log(`Precio guardado y emitido para ${symbol}: ${price}`);
         } catch (err) {
           console.error(`Error procesando mensaje de ${symbol}:`, err);
         }
@@ -94,7 +79,6 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
 
       ws.on('close', () => {
         console.log(`Conexión Binance WS cerrada para ${symbol}`);
-        // Aquí podrías implementar reconexión automática
       });
     });
   }

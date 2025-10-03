@@ -10,8 +10,8 @@ async function bootstrap() {
 
   // Configuración Swagger con autenticación Bearer JWT
   const config = new DocumentBuilder()
-    .setTitle('Theonefault API')
-    .setDescription('Documentación API con theonefault')
+    .setTitle('KAIZEN API')
+    .setDescription('Documentación API KAIZEN')
     .setVersion('1.0')
     .addBearerAuth(
       {

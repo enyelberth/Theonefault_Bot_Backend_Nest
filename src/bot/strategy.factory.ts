@@ -2,6 +2,7 @@ import { BinanceService } from "src/binance/binance.service";
 import { GridBuyStrategy } from "src/strategies/grid-buy.strategy";
 import { GridBuyMarginStrategy } from "src/strategies/grid_buy_margin.strategy";
 import { GridFullStrategy } from "src/strategies/grid_full_strategy";
+import { GridSellMarginFixedStrategy } from "src/strategies/grid_sell_margin.fixed.strategy";
 import { GridSellMarginStrategy } from "src/strategies/grid_sell_margin.strategy";
 import { RsiStrategy } from "src/strategies/rsi.strategy";
 import { TradingStrategy } from "src/strategies/trading-strategy.interface";
@@ -28,6 +29,12 @@ export class StrategyFactory {
         gridSellMargin.config = config;
         gridSellMargin.id= id;
         return gridSellMargin;
+      case 'gridSellMarginFixed':
+        const gridSellMarginFixed = new GridSellMarginFixedStrategy(binanceService);
+        gridSellMarginFixed.symbol = symbol;
+        gridSellMarginFixed.config = config;
+        gridSellMarginFixed.id= id;
+        return gridSellMarginFixed;
       case 'rsi':
         const rsi = new RsiStrategy(binanceService);
         rsi.symbol = symbol;

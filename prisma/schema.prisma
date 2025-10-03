@@ -267,3 +267,14 @@ model StrategyType {
   createdAt   DateTime          @default(now())
   strategies  TradingStrategy[] // Relación uno a muchos
 }
+
+model CryptoPrice {
+  id        Int      @id @default(autoincrement())
+  symbol    String // Ejemplo: "BTC"
+  price     Float // Precio en USD u otra moneda
+  volume    Float? // Volumen negociado
+  timestamp DateTime // Fecha y hora del registro de precio
+  createdAt DateTime @default(now())
+
+  @@index([symbol, timestamp])
+}

@@ -23,8 +23,10 @@ import { HttpconfigModule } from './httpconfig/httpconfig.module';
 import { BotModule } from './bot/bot.module';
 import { StrategiesTradingModule } from './strategies-trading/strategies-trading.module';
 import { AuthModule } from './authA/auth.module';
+import { NotificationModule } from './notification/notification.module';
+import { IndicatorsModule } from './indicators/indicators.module';
 @Module({
-  imports: [AuthModule,ScheduleModule.forRoot(),BotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule],
+  imports: [AuthModule,ScheduleModule.forRoot(),BotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService, CryptoPriceWatcherGateway],
 })
