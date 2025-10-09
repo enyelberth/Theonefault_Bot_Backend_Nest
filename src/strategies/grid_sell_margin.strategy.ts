@@ -36,6 +36,7 @@ export class GridSellMarginStrategy implements TradingStrategy {
     maxSleepMs?: number;
     buySafetyMargin?: number; // Porcentaje (ej. 0.001 = 0.1%)
   };
+  
 
   private readonly logger = new Logger(GridSellMarginStrategy.name);
   private openBuyOrders = new Map<number, Order>();
@@ -120,6 +121,7 @@ export class GridSellMarginStrategy implements TradingStrategy {
         continue;
       }
 
+
       const sellPrice = this.roundToStep(sellPriceRaw, priceFilter.tickSize);
 
       let quantity = this.config.totalQuantity / this.config.gridCount;
@@ -153,6 +155,7 @@ export class GridSellMarginStrategy implements TradingStrategy {
       await this.sleep(250);
     }
   }
+
 
   private async checkSellOrders(priceFilter: any, lotSizeFilter: any, currentPrice: number) {
     const maxAgeMs = this.config.maxOrderAgeMs ?? 3600000;

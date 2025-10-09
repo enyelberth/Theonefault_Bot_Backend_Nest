@@ -5,8 +5,13 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Activar CORS con configuración básica (permite todos los orígenes)
-  app.enableCors();
+  // Configurar CORS para aceptar solicitudes desde cualquier origen
+  app.enableCors({
+    origin: '*', // permite cualquier origen
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization',
+    credentials: false, // NO permitir envío de cookies por seguridad con '*'
+  });
 
   // Configuración Swagger con autenticación Bearer JWT
   const config = new DocumentBuilder()

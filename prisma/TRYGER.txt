@@ -283,4 +283,60 @@ CREATE TABLE trading_orders (
     "buySafetyMargin":0.0004
 
   }
+
+ {
+    "id": "dsadasda",
+    "symbol": "LINKFDUSD",
+    "typeId": 1,
+    "strategyType": "gridBuyMargin",
+    "config": {
+      "gridCount": 0,
+      "lowerPrice": 21.5,
+      "upperPrice": 21.83,
+      "profitMargin": 0.0007,
+      "totalQuantity": 5
+    }
+  }
+
+
+
+ {
+    "id": "dsadasda",
+    "symbol": "LINKFDUSD",
+    "typeId": 1,
+    "strategyType": "gridBuyMargin",
+    "config": {
+      "gridCount": 10,
+      "lowerPrice": 25,
+      "upperPrice": 26.1,
+      "profitMargin": 0.0007,
+      "totalQuantity": 4
+    },
+    "createdAt": "2025-10-07T03:53:46.834Z",
+    "updatedAt": "2025-10-08T14:53:08.309Z"
+  },
+{
+  "typeId": 1,
+  "symbol": "BTCUSDT",
+  "strategyType": "gridBuyMarginFixed",
+  "config": {
+    "ordersLevels": [
+      {
+        "id": 1,
+        "price": 21.50,
+        "quantity": 0.3
+      },
+      {
+        "id": 2,
+        "price": 21.51,
+        "quantity": 0.3
+      },
+      {
+        "id": 3,
+        "price": 21.54,
+        "quantity": 0.3
+      },
+    ],
+    "param2": 10
+  }
 }

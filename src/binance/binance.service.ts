@@ -73,6 +73,7 @@ export class BinanceService {
     return this.postSigned('/api/v3/order', params);
   }
 
+ 
   async createMarketOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string) {
     const params = { symbol, side, type: 'MARKET', quantity };
     return this.postSigned('/api/v3/order', params);
@@ -762,6 +763,8 @@ async createCrossMarginOcoOrder(
     timestamp: serverTime,
     recvWindow: 10000,
   };
+
+ 
 
   const query = new URLSearchParams();
   Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
