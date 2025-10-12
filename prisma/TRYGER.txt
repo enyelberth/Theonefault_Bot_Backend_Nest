@@ -317,23 +317,23 @@ CREATE TABLE trading_orders (
   },
 {
   "typeId": 1,
-  "symbol": "BTCUSDT",
+  "symbol": "LINKFDUSD",
   "strategyType": "gridBuyMarginFixed",
   "config": {
     "ordersLevels": [
       {
         "id": 1,
-        "price": 21.50,
+        "price": 15.50,
         "quantity": 0.3
       },
       {
         "id": 2,
-        "price": 21.51,
+        "price": 14.51,
         "quantity": 0.3
       },
       {
         "id": 3,
-        "price": 21.54,
+        "price": 13.54,
         "quantity": 0.3
       },
     ],
