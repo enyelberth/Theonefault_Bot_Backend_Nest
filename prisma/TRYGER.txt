@@ -340,3 +340,32 @@ CREATE TABLE trading_orders (
     "param2": 10
   }
 }
+
+
+
+
+{
+  "typeId": 1,
+  "symbol": "LINKFDUSD",
+  "strategyType": "gridBuyMarginFixed",
+  "config": {
+    "profitMargin": 0.0009,
+    "ordersLevels": [
+      {
+        "id": 1,
+        "price": 18.50,
+        "quantity": 0.35
+      },
+      {
+        "id": 2,
+        "price": 18.51,
+        "quantity": 0.35
+      },
+      {
+        "id": 3,
+        "price": 18.54,
+        "quantity": 0.35
+      }
+    ]
+  }
+}

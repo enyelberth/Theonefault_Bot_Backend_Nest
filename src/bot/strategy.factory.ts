@@ -9,7 +9,7 @@ import { TradingStrategy } from "src/strategies/trading-strategy.interface";
 import {GridBuyMarginFixedStrategy} from "src/strategies/grid_buy_margin_fixed.strategy"
 
 export class StrategyFactory {
-  static createStrategy(type: string, binanceService: BinanceService,id ,symbol: string, config: any): TradingStrategy {
+  static createStrategy(type: string, binanceService: BinanceService,id:string ,symbol: string, config: any): TradingStrategy {
     switch (type) {
       case 'gridBuy':
         const grid = new GridBuyStrategy(binanceService);

@@ -329,4 +329,53 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
       await this.sleep(waitTime);
     }
   }
+  
+  public updateProfitMargin(newProfitMargin: number) {
+    if (newProfitMargin < 0) {
+      this.logMessages.logWarn('Profit margin no puede ser negativo.');
+      return;
+    }
+    this.logMessages.logInfo(`Profit margin actualizado de ${this.config.profitMargin} a ${newProfitMargin}`);
+    this.config.profitMargin = newProfitMargin;
+  }
+   public addOrderLevel(orderLevel: OrderLevel) {
+    this.config.ordersLevels.push(orderLevel);
+    this.config.gridCount = this.config.ordersLevels.length;
+    this.logMessages.logInfo(`Nuevo nivel agregado: precio ${orderLevel.price}, cantidad ${orderLevel.quantity}. Total niveles: ${this.config.gridCount}`);
+  }
+    public async removeOrderLevel(levelIndex: number) {
+    if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
+      this.logMessages.logWarn(`Índice inválido para eliminar orden nivel: ${levelIndex}`);
+      return;
+    }
+    const removed = this.config.ordersLevels.splice(levelIndex, 1)[0];
+    this.config.gridCount = this.config.ordersLevels.length;
+    this.logMessages.logInfo(`Nivel eliminado: precio ${removed.price}, cantidad ${removed.quantity}. Total niveles: ${this.config.gridCount}`);
+
+    // Cancelar órdenes abiertas buy y sell en ese nivel
+    if (this.openBuyOrders.has(levelIndex)) {
+      const order = this.openBuyOrders.get(levelIndex);
+      if (order) {
+        await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+        this.openBuyOrders.delete(levelIndex);
+        this.logMessages.logInfo(`Orden BUY cancelada en nivel ${levelIndex}`);
+      }
+    }
+    if (this.openSellOrders.has(levelIndex)) {
+      const order = this.openSellOrders.get(levelIndex);
+      if (order) {
+        await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+        this.openSellOrders.delete(levelIndex);
+        this.logMessages.logInfo(`Orden SELL cancelada en nivel ${levelIndex}`);
+      }
+    }
+  }
+   public updateOrderLevelQuantity(levelIndex: number, newQuantity: number) {
+    if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
+      this.logMessages.logWarn(`Índice inválido para actualizar cantidad de orden: ${levelIndex}`);
+      return;
+    }
+    this.config.ordersLevels[levelIndex].quantity = newQuantity;
+    this.logMessages.logInfo(`Cantidad en nivel ${levelIndex} actualizada a ${newQuantity}`);
+  }
 }
