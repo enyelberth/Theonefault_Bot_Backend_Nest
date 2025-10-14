@@ -780,14 +780,70 @@ async createCrossMarginOcoOrder(
 
   return response.data;
 }
+ async getCrossMarginPositions() {
+    try {
+      const response = await this.getSignedRequest('/sapi/v1/margin/positionRisk', {}, 'GET');
+      console.debug('Respuesta getCrossMarginPositions:', response.data);
+      if (!Array.isArray(response.data)) {
+        throw new Error('La respuesta no es un array de posiciones');
+      }
+      return response.data;
+    } catch (error) {
+      throw new Error(`Error obteniendo posiciones margin cruzado: ${(error as Error).message}`);
+    }
+  }
 
+  async getCrossMarginPosition(symbol: string) {
+    const positions = await this.getCrossMarginPositions();
+    const position = positions.find((pos: any) => pos.symbol === symbol);
+    if (!position) {
+      throw new Error(`No hay posición abierta para el símbolo ${symbol}`);
+    }
+    return position;
+  }
 
+  async getCrossMarginUnrealizedProfit(symbol: string) {
+    const position = await this.getCrossMarginPosition(symbol);
+    return {
+      symbol,
+      positionAmt: position.positionAmt,
+      entryPrice: position.entryPrice,
+      markPrice: position.markPrice,
+      unRealizedProfit: parseFloat(position.unRealizedProfit),
+    };
+  }
+  
 
+  async getCrossMarginProfitPercent(symbol: string) {
+    const { entryPrice, markPrice, positionAmt } = await this.getCrossMarginUnrealizedProfit(symbol);
+    if (parseFloat(entryPrice) === 0) return 0;
+    const profitPercent = ((parseFloat(markPrice) - parseFloat(entryPrice)) / parseFloat(entryPrice)) * 100;
+    return profitPercent * (parseFloat(positionAmt) >= 0 ? 1 : -1);
+  }
+    private async getSignedRequest(endpoint: string, params: Record<string, string | number>, method: 'GET' | 'POST' | 'DELETE' = 'GET') {
+    const serverTime = await this.getServerTime();
+    const allParams = { ...params, timestamp: serverTime, recvWindow: 10000 };
+    const query = new URLSearchParams();
+    Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+    const queryString = query.toString();
+    const signature = this.sign(queryString);
+    const url = `${process.env.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
 
+    const config = {
+      headers: { 'X-MBX-APIKEY': this.API_KEY },
+      httpsAgent: this.httpsAgent,
+    };
 
-
-
-
+    if (method === 'GET') {
+      return axios.get(url, config);
+    } else if (method === 'POST') {
+      return axios.post(url, null, config);
+    } else if (method === 'DELETE') {
+      return axios.delete(url, config);
+    } else {
+      throw new Error(`Unsupported method ${method}`);
+    }
+  }
   async firmar() {
     // Función vacía o con la lógica que necesites implementar
   }
