@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Delete, Param, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body,Patch, Delete, Param, Get, UseGuards } from '@nestjs/common';
 import { BotService } from './bot.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
@@ -29,6 +29,7 @@ export class BotController {
   @ApiResponse({ status: 201, description: 'Bot iniciado correctamente.' })
   async startBot(@Body() body: { symbol: string; id: string; typeId: number; strategyType: string; config: any }) {
    //console.log(body.symbol)
+    console.log(body.id);
     await this.botService.startStrategy(body.symbol, body.typeId, body.strategyType, body.config, body.id);
     return { message: `Bot iniciado para ${body.symbol} con estrategia ${body.strategyType}` };
   }
@@ -132,5 +133,78 @@ export class BotController {
 
     return nuevoArray2;
   }
+  @Get('data')
+  @ApiOperation({ summary: 'Listar datos detallados de bots activos' })
+  @ApiResponse({ status: 200, description: 'Lista datos de bots activos.' })
+  getActiveBotsData() {
+    return this.botService.getActiveBotsData();
+  }
+
+  // Nuevas rutas para modificar estrategia en ejecución
+
+  @Patch('profitMargin/:id')
+  @ApiOperation({ summary: 'Actualizar profit margin de una estrategia activa' })
+  @ApiParam({ name: 'id', required: true, example: 'unique-strategy-id' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        profitMargin: { type: 'number', example: 0.001 }
+      },
+      required: ['profitMargin'],
+    },
+  })
+  async updateProfitMargin(@Param('id') id: string, @Body() body: { profitMargin: number }) {
+    await this.botService.updateProfitMargin(id, body.profitMargin);
+    return { message: `Profit margin actualizado para estrategia ${id}` };
+  }
+
+  @Post('orderLevel/:id')
+  @ApiOperation({ summary: 'Agregar nivel de orden a una estrategia activa' })
+  @ApiParam({ name: 'id', required: true, example: 'unique-strategy-id' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        price: { type: 'number', example: 15.5 },
+        quantity: { type: 'number', example: 0.3 },
+        id: { type: 'number', example: 4 }
+      },
+      required: ['price', 'quantity', 'id'],
+    },
+  })
+  async addOrderLevel(@Param('id') id: string, @Body() body: { price: number, quantity: number, id: number }) {
+    await this.botService.addOrderLevel(id, body);
+    return { message: `Nivel de orden agregado para estrategia ${id}` };
+  }
+
+  @Delete('orderLevel/:id/:levelIndex')
+  @ApiOperation({ summary: 'Eliminar nivel de orden de una estrategia activa' })
+  @ApiParam({ name: 'id', required: true, example: 'unique-strategy-id' })
+  @ApiParam({ name: 'levelIndex', required: true, example: 2 })
+  async removeOrderLevel(@Param('id') id: string, @Param('levelIndex') levelIndex: number) {
+    await this.botService.removeOrderLevel(id, levelIndex);
+    return { message: `Nivel de orden ${levelIndex} eliminado para estrategia ${id}` };
+  }
+
+  @Patch('orderLevelPrice/:id/:levelIndex')
+  @ApiOperation({ summary: 'Actualizar precio de nivel de orden en una estrategia activa' })
+  @ApiParam({ name: 'id', required: true, example: 'unique-strategy-id' })
+  @ApiParam({ name: 'levelIndex', required: true, example: 1 })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        newPrice: { type: 'number', example: 16.0 }
+      },
+      required: ['newPrice'],
+    },
+  })
+  async updateOrderLevelPrice(@Param('id') id: string, @Param('levelIndex') levelIndex: number, @Body() body: { newPrice: number }) {
+    await this.botService.updateOrderLevelPrice(id, levelIndex, body.newPrice);
+    return { message: `Precio actualizado para nivel ${levelIndex} en estrategia ${id}` };
+  }
+  
+
 
 }

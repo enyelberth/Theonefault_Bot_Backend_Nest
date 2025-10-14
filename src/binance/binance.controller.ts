@@ -217,4 +217,40 @@ export class BinanceController {
   ) {
     return this.binanceService.cancelCrossMarginOrder(symbol, orderId);
   }
+    @Get('margin-cross/positions')
+  @ApiOperation({ summary: 'Obtener todas las posiciones margin cruzado con ganancia/pérdida' })
+  @ApiResponse({ status: 200, description: 'Posiciones margin cruzado obtenidas correctamente.' })
+  async getCrossMarginPositions() {
+    return this.binanceService.getCrossMarginPositions();
+  }
+
+  @Get('margin-cross/position/:symbol')
+  @ApiOperation({ summary: 'Obtener posición margin cruzado y ganancia/pérdida no realizada para un símbolo' })
+  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiResponse({ status: 200, description: 'Posición margin cruzado obtenida correctamente.' })
+  async getCrossMarginPosition(
+    @Param('symbol') symbol: string
+  ) {
+    return this.binanceService.getCrossMarginPosition(symbol);
+  }
+
+  @Get('margin-cross/unrealized-profit/:symbol')
+  @ApiOperation({ summary: 'Obtener ganancia o pérdida no realizada en margin cruzado para un símbolo' })
+  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiResponse({ status: 200, description: 'Ganancia o pérdida margin cruzado obtenida correctamente.' })
+  async getCrossMarginUnrealizedProfit(
+    @Param('symbol') symbol: string
+  ) {
+    return this.binanceService.getCrossMarginUnrealizedProfit(symbol);
+  }
+
+  @Get('margin-cross/profit-percent/:symbol')
+  @ApiOperation({ summary: 'Obtener ganancia o pérdida en porcentaje en margin cruzado para un símbolo' })
+  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiResponse({ status: 200, description: 'Porcentaje de ganancia o pérdida margin cruzado obtenido correctamente.' })
+  async getCrossMarginProfitPercent(
+    @Param('symbol') symbol: string
+  ) {
+    return this.binanceService.getCrossMarginProfitPercent(symbol);
+  }
 }

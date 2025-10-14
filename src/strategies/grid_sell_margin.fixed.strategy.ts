@@ -41,6 +41,7 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
   private isRunning = true;
   private profitLoss = 0;
 
+
   constructor(private readonly binanceService: BinanceService) {}
 
   async run() {

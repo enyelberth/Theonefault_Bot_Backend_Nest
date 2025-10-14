@@ -58,6 +58,7 @@ export class BotService {
     const strategies = Array.from(this.activeStrategies.values());
 
     const newStrategiesData = strategies.map(strategy => ({
+      id:strategy.id,
       symbol: strategy.symbol,
       config: strategy.config,
       strategyType: strategy.constructor,
@@ -83,5 +84,48 @@ export class BotService {
     }));
 
   }
-
+    async updateOrderLevelPrice(id: string, levelIndex: number, newPrice: number) {
+    const strategy = this.activeStrategies.get(id);
+    if (!strategy) {
+      throw new Error(`Estrategia con id ${id} no encontrada`);
+    }
+    if (typeof strategy['updateOrderLevelPrice'] === 'function') {
+      await strategy['updateOrderLevelPrice'](levelIndex, newPrice);
+      return true;
+    }
+    throw new Error(`La estrategia con id ${id} no soporta actualizar precio de nivel`);
+  }
+   async removeOrderLevel(id: string, levelIndex: number) {
+    const strategy = this.activeStrategies.get(id);
+    if (!strategy) {
+      throw new Error(`Estrategia con id ${id} no encontrada`);
+    }
+    if (typeof strategy['removeOrderLevel'] === 'function') {
+      await strategy['removeOrderLevel'](levelIndex);
+      return true;
+    }
+    throw new Error(`La estrategia con id ${id} no soporta eliminar niveles de orden`);
+  }
+ addOrderLevel(id: string, orderLevel: any) {
+    const strategy = this.activeStrategies.get(id);
+    if (!strategy) {
+      throw new Error(`Estrategia con id ${id} no encontrada`);
+    }
+    if (typeof strategy['addOrderLevel'] === 'function') {
+      strategy['addOrderLevel'](orderLevel);
+      return true;
+    }
+    throw new Error(`La estrategia con id ${id} no soporta agregar niveles de orden`);
+  }
+    updateProfitMargin(id: string, newProfitMargin: number) {
+    const strategy = this.activeStrategies.get(id);
+    if (!strategy) {
+      throw new Error(`Estrategia con id ${id} no encontrada`);
+    }
+    if (typeof strategy['updateProfitMargin'] === 'function') {
+      strategy['updateProfitMargin'](newProfitMargin);
+      return true;
+    }
+    throw new Error(`La estrategia con id ${id} no soporta actualización de profit margin`);
+  }
 }

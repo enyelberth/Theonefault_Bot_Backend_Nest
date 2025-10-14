@@ -6,10 +6,10 @@ import { GridSellMarginFixedStrategy } from "src/strategies/grid_sell_margin.fix
 import { GridSellMarginStrategy } from "src/strategies/grid_sell_margin.strategy";
 import { RsiStrategy } from "src/strategies/rsi.strategy";
 import { TradingStrategy } from "src/strategies/trading-strategy.interface";
-
+import {GridBuyMarginFixedStrategy} from "src/strategies/grid_buy_margin_fixed.strategy"
 
 export class StrategyFactory {
-  static createStrategy(type: string, binanceService: BinanceService,id ,symbol: string, config: any): TradingStrategy {
+  static createStrategy(type: string, binanceService: BinanceService,id:string ,symbol: string, config: any): TradingStrategy {
     switch (type) {
       case 'gridBuy':
         const grid = new GridBuyStrategy(binanceService);
@@ -29,6 +29,12 @@ export class StrategyFactory {
         gridSellMargin.config = config;
         gridSellMargin.id= id;
         return gridSellMargin;
+        case 'gridBuyMarginFixed':
+        const gridBuyMarginFixed = new GridBuyMarginFixedStrategy(binanceService);
+        gridBuyMarginFixed.symbol = symbol;
+        gridBuyMarginFixed.config = config;
+        gridBuyMarginFixed.id= id;
+        return gridBuyMarginFixed;
       case 'gridSellMarginFixed':
         const gridSellMarginFixed = new GridSellMarginFixedStrategy(binanceService);
         gridSellMarginFixed.symbol = symbol;

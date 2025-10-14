@@ -58,12 +58,14 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit {
           this.lastRunAt[symbol] = now;
 
           // Guardar precio en la base de datos
+          /*
           await this.indicatorsService.createCryptoPrice({
             symbol: symbol.toUpperCase(),
             price,
             volume: parseFloat(tradeData.q), // Volumen del trade
             timestamp: new Date(tradeData.T),
           });
+          */
 
           // Emitir actualización a clientes conectados
           this.server.emit(`${symbol}-price-update`, price);

@@ -16,10 +16,10 @@ import { AuthService } from './auth.service';
 import { Response } from 'express';
 // DTO para login
 export class SignInDto {
-  @ApiProperty({ example: 'usuario123', description: 'Nombre de usuario' })
+  @ApiProperty({ example: 'enyelberth10', description: 'Nombre de usuario' })
   username: string;
 
-  @ApiProperty({ example: 'password123', description: 'Contraseña' })
+  @ApiProperty({ example: '30204334', description: 'Contraseña' })
   password: string;
 }
 
