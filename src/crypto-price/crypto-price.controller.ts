@@ -34,7 +34,7 @@ export class CryptoPriceController {
   @ApiResponse({ status: 200, description: 'Returns the crypto price entry with the specified ID.' })
   @ApiResponse({ status: 404, description: 'Crypto price entry not found.' })
   findOne(@Param('id') id: string) {
-    return this.cryptoPriceService.findOne(+id);
+    return this.cryptoPriceService.findOne(id);
   }
 
   @Patch(':id')

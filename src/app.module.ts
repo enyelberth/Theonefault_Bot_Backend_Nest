@@ -25,8 +25,9 @@ import { StrategiesTradingModule } from './strategies-trading/strategies-trading
 import { AuthModule } from './authA/auth.module';
 import { NotificationModule } from './notification/notification.module';
 import { IndicatorsModule } from './indicators/indicators.module';
+import {TelegramBotModule} from './telegram/telegram.module'
 @Module({
-  imports: [AuthModule,ScheduleModule.forRoot(),BotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule],
+  imports: [AuthModule,ScheduleModule.forRoot(),BotModule,TelegramBotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService],
 })
