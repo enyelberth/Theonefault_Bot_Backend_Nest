@@ -11,13 +11,12 @@ COPY . .
 
 COPY .env .
 
-RUN npm run build
 
 #ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 
 RUN npx prisma generate
 RUN npm run seed
-
+RUN npm run build
 EXPOSE 3000
 
 CMD ["npm", "run", "start:prod"]

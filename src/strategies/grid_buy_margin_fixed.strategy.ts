@@ -260,8 +260,6 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
     }
   }
 
-
-
   private async reinsertSellOrders(levels: number[], priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
     for (const i of levels) {
       const orderLevel = this.config.ordersLevels[i];
@@ -329,7 +327,7 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
       await this.sleep(waitTime);
     }
   }
-  
+
   public updateProfitMargin(newProfitMargin: number) {
     if (newProfitMargin < 0) {
       this.logMessages.logWarn('Profit margin no puede ser negativo.');
@@ -338,12 +336,14 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
     this.logMessages.logInfo(`Profit margin actualizado de ${this.config.profitMargin} a ${newProfitMargin}`);
     this.config.profitMargin = newProfitMargin;
   }
-   public addOrderLevel(orderLevel: OrderLevel) {
+
+  public addOrderLevel(orderLevel: OrderLevel) {
     this.config.ordersLevels.push(orderLevel);
     this.config.gridCount = this.config.ordersLevels.length;
     this.logMessages.logInfo(`Nuevo nivel agregado: precio ${orderLevel.price}, cantidad ${orderLevel.quantity}. Total niveles: ${this.config.gridCount}`);
   }
-    public async removeOrderLevel(levelIndex: number) {
+
+  public async removeOrderLevel(levelIndex: number) {
     if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
       this.logMessages.logWarn(`Índice inválido para eliminar orden nivel: ${levelIndex}`);
       return;
@@ -370,12 +370,65 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
       }
     }
   }
-   public updateOrderLevelQuantity(levelIndex: number, newQuantity: number) {
+
+  public updateOrderLevelQuantity(levelIndex: number, newQuantity: number) {
     if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
       this.logMessages.logWarn(`Índice inválido para actualizar cantidad de orden: ${levelIndex}`);
       return;
     }
     this.config.ordersLevels[levelIndex].quantity = newQuantity;
     this.logMessages.logInfo(`Cantidad en nivel ${levelIndex} actualizada a ${newQuantity}`);
+  }
+
+  public getOrderLevels(): OrderLevel[] {
+    return [...this.config.ordersLevels];
+  }
+
+  public getOrderLevelsStatus() {
+    return this.config.ordersLevels.map((level, index) => ({
+      index,
+      price: level.price,
+      quantity: level.quantity,
+      hasOpenBuyOrder: this.openBuyOrders.has(index),
+      hasOpenSellOrder: this.openSellOrders.has(index),
+      isStopped: this.stoppedLossLevels.has(index),
+    }));
+  }
+
+  public async clearAllOrderLevels() {
+    // Clonamos array para evitar modificar mientras iteramos
+    const levelsIndices = this.config.ordersLevels.map((_, i) => i);
+    for (const index of levelsIndices) {
+      await this.removeOrderLevel(index);
+    }
+    this.config.ordersLevels = [];
+    this.config.gridCount = 0;
+    this.logMessages.logInfo('Todos los niveles y órdenes han sido eliminados.');
+  }
+
+  public updateOrderLevelPrice(levelIndex: number, newPrice: number) {
+    if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
+      this.logMessages.logWarn(`Índice inválido para actualizar precio de orden: ${levelIndex}`);
+      return;
+    }
+    this.config.ordersLevels[levelIndex].price = newPrice;
+    this.logMessages.logInfo(`Precio en nivel ${levelIndex} actualizado a ${newPrice}`);
+  }
+
+  public stopOrderLevel(levelIndex: number) {
+    if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
+      this.logMessages.logWarn(`Índice inválido para detener nivel: ${levelIndex}`);
+      return;
+    }
+    this.stoppedLossLevels.add(levelIndex);
+    this.logMessages.logInfo(`Nivel ${levelIndex} marcado como detenido.`);
+  }
+
+  public reactivateOrderLevel(levelIndex: number) {
+    if (this.stoppedLossLevels.delete(levelIndex)) {
+      this.logMessages.logInfo(`Nivel ${levelIndex} reactivado manualmente.`);
+    } else {
+      this.logMessages.logWarn(`Nivel ${levelIndex} no estaba detenido.`);
+    }
   }
 }
