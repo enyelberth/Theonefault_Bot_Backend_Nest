@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import * as https from 'https';
+import { isNotEmptyObject } from 'class-validator';
+import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
 
 @Injectable()
 export class BinanceService {
@@ -946,6 +948,71 @@ async getCrossMarginPNLSummary() {
         })),
     };
 }
+
+async getCrossMarginSaldo() {
+    // Reutilizamos la función existente para obtener la información de la cuenta
+    const accountInfo = await this.getCrossMarginAccountInfo();
+
+    const totalNetAssetOfBtc = parseFloat(accountInfo.totalNetAssetOfBtc);
+
+
+    return {
+      assetsSummary: accountInfo.userAssets
+        .filter((asset: any) => parseFloat(asset.borrowed) > 0 || parseFloat(asset.netAsset) !== 0)
+        .map((asset: any) => ({
+          asset: asset.asset,
+          netAsset: parseFloat(asset.netAsset).toFixed(8),
+          borrowed: parseFloat(asset.borrowed).toFixed(8),
+        })),
+    };
+}
+async liquiCrossMagin(): Promise<void> {
+  let priceCryptoBinance:number = 0;
+  const data = await this.getCrossMarginSaldo();
+  const currencyLiquid: { asset: string; netAsset: number; borrowed: number } = {
+    asset: '',
+    netAsset: 0,
+    borrowed: 0,
+  };
+  let cryptoValue: { asset: string; netAsset: number; borrowed: number } | null = {
+    asset:'',
+    netAsset:0,
+    borrowed:0,
+  };
+
+  data.assetsSummary.forEach((element) => {
+    if (element.borrowed > 0) {
+      currencyLiquid.asset = element.asset;
+      currencyLiquid.netAsset = element.netAsset;
+      currencyLiquid.borrowed = element.borrowed;
+    }
+    if (element.netAsset > 1 && element.asset !== 'FDUSD') {
+      cryptoValue.asset = element.asset;
+      cryptoValue.netAsset = element.netAsset;
+      cryptoValue.borrowed = element.borrowed;
+
+    }
+  });
+
+  if (cryptoValue.netAsset>1) {
+    const symbol = `${cryptoValue.asset}FDUSD`; // símbolo correcto
+    const a =await this.getSymbolPrice(symbol);
+    priceCryptoBinance = a.price;
+
+
+
+  } else {
+    console.log('No se encontró un activo válido para consultar el precio.');
+  }
+  if(currencyLiquid.netAsset<0){
+    const a = priceCryptoBinance*cryptoValue.netAsset;
+      console.log("Es negativo");
+      console.log(a)
+  }
+
+}
+
+
 
   async firmar() {
     // Función vacía o con la lógica que necesites implementar

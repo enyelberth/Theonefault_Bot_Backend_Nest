@@ -79,7 +79,7 @@ async connectBinanceStream(symbol: string) {
     if (pnlValue < threshold) {
       console.log('Ejecutando proteccion de Crypto Guard');
       try {
-        await this.binanceService.cancelAllCrossMarginOrdersBySide('LINKFDUSD', 'BUY');
+     //   await this.binanceService.cancelAllCrossMarginOrdersBySide('LINKFDUSD', 'BUY');
         console.log(pnlValue);
         console.log(`${this.botService.getActiveBots()}`);
         this.botService.stopStrategy(`${this.botService.getActiveBots()}`);

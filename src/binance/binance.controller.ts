@@ -266,5 +266,17 @@ export class BinanceController {
 async getCrossMarginPNLSummary() {
   return this.binanceService.getCrossMarginPNLSummary();
 }
+    @Get('margin-cross/saldo')
+@ApiOperation({ summary: 'Slado' })
+@ApiResponse({ status: 200, description: 'Saldo' })
+async getCrossMarginSaldo() {
+  return this.binanceService.getCrossMarginSaldo();
+}
+    @Get('margin-cross/liquid')
+@ApiOperation({ summary: 'Slado' })
+@ApiResponse({ status: 200, description: 'Saldo' })
+async getCrossMarginLiqui() {
+  return this.binanceService.liquiCrossMagin();
+}
   
 }
