@@ -98,6 +98,39 @@ export class AccountService {
       );
     }
   }
+  async findCryptosByUserId(userId: number) {
+  try {
+    const accounts = await this.prisma.account.findMany({
+      where: { userId },
+      include: {
+        accountBalances: {
+          include: {
+            currency: true,
+          },
+        },
+      },
+    });
+
+    if (!accounts || accounts.length === 0) {
+      throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${userId}`);
+    }
+
+    // Extraemos solo las cryptos de los saldos con su información de moneda
+    const cryptos = accounts.flatMap(account => 
+      account.accountBalances.map(balance => ({
+        symbol: balance.currency.code,
+        balance: balance.balance,
+      }))
+    );
+
+    return cryptos;
+  } catch (error) {
+    this.logger.error(`Error buscando cryptos del usuario con id ${userId}`, error);
+    if (error instanceof NotFoundException) throw error;
+    throw new InternalServerErrorException('Error inesperado al buscar cryptos de usuario.');
+  }
+}
+
 
   async findAll() {
     try {
