@@ -664,29 +664,48 @@ export class BinanceService {
 async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
   try {
     const openOrders = await this.getAllCrossMarginOrders(symbol);
-    const ordersToCancel = openOrders.filter((order: any) => order.side === side);
+    const ordersToCancel = openOrders.filter(order => order.side === side);
 
-    const cancelResults = await Promise.allSettled(
-      ordersToCancel.map((order: any) =>
-        this.cancelCrossMarginOrder(symbol, order.orderId)
-      )
-    );
+    if (ordersToCancel.length === 0) {
+      return { message: `No hay órdenes abiertas para cancelar en ${symbol} del lado ${side}.` };
+    }
 
-    const rejected = cancelResults.filter(r => r.status === 'rejected');
-    if (rejected.length > 0) {
-      // Puedes loggear o manejar estos errores individualmente.
-      console.warn(`Falló la cancelación de ${rejected.length} órdenes.`);
+    let canceledCount = 0;
+    let failedCount = 0;
+
+    for (const order of ordersToCancel) {
+      try {
+        await this.cancelCrossMarginOrder(symbol, order.orderId);
+        canceledCount++;
+      } catch (error: any) {
+        if (error.response?.status === 429) {
+          const retryAfter = error.response.headers['retry-after'] || 5;
+          console.warn(`Rate limit excedido. Esperando ${retryAfter} segundos antes de reintentar.`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          // opcional: reintentar la cancelación después de esperar
+          try {
+            await this.cancelCrossMarginOrder(symbol, order.orderId);
+            canceledCount++;
+          } catch {
+            failedCount++;
+          }
+        } else {
+          failedCount++;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 200)); // pequeño delay para evitar ráfagas
     }
 
     return {
-      message: `Se intentaron cancelar ${ordersToCancel.length} órdenes. Éxitos: ${cancelResults.length - rejected.length}, Fallos: ${rejected.length}`,
-      canceledOrdersCount: cancelResults.length - rejected.length,
-      failedOrdersCount: rejected.length,
+      message: `Se intentaron cancelar ${ordersToCancel.length} órdenes. Éxitos: ${canceledCount}, Fallos: ${failedCount}`,
+      canceledOrdersCount: canceledCount,
+      failedOrdersCount: failedCount,
     };
   } catch (error) {
     throw new Error('Error cancelando órdenes margin cruzado por lado: ' + (error as Error).message);
   }
 }
+
 
   async checkCrossMarginOrderStatus(symbol: string, orderId: number) {
     const serverTime = await this.getServerTime();

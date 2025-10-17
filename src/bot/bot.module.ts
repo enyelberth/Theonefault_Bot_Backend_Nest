@@ -9,6 +9,7 @@ import { StrategiesTradingService } from "src/strategies-trading/strategies-trad
 import { StrategiesTradingModule } from "src/strategies-trading/strategies-trading.module";
 
 @Module({
+  exports:[BotService],
   controllers: [BotController],
   imports: [BinanceModule,StrategiesTradingModule],
   providers: [BotService,StrategyFactory,RsiStrategy,BinanceService]
