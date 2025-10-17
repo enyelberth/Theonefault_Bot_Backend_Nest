@@ -20,7 +20,7 @@ interface PriceAlert {
 
 @Injectable()
 export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
-  private readonly botToken = '8105793514:AAGjn1pUF2HFSKFe5ZDOofBR8mbv53wvvp4';
+  private readonly botToken = '8314324600:AAHxwt3fUaP3-XNuq4jgdWPDxN6IC0UNTHY';
   private readonly apiUrl = `https://api.telegram.org/bot${this.botToken}`;
   private readonly logger = new Logger(BotTelegramService.name);
   private offset = 0;
