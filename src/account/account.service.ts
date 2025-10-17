@@ -13,7 +13,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
 
-  constructor(private readonly prisma: PrismaClient) { }
+  constructor(private readonly prisma: PrismaClient) {}
 
   async create(createAccountDto: CreateAccountDto) {
     try {
@@ -25,60 +25,107 @@ export class AccountService {
       this.logger.error('Error creando cuenta', error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // Manejo para error de restricción única (ejemplo 'key' o 'secretKey')
         if (error.code === 'P2002') {
-          throw new BadRequestException('Ya existe una cuenta con esa clave o información única.');
+          throw new BadRequestException(
+            'Ya existe una cuenta con esa clave o información única.',
+          );
         }
       }
-      throw new InternalServerErrorException('Error inesperado al crear la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al crear la cuenta.',
+      );
     }
   }
-  async findAllAccountBalance(id: number) {
+
+  async findOneWithBalance(id: number) {
     try {
-      const accounts = await this.prisma.$queryRaw<
-        Array<{ id: number; email: string; balance: number; currencyCode: string; typeName: string }>
-      >`
-select "Account".id,"Account".email,"AccountBalance".balance,"AccountBalance"."currencyCode","BankAccountType"."typeName"    from "Account" 
-	inner join "AccountBalance" on "Account".id = "AccountBalance"."accountId"
-	inner join "BankAccountType" on "Account".id = "BankAccountType"."id" where "Account".id = ${id} and balance > 0;
-    `;
+      const account = await this.prisma.account.findUnique({
+        where: { id },
+        include: {
+          accountBalances: {
+            include: {
+              currency: true,
+            },
+          },
+          bankAccountType: true,
+        },
+      });
 
-      if (accounts.length === 0) {
-        throw new NotFoundException(`Cuenta con id ${id} no encontrada o sin saldo positivo`);
+      if (!account) {
+        throw new NotFoundException(`Cuenta con id ${id} no encontrada`);
       }
-
-      return accounts;
-    
+      return account;
     } catch (error) {
-      this.logger.error(`Error buscando saldo de cuenta con id ${id}`, error);
+      this.logger.error(
+        `Error buscando cuenta con id ${id} incluyendo saldo`,
+        error,
+      );
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Error inesperado al buscar el saldo de la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar la cuenta con saldo.',
+      );
     }
   }
 
+  async findByUserIdWithBalances(userId: number) {
+    try {
+      const accounts = await this.prisma.account.findMany({
+        where: { userId },
+        include: {
+          accountBalances: {
+            include: {
+              currency: true,
+            },
+          },
+          bankAccountType: true,
+        },
+      });
 
+      if (!accounts || accounts.length === 0) {
+        throw new NotFoundException(
+          `No se encontraron cuentas para el usuario con id ${userId}`,
+        );
+      }
+      return accounts;
+    } catch (error) {
+      this.logger.error(
+        `Error buscando cuentas del usuario con id ${userId} incluyendo saldos`,
+        error,
+      );
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar cuentas por usuario con sus saldos.',
+      );
+    }
+  }
 
   async findAll() {
     try {
       return await this.prisma.account.findMany();
     } catch (error) {
       this.logger.error('Error buscando cuentas', error);
-      throw new InternalServerErrorException('Error inesperado al buscar cuentas.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar cuentas.',
+      );
     }
   }
 
-  // No existe campo email en Account, si quieres buscar por usuario:
   async findByUserId(userId: number) {
     try {
       const accounts = await this.prisma.account.findMany({
         where: { userId },
       });
       if (!accounts || accounts.length === 0) {
-        throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${userId}`);
+        throw new NotFoundException(
+          `No se encontraron cuentas para el usuario con id ${userId}`,
+        );
       }
       return accounts;
     } catch (error) {
-      this.logger.error(`Error buscando cuentas del usuario con id ${userId}`, error);
+      this.logger.error(
+        `Error buscando cuentas del usuario con id ${userId}`,
+        error,
+      );
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException(
         'Error inesperado al buscar cuentas por usuario.',
@@ -98,7 +145,9 @@ select "Account".id,"Account".email,"AccountBalance".balance,"AccountBalance"."c
     } catch (error) {
       this.logger.error(`Error buscando cuenta con id ${id}`, error);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Error inesperado al buscar la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar la cuenta.',
+      );
     }
   }
 
@@ -114,13 +163,19 @@ select "Account".id,"Account".email,"AccountBalance".balance,"AccountBalance"."c
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2025') {
-          throw new NotFoundException(`Cuenta con id ${id} no encontrada para actualizar`);
+          throw new NotFoundException(
+            `Cuenta con id ${id} no encontrada para actualizar`,
+          );
         }
         if (error.code === 'P2002') {
-          throw new BadRequestException('Los datos actualizados violan una restricción única.');
+          throw new BadRequestException(
+            'Los datos actualizados violan una restricción única.',
+          );
         }
       }
-      throw new InternalServerErrorException('Error inesperado al actualizar la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al actualizar la cuenta.',
+      );
     }
   }
 
@@ -133,11 +188,84 @@ select "Account".id,"Account".email,"AccountBalance".balance,"AccountBalance"."c
     } catch (error) {
       this.logger.error(`Error eliminando cuenta con id ${id}`, error);
 
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        throw new NotFoundException(`Cuenta con id ${id} no encontrada para eliminar`);
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException(
+          `Cuenta con id ${id} no encontrada para eliminar`,
+        );
       }
 
-      throw new InternalServerErrorException('Error inesperado al eliminar la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al eliminar la cuenta.',
+      );
+    }
+  }
+
+  async findByEmail(email: string) {
+    try {
+      const account = await this.prisma.account.findUnique({
+        where: { email },
+      });
+      if (!account) {
+        throw new NotFoundException(`Cuenta con email ${email} no encontrada`);
+      }
+      return account;
+    } catch (error) {
+      this.logger.error(`Error buscando cuenta con email ${email}`, error);
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar la cuenta por email.',
+      );
+    }
+  }
+
+  async findAccountByEmail(email: string) {
+    return this.findByEmail(email);
+  }
+
+  /**
+   * Actualiza solo el saldo de una criptomoneda en una cuenta,
+   * usando la clave compuesta accountId y currencyCode.
+   * Lanza NotFoundException si no existe el registro.
+   */
+  async updateCryptoBalance(
+    accountId: number,
+    currencyCode: string,
+    newBalance: number,
+  ) {
+    try {
+      const updatedAccountBalance = await this.prisma.accountBalance.update({
+        where: {
+          accountId_currencyCode: {
+            accountId,
+            currencyCode,
+          },
+        },
+        data: {
+          balance: newBalance,
+        },
+      });
+      return updatedAccountBalance;
+    } catch (error) {
+      this.logger.error(
+        `Error actualizando saldo para cuenta ${accountId} y moneda ${currencyCode}`,
+        error,
+      );
+
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException(
+          `Saldo para cuenta ${accountId} con moneda ${currencyCode} no encontrado para actualizar`,
+        );
+      }
+
+      throw new InternalServerErrorException(
+        'Error inesperado al actualizar el saldo.',
+      );
     }
   }
 }

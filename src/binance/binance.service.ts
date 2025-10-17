@@ -844,6 +844,90 @@ async createCrossMarginOcoOrder(
       throw new Error(`Unsupported method ${method}`);
     }
   }
+  async calculateCrossMarginSummary() {
+  const accountInfo = await this.getCrossMarginAccountInfo();
+
+  const marginLevel = parseFloat(accountInfo.marginLevel);
+  const totalAsset = parseFloat(accountInfo.totalAssetOfBtc);
+  const totalLiability = parseFloat(accountInfo.totalLiabilityOfBtc);
+  const totalNetAsset = parseFloat(accountInfo.totalNetAssetOfBtc);
+
+  // Ganancia / pérdida neta = total neto de activos
+  const netProfitLoss = totalNetAsset;
+
+  // Retornar resumen
+  return {
+    marginLevel,
+    totalAsset,
+    totalLiability,
+    netProfitLoss,
+    userAssets: accountInfo.userAssets.map((asset: any) => ({
+      asset: asset.asset,
+      free: parseFloat(asset.free),
+      borrowed: parseFloat(asset.borrowed),
+      interest: parseFloat(asset.interest),
+      netAsset: parseFloat(asset.netAsset),
+    })),
+  };
+}
+
+// En su BinanceService.ts
+
+async getCrossMarginPNLSummary() {
+    // Reutilizamos la función existente para obtener la información de la cuenta
+    const accountInfo = await this.getCrossMarginAccountInfo();
+
+    const marginLevel = parseFloat(accountInfo.marginLevel);
+    const totalNetAssetOfBtc = parseFloat(accountInfo.totalNetAssetOfBtc);
+    const totalLiabilityOfBtc = parseFloat(accountInfo.totalLiabilityOfBtc);
+    
+    const unrealizedPNL = totalNetAssetOfBtc;
+
+    // 💡 CORRECCIÓN TS2454: Asignar un valor inicial por defecto.
+    let liquidationStatus: string = 'Estado no determinado';
+    let riskLevel: 'BAJO' | 'MEDIO' | 'ALTO' | 'CRÍTICO' | 'LIQUIDACIÓN INMINENTE' = 'BAJO'; 
+    
+    // Los umbrales varían según la configuración de Binance. Usamos valores comunes:
+    const WARNING_LEVEL = 1.5; // Nivel de Advertencia/Llamada de Margen inicial
+    const CRITICAL_LEVEL = 1.1; // Nivel donde la liquidación es cercana
+
+    if (marginLevel > WARNING_LEVEL) {
+      riskLevel = 'BAJO';
+      liquidationStatus = 'El Nivel de Margen es saludable.';
+    } else if (marginLevel > CRITICAL_LEVEL) {
+      riskLevel = 'MEDIO';
+      liquidationStatus = `El Nivel de Margen (${marginLevel.toFixed(4)}) está por debajo de ${WARNING_LEVEL}. Considere añadir colateral.`;
+    } else if (marginLevel > 1.0) {
+      riskLevel = 'ALTO';
+      liquidationStatus = `¡ATENCIÓN! Nivel de Margen (${marginLevel.toFixed(4)}) muy cerca del límite de liquidación. Necesita añadir colateral URGENTE.`;
+    } else if (marginLevel <= 1.0) {
+      riskLevel = 'CRÍTICO';
+      liquidationStatus = `¡PELIGRO DE LIQUIDACIÓN! Nivel de Margen en ${marginLevel.toFixed(4)}. La liquidación forzosa es inminente o ya está en proceso.`;
+    }
+
+    // Calcular el porcentaje de PNL (basado en la deuda/pasivo, ya que el capital inicial no está disponible)
+    const pnlPercentage = totalLiabilityOfBtc > 0 
+      ? (unrealizedPNL / totalLiabilityOfBtc) * 100 
+      : 0; 
+
+    return {
+      totalUnrealizedPNL: unrealizedPNL.toFixed(8),
+      pnlCurrency: accountInfo.quoteAsset,
+      marginLevel: marginLevel.toFixed(8),
+      riskLevel: riskLevel, // ✅ Ahora está garantizado que tiene un valor
+      liquidationStatus: liquidationStatus, // ✅ Ahora está garantizado que tiene un valor
+      totalLiabilityOfBtc: totalLiabilityOfBtc.toFixed(8),
+      pnlAsPercentageOfLiability: pnlPercentage.toFixed(2),
+      assetsSummary: accountInfo.userAssets
+        .filter((asset: any) => parseFloat(asset.borrowed) > 0 || parseFloat(asset.netAsset) !== 0)
+        .map((asset: any) => ({
+          asset: asset.asset,
+          netAsset: parseFloat(asset.netAsset).toFixed(8),
+          borrowed: parseFloat(asset.borrowed).toFixed(8),
+        })),
+    };
+}
+
   async firmar() {
     // Función vacía o con la lógica que necesites implementar
   }

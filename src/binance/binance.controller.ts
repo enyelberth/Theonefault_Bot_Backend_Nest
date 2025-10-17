@@ -253,4 +253,18 @@ export class BinanceController {
   ) {
     return this.binanceService.getCrossMarginProfitPercent(symbol);
   }
+    @Get('margin-cross/summary')
+  @ApiOperation({ summary: 'Obtener resumen de margin cruzado: Nivel de margen, ganancias y pérdidas' })
+  @ApiResponse({ status: 200, description: 'Resumen de margin cruzado obtenido correctamente.' })
+  async getCrossMarginSummary() {
+    return this.binanceService.calculateCrossMarginSummary();
+  }
+
+  @Get('margin-cross/pnl-risk-summary')
+@ApiOperation({ summary: 'Obtener Resumen de PNL, Nivel de Margen y Estado de Liquidación/Riesgo de la cuenta de Margin Cruzado.' })
+@ApiResponse({ status: 200, description: 'Resumen de PNL y riesgo de liquidación obtenido correctamente.' })
+async getCrossMarginPNLSummary() {
+  return this.binanceService.getCrossMarginPNLSummary();
+}
+  
 }
