@@ -998,18 +998,25 @@ async liquiCrossMagin(): Promise<void> {
     const symbol = `${cryptoValue.asset}FDUSD`; // símbolo correcto
     const a =await this.getSymbolPrice(symbol);
     priceCryptoBinance = a.price;
+    console.log(cryptoValue);
 
 
 
   } else {
     console.log('No se encontró un activo válido para consultar el precio.');
   }
-  if(currencyLiquid.netAsset<0){
+//  if(currencyLiquid.netAsset<0){
+        const symbol = `${cryptoValue.asset}FDUSD`; // símbolo correcto
+
     const a = priceCryptoBinance*cryptoValue.netAsset;
+    //Se vende en orden marque 
+    //Cancelemos la ordesnes
+    this.cancelAllCrossMarginOrdersBySide(symbol,'SELL')
+    //this.cancelAllCrossMarginOrdersBySide(symbol,'BUY')
+   // this.createCrossMarginMarketOrder(symbol,'SELL','2')
       console.log("Es negativo");
       console.log(a)
-  }
-
+  
 }
 
 
