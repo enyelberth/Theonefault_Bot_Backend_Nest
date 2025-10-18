@@ -74,20 +74,23 @@ async connectBinanceStream(symbol: string) {
     }
 
     const pnlValue = Number(this.totalUnrealizedPNL) * Number(this.btcusdtPrice);
-    const threshold = this.fdusdBalance - (this.fdusdBalance * 0.03);
-
-    if (pnlValue < threshold) {
+    const threshold = this.fdusdBalance - (this.fdusdBalance * 0.0003);
+    console.log(pnlValue);
+    if ( pnlValue<threshold ) {
       console.log('Ejecutando proteccion de Crypto Guard');
       try {
      //   await this.binanceService.cancelAllCrossMarginOrdersBySide('LINKFDUSD', 'BUY');
         console.log(pnlValue);
-        console.log(`${this.botService.getActiveBots()}`);
-        this.botService.stopStrategy(`${this.botService.getActiveBots()}`);
+
+      //  console.log(`${this.botService.getActiveBots()}`);
+     //   this.botService.stopStrategy(`${this.botService.getActiveBots()}`);
         console.log("Cancelando posiciones de margen cruzado");
       } catch (error) {
         console.error('Error cancelando órdenes margin cruzado:', error.message || error);
       }
     } else {
+        await this.binanceService.liquiCrossMagin();
+
       console.log('Todo en orden');
     }
 
