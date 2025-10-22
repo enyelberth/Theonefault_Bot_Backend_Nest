@@ -1,345 +1,341 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TradingStrategy } from './trading-strategy.interface';
 import { BinanceService } from '../binance/binance.service';
+import { Order, OrderLevel } from 'src/interfaces/order';
+import { LoggerMessages } from 'src/utils/logs';
 
-interface Order {
-  orderId: number;
-  price: string;
-  origQty: string;
-  timestamp: number;
-  isSell?: boolean;
-}
-
-const COLORS = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  dim: '\x1b[2m',
-  underscore: '\x1b[4m',
-  fgGreen: '\x1b[32m',
-  fgYellow: '\x1b[33m',
-  fgRed: '\x1b[31m',
-  fgCyan: '\x1b[36m',
-  fgMagenta: '\x1b[35m',
-};
 
 @Injectable()
 export class GridFullStrategy implements TradingStrategy {
   id: string;
   symbol: string;
   config: {
-    trading: boolean; // true = GRID BUY, false = GRID SELL
+    ordersLevels_buy: OrderLevel[];
+    ordersLevels_sell: OrderLevel[];
     gridCount: number;
-    lowerPrice: number;
-    upperPrice: number;
     totalQuantity: number;
     profitMargin: number;
     maxOrderAgeMs?: number;
     stopLossMargin?: number;
     minSleepMs?: number;
     maxSleepMs?: number;
-    buySafetyMargin?: number; // Porcentaje (ej. 0.001 = 0.1%)
+    buySafetyMargin?: number; // Porcentaje para reactivar niveles
   };
 
   private readonly logger = new Logger(GridFullStrategy.name);
-  private isRunning = true;
-  private trading: boolean;
-  private openOrders = new Map<number, Order>();
-  private skippedLevels = new Set<number>();
-  private profitLoss = 0;
+  private readonly logMessages = new LoggerMessages(this.logger);
+  private isRunning:boolean = true;
 
-  constructor(private readonly binanceService: BinanceService) { }
+  private openBuyOrders = new Map<number, Order>();
+  private openSellOrders = new Map<number, Order>();
+
+  private stoppedLossLevelsBuy = new Set<number>();
+  private stoppedLossLevelsSell = new Set<number>();
+
+  private profitLoss:number = 0;
+
+  constructor(private readonly binanceService: BinanceService) {}
 
   async run() {
-    this.trading = this.config.trading ?? true;
-    this.logSuccess(`Starting GridFullStrategy for ${this.symbol} trading=${this.trading}`);
+    this.logMessages.logInfo(`Starting Grid Full Strategy on ${this.symbol}`);
 
     const { priceFilter, lotSizeFilter } = await this.binanceService.obtenerFiltrosSimbolo(this.symbol);
-    if (!priceFilter || !lotSizeFilter) throw new Error(`Filters not found for ${this.symbol}`);
-
-    if (this.config.lowerPrice === undefined || this.config.upperPrice === undefined) {
-      throw new Error("Config must define lowerPrice and upperPrice");
+    if (!priceFilter || !lotSizeFilter) {
+      throw new Error(`Filters not found for ${this.symbol}`);
     }
 
-
-    await this.cancelExistingOrdersInRange(this.config.lowerPrice, this.config.upperPrice);
-
-    const priceRange = this.config.upperPrice - this.config.lowerPrice;
-    const gridStep = priceRange / this.config.gridCount;
+    await this.cancelExistingOrdersInRange();
 
     while (this.isRunning) {
       try {
         const currentPrice = await this.getCurrentPrice();
+        this.logMessages.logInfo(`Current price: ${currentPrice}`);
 
-        await this.tryPlaceSkippedLevels(currentPrice, priceFilter, lotSizeFilter);
+        this.reactivateStoppedLevels(currentPrice, 'buy');
+        this.reactivateStoppedLevels(currentPrice, 'sell');
 
-        await this.checkOrders(priceFilter, lotSizeFilter, currentPrice);
+        await this.placeBuyOrders(priceFilter, lotSizeFilter, currentPrice);
+        await this.checkBuyOrders(priceFilter, lotSizeFilter, currentPrice);
 
-        await this.placeGridOrders(this.config.lowerPrice, this.config.upperPrice, gridStep, priceFilter, lotSizeFilter, currentPrice);
+        await this.placeSellOrders(priceFilter, lotSizeFilter, currentPrice);
+        await this.checkSellOrders(priceFilter, lotSizeFilter, currentPrice);
 
         const sleepDuration = this.calculateSleepDuration();
-        this.logInfo(`Sleeping ${sleepDuration} ms`);
+        this.logMessages.logInfo(`Sleeping ${sleepDuration} ms`);
         await this.sleep(sleepDuration);
-
-      } catch (error) {
-        this.logError('Error in monitoring loop:', error);
+      } catch (err) {
+        this.logMessages.logError('Error in monitoring loop:', err);
         await this.exponentialBackoff(30000, 5);
       }
     }
   }
 
-  private async getCurrentPrice(): Promise<number> {
-    const resp = await this.binanceService.getSymbolPrice(this.symbol);
-    return parseFloat(resp.price);
-  }
+  private reactivateStoppedLevels(currentPrice: number, side: 'buy' | 'sell') {
+    const stoppedLevels = side === 'buy' ? this.stoppedLossLevelsBuy : this.stoppedLossLevelsSell;
+    const orderLevels = side === 'buy' ? this.config.ordersLevels_buy : this.config.ordersLevels_sell;
 
-  private async cancelExistingOrdersInRange(lowerPrice: number, upperPrice: number) {
-    try {
-      const allOrders = await this.binanceService.getAllOrders(this.symbol, 500);
-      for (const order of allOrders) {
-        if (['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(order.status)) continue;
-        const price = Number(order.price);
-        if (!Number.isFinite(price)) continue;
-        if (price >= lowerPrice && price <= upperPrice) {
-          try {
-            await this.binanceService.cancelOrder(this.symbol, order.orderId);
-            this.logWarn(`Cancelled open order ID ${order.orderId} at price ${order.price} within range [${lowerPrice}, ${upperPrice}]`);
-          } catch (err) {
-            this.logError(`Error cancelling order ID ${order.orderId}:`, err);
-          }
-        }
+    if (!this.config.buySafetyMargin) return;
+
+    for (const level of [...stoppedLevels]) {
+      const orderLevel = orderLevels[level];
+      if (!orderLevel) continue;
+      if (
+        (side === 'buy' && currentPrice >= orderLevel.price * (1 + this.config.buySafetyMargin)) ||
+        (side === 'sell' && currentPrice <= orderLevel.price * (1 - this.config.buySafetyMargin))
+      ) {
+        this.logMessages.logInfo(`Reactivating stopped ${side.toUpperCase()} level ${level} at price threshold.`);
+        stoppedLevels.delete(level);
       }
-    } catch (err) {
-      this.logError('Error fetching/cancelling existing orders:', err);
     }
   }
 
-  private async placeGridOrders(
-    lowerPrice: number,
-    upperPrice: number,
-    gridStep: number,
-    priceFilter: any,
-    lotSizeFilter: any,
-    currentPrice: number,
-  ) {
-    const totalQty = this.config.totalQuantity;
-    const safety = this.config.buySafetyMargin ?? 0.0004;
-    const safeThreshold = this.trading ? currentPrice * (1 - safety) : currentPrice * (1 + safety);
+  private async placeBuyOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+    for (let i = 0; i < this.config.ordersLevels_buy.length; i++) {
+      if (this.openBuyOrders.has(i)) continue;
+      if (this.stoppedLossLevelsBuy.has(i)) continue;
+      if (this.openSellOrders.has(i)) continue;
 
-    let qtySum = 0;
+      const orderLevel = this.config.ordersLevels_buy[i];
+      if (!orderLevel) continue;
 
-    for (let i = 0; i <= this.config.gridCount; i++) {
-      if (this.openOrders.has(i)) continue;
+      const buyPrice = this.roundToStep(orderLevel.price, priceFilter.tickSize);
+      if (buyPrice >= currentPrice) continue;
 
-      let levelPriceRaw = this.trading ? lowerPrice + i * gridStep : upperPrice - i * gridStep;
-      const levelPriceStr = this.ajustarAlStep(levelPriceRaw, priceFilter.tickSize);
-      const levelPriceNum = Number(levelPriceStr);
+      const quantity = this.roundToStep(orderLevel.quantity, lotSizeFilter.stepSize);
 
-      if ((this.trading && (levelPriceNum >= safeThreshold || levelPriceNum >= currentPrice)) ||
-        (!this.trading && (levelPriceNum <= safeThreshold || levelPriceNum <= currentPrice))) {
-        this.logWarn(`Skipping level ${i} at price ${levelPriceStr} due to safety or price threshold.`);
-        this.skippedLevels.add(i);
-        continue;
-      }
-      this.skippedLevels.delete(i);
-
-      const distanceFactor = 1 - Math.abs(levelPriceRaw - currentPrice) / (gridStep * this.config.gridCount);
-      let quantity = (totalQty / this.config.gridCount) * (0.5 + distanceFactor / 2);
-      quantity = Math.min(quantity, totalQty - qtySum);
-      qtySum += quantity;
-      const adjQuantity = this.ajustarAlStep(quantity, lotSizeFilter.stepSize);
-
-      const placePriceNum = this.trading ?
-        Math.min(levelPriceNum, safeThreshold - parseFloat(priceFilter.tickSize)) :
-        Math.max(levelPriceNum, safeThreshold + parseFloat(priceFilter.tickSize));
-      const placePriceStr = this.ajustarAlStep(placePriceNum, priceFilter.tickSize);
-
-      const side = this.trading ? 'BUY' : 'SELL';
-      this.logInfo(`Placing ${side} limit order level ${i}, price ${placePriceStr}, quantity ${adjQuantity}`);
-
+      this.logMessages.logInfo(`Placing LIMIT BUY order at level ${i} price ${buyPrice} quantity ${quantity}`);
       try {
-        const order = await this.binanceService.createLimitOrder(this.symbol, side, adjQuantity.toString(), placePriceStr, 'GTC');
-        if (!order || !order.orderId) {
-          this.logWarn(`No order created for level ${i}, response: ${JSON.stringify(order)}`);
-          continue;
-        }
+        const order = await this.binanceService.createCrossMarginLimitOrder(
+          this.symbol, 'BUY', quantity.toString(), buyPrice.toString(), 'GTC',
+        );
         const normalizedOrder: Order = {
           orderId: Number(order.orderId),
-          price: String(order.price || placePriceStr),
-          origQty: String(order.origQty || adjQuantity),
+          price: buyPrice.toString(),
+          origQty: quantity.toString(),
           timestamp: Date.now(),
         };
-        this.openOrders.set(i, normalizedOrder);
-        this.logSuccess(`${side} order created ID: ${normalizedOrder.orderId} at level ${i} price ${placePriceStr}`);
+        this.openBuyOrders.set(i, normalizedOrder);
+        this.logMessages.logSuccess(`LIMIT BUY order created ID: ${normalizedOrder.orderId} at level ${i}`);
       } catch (err) {
-        this.logError(`Error creating ${side} order at level ${i}:`, err);
+        this.logMessages.logError(`Error creating LIMIT BUY order at level ${i}:`, err);
       }
       await this.sleep(250);
     }
   }
 
-  private async tryPlaceSkippedLevels(currentPrice: number, priceFilter: any, lotSizeFilter: any) {
-    if (this.skippedLevels.size === 0) return;
-    const safety = this.config.buySafetyMargin ?? 0.0008;
-    const safeThreshold = this.trading ? currentPrice * (1 - safety) : currentPrice * (1 + safety);
-    const levels = Array.from(this.skippedLevels).sort((a, b) => a - b);
-    const lowerPrice = this.config.lowerPrice;
-    const upperPrice = this.config.upperPrice;
-    const gridStep = (upperPrice - lowerPrice) / this.config.gridCount;
+  private async placeSellOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+    for (let i = 0; i < this.config.ordersLevels_sell.length; i++) {
+      if (this.openSellOrders.has(i)) continue;
+      if (this.stoppedLossLevelsSell.has(i)) continue;
+      if (this.openBuyOrders.has(i)) continue;
 
-    for (const i of levels) {
-      if (this.openOrders.has(i)) {
-        this.skippedLevels.delete(i);
-        continue;
+      const orderLevel = this.config.ordersLevels_sell[i];
+      if (!orderLevel) continue;
+
+      const sellPrice = this.roundToStep(orderLevel.price, priceFilter.tickSize);
+      if (sellPrice <= currentPrice) continue;
+
+      const quantity = this.roundToStep(orderLevel.quantity, lotSizeFilter.stepSize);
+
+      this.logMessages.logInfo(`Placing LIMIT SELL order at level ${i} price ${sellPrice} quantity ${quantity}`);
+      try {
+        const order = await this.binanceService.createCrossMarginLimitOrder(
+          this.symbol, 'SELL', quantity.toString(), sellPrice.toString(), 'GTC',
+        );
+        const normalizedOrder: Order = {
+          orderId: Number(order.orderId),
+          price: sellPrice.toString(),
+          origQty: quantity.toString(),
+          timestamp: Date.now(),
+          isSell: true,
+        };
+        this.openSellOrders.set(i, normalizedOrder);
+        this.logMessages.logSuccess(`LIMIT SELL order created ID: ${normalizedOrder.orderId} at level ${i}`);
+      } catch (err) {
+        this.logMessages.logError(`Error creating LIMIT SELL order at level ${i}:`, err);
       }
-      let levelPriceRaw = this.trading ? lowerPrice + i * gridStep : upperPrice - i * gridStep;
-      const levelPriceNum = Number(this.ajustarAlStep(levelPriceRaw, priceFilter.tickSize));
-
-      if ((this.trading && levelPriceNum < safeThreshold && levelPriceNum < currentPrice) ||
-        (!this.trading && levelPriceNum > safeThreshold && levelPriceNum > currentPrice)) {
-        const placePriceNum = this.trading ?
-          Math.min(levelPriceNum, safeThreshold - parseFloat(priceFilter.tickSize)) :
-          Math.max(levelPriceNum, safeThreshold + parseFloat(priceFilter.tickSize));
-        const placePriceStr = this.ajustarAlStep(placePriceNum, priceFilter.tickSize);
-        this.logInfo(`Trying skipped level ${i} at price ${placePriceStr}`);
-
-        try {
-          const quantity = this.ajustarAlStep(this.config.totalQuantity / this.config.gridCount, lotSizeFilter.stepSize);
-          const side = this.trading ? 'BUY' : 'SELL';
-          const order = await this.binanceService.createLimitOrder(this.symbol, side, quantity.toString(), placePriceStr, 'GTC');
-          if (!order || !order.orderId) {
-            this.logWarn(`No order created for skipped level ${i}, response: ${JSON.stringify(order)}`);
-            continue;
-          }
-          const normalizedOrder: Order = {
-            orderId: Number(order.orderId),
-            price: String(order.price || placePriceStr),
-            origQty: String(order.origQty || quantity),
-            timestamp: Date.now(),
-          };
-          this.openOrders.set(i, normalizedOrder);
-          this.skippedLevels.delete(i);
-          this.logSuccess(`${side} order (skipped->placed) created ID: ${normalizedOrder.orderId} at level ${i} price ${placePriceStr}`);
-        } catch (err) {
-          this.logError(`Error creating order for skipped level ${i}:`, err);
-        }
-        await this.sleep(250);
-      } else {
-        this.logInfo(`Skipped level ${i} still omitted: price check failed.`);
-      }
+      await this.sleep(250);
     }
   }
 
-  private async checkOrders(priceFilter: any, lotSizeFilter: any, currentPrice: number) {
-    const maxAgeMs = this.config.maxOrderAgeMs || 3600000;
-    const stopLossMargin = this.config.stopLossMargin ?? 0.02;
+  private async checkBuyOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+    const maxAgeMs = this.config.maxOrderAgeMs ?? 3600000;
     const toReinsertLevels = new Set<number>();
 
-    for (const [i, order] of this.openOrders.entries()) {
+    for (const [i, order] of this.openBuyOrders.entries()) {
       try {
-        const statusData = await this.binanceService.checkOrderStatus(this.symbol, order.orderId);
+        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
         if (statusData.status === 'FILLED') {
-          const side = this.trading ? 'BUY' : 'SELL';
-          this.logSuccess(`${side} order level ${i} filled, ID: ${order.orderId}`);
-          this.openOrders.delete(i);
+          this.logMessages.logSuccess(`Order BUY level ${i} filled ID: ${order.orderId}`);
+          this.openBuyOrders.delete(i);
 
-          if (this.trading) {
-            const buyPrice = parseFloat(order.price);
-            const quantityRaw = parseFloat(order.origQty);
-            const sellPriceRaw = buyPrice * (1 + this.config.profitMargin);
-            const sellPrice = this.ajustarAlStep(sellPriceRaw, priceFilter.tickSize);
-            const estimatedProfit = (sellPriceRaw - buyPrice) * quantityRaw;
-            this.profitLoss += estimatedProfit;
-            this.logInfo(`Estimated Profit/Loss updated: ${this.profitLoss.toFixed(8)}`);
+          const orderLevel = this.config.ordersLevels_buy[i];
+          if (!orderLevel) continue;
 
-            try {
-              const sellOrder = await this.binanceService.createLimitOrder(
-                this.symbol,
-                'SELL',
-                quantityRaw.toString(),
-                sellPrice.toString(),
-                'GTC',
-              );
-              const normalizedSell: Order = {
-                orderId: Number(sellOrder.orderId),
-                price: String(sellOrder.price),
-                origQty: String(sellOrder.origQty),
-                timestamp: Date.now(),
-                isSell: true,
-              };
-              this.openOrders.set(i, normalizedSell);
-              this.logSuccess(`SELL order created ID: ${normalizedSell.orderId} at level ${i} with price ${sellPrice}`);
-            } catch (err) {
-              this.logError(`Error creating SELL order level ${i}:`, err);
-            }
+          const sellPrice = this.roundToStep(orderLevel.price * (1 + this.config.profitMargin), priceFilter.tickSize);
+          const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
 
-            if (stopLossMargin > 0) {
-              const stopLossPriceRaw = buyPrice * (1 - stopLossMargin);
-              const stopLossPrice = this.ajustarAlStep(stopLossPriceRaw, priceFilter.tickSize);
-              try {
-                await this.binanceService.createStopLossOrder(this.symbol, 'SELL', quantityRaw.toString(), stopLossPrice.toString());
-                this.logInfo(`Stop Loss order created at ${stopLossPrice} for level ${i}`);
-              } catch (err) {
-                this.logError(`Error creating Stop Loss order level ${i}:`, err);
-              }
-            }
-          }
-
-          // Puedes agregar lógica similar para grid sell si es necesario
-        } else if (Date.now() - order.timestamp > maxAgeMs) {
-          this.logWarn(`Order ID ${order.orderId} level ${i} is stuck, canceling...`);
+          this.logMessages.logInfo(`Placing LIMIT SELL order at level ${i} price ${sellPrice}`);
           try {
-            await this.binanceService.cancelOrder(this.symbol, order.orderId);
-            this.openOrders.delete(i);
+            const orderSell = await this.binanceService.createCrossMarginLimitOrder(
+              this.symbol, 'SELL', quantity.toString(), sellPrice.toString(), 'GTC',
+            );
+            const normalizedSellOrder: Order = {
+              orderId: Number(orderSell.orderId),
+              price: sellPrice.toString(),
+              origQty: quantity.toString(),
+              timestamp: Date.now(),
+              isSell: true,
+            };
+            this.openSellOrders.set(i, normalizedSellOrder);
+            this.logMessages.logSuccess(`LIMIT SELL order created ID: ${normalizedSellOrder.orderId} at level ${i}`);
+          } catch (err) {
+            this.logMessages.logError(`Error creating LIMIT SELL order at level ${i}:`, err);
+          }
+        } else if (Date.now() - order.timestamp > maxAgeMs) {
+          this.logMessages.logWarn(`BUY order ID ${order.orderId} stuck, canceling...`);
+          try {
+            await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+            this.openBuyOrders.delete(i);
             toReinsertLevels.add(i);
           } catch (e) {
-            this.logError(`Error canceling stuck order ID ${order.orderId}:`, e);
+            this.logMessages.logError(`Error canceling stuck BUY order ID ${order.orderId}:`, e);
           }
         }
       } catch (err) {
-        this.logError(`Error checking order status ID ${order.orderId}:`, err);
+        this.logMessages.logError(`Error checking BUY order status ID ${order.orderId}:`, err);
       }
     }
 
     if (toReinsertLevels.size > 0) {
-      await this.reinsertOrders(Array.from(toReinsertLevels), priceFilter, lotSizeFilter, currentPrice);
+      await this.reinsertBuyOrders(Array.from(toReinsertLevels), priceFilter, lotSizeFilter, currentPrice);
     }
   }
 
-  private async reinsertOrders(levels: number[], priceFilter: any, lotSizeFilter: any, currentPrice: number) {
-    const lowerPrice = this.config.lowerPrice;
-    const upperPrice = this.config.upperPrice;
-    const gridStep = (upperPrice - lowerPrice) / this.config.gridCount;
+  private async checkSellOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+    const maxAgeMs = this.config.maxOrderAgeMs ?? 3600000;
+    const toReinsertLevels = new Set<number>();
 
-    for (const i of levels) {
-      let reinsertionPriceRaw = this.trading ? lowerPrice + i * gridStep : upperPrice - i * gridStep * 0.9995;
-      const reinsertionPrice = this.ajustarAlStep(reinsertionPriceRaw, priceFilter.tickSize);
-      const quantity = this.ajustarAlStep(this.config.totalQuantity / this.config.gridCount, lotSizeFilter.stepSize);
-
-      this.logInfo(`Reinserting ${this.trading ? 'BUY' : 'SELL'} order level ${i}, price ${reinsertionPrice}, quantity ${quantity}`);
-
+    for (const [i, order] of this.openSellOrders.entries()) {
       try {
-        const order = await this.binanceService.createLimitOrder(this.symbol, this.trading ? 'BUY' : 'SELL', quantity.toString(), reinsertionPrice.toString(), 'GTC');
+        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
+        if (statusData.status === 'FILLED') {
+          this.logMessages.logSuccess(`Order SELL level ${i} filled ID: ${order.orderId}`);
+          this.openSellOrders.delete(i);
+
+          const orderLevel = this.config.ordersLevels_sell[i];
+          if (!orderLevel) continue;
+
+          const buyPrice = this.roundToStep(orderLevel.price * (1 - this.config.profitMargin), priceFilter.tickSize);
+          const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
+
+          this.logMessages.logInfo(`Placing LIMIT BUY order at level ${i} price ${buyPrice}`);
+          try {
+            const orderBuy = await this.binanceService.createCrossMarginLimitOrder(
+              this.symbol, 'BUY', quantity.toString(), buyPrice.toString(), 'GTC',
+            );
+            const normalizedBuyOrder: Order = {
+              orderId: Number(orderBuy.orderId),
+              price: buyPrice.toString(),
+              origQty: quantity.toString(),
+              timestamp: Date.now(),
+            };
+            this.openBuyOrders.set(i, normalizedBuyOrder);
+            this.logMessages.logSuccess(`LIMIT BUY order created ID: ${normalizedBuyOrder.orderId} at level ${i}`);
+          } catch (err) {
+            this.logMessages.logError(`Error creating LIMIT BUY order at level ${i}:`, err);
+          }
+        } else if (Date.now() - order.timestamp > maxAgeMs) {
+          this.logMessages.logWarn(`SELL order ID ${order.orderId} stuck, canceling...`);
+          try {
+            await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+            this.openSellOrders.delete(i);
+            toReinsertLevels.add(i);
+          } catch (e) {
+            this.logMessages.logError(`Error canceling stuck SELL order ID ${order.orderId}:`, e);
+          }
+        }
+      } catch (err) {
+        this.logMessages.logError(`Error checking SELL order status ID ${order.orderId}:`, err);
+      }
+    }
+
+    if (toReinsertLevels.size > 0) {
+      await this.reinsertSellOrders(Array.from(toReinsertLevels), priceFilter, lotSizeFilter, currentPrice);
+    }
+  }
+
+  private async reinsertBuyOrders(levels: number[], priceFilter: any, lotSizeFilter: any, currentPrice: number) {
+    for (const i of levels) {
+      const orderLevel = this.config.ordersLevels_buy[i];
+      if (!orderLevel) continue;
+
+      const buyPrice = this.roundToStep(orderLevel.price, priceFilter.tickSize);
+      if (buyPrice >= currentPrice) continue;
+
+      const quantity = this.roundToStep(orderLevel.quantity, lotSizeFilter.stepSize);
+
+      this.logMessages.logInfo(`Reinserting LIMIT BUY order at level ${i} price ${buyPrice} quantity ${quantity}`);
+      try {
+        const order = await this.binanceService.createCrossMarginLimitOrder(
+          this.symbol, 'BUY', quantity.toString(), buyPrice.toString(), 'GTC',
+        );
         const normalizedOrder: Order = {
           orderId: Number(order.orderId),
-          price: String(order.price),
-          origQty: String(order.origQty),
+          price: buyPrice.toString(),
+          origQty: quantity.toString(),
           timestamp: Date.now(),
         };
-        this.openOrders.set(i, normalizedOrder);
-        this.logSuccess(`Reinserted ${this.trading ? 'BUY' : 'SELL'} order created ID: ${normalizedOrder.orderId} at level ${i}`);
+        this.openBuyOrders.set(i, normalizedOrder);
+        this.logMessages.logSuccess(`Reinserted LIMIT BUY order created ID: ${normalizedOrder.orderId} at level ${i}`);
       } catch (err) {
-        this.logError(`Error reinserting order at level ${i}:`, err);
+        this.logMessages.logError(`Error reinserting LIMIT BUY order at level ${i}:`, err);
       }
-
       await this.sleep(250);
     }
   }
 
-  private ajustarAlStep(value: number, step: string): string {
+  private async reinsertSellOrders(levels: number[], priceFilter: any, lotSizeFilter: any, currentPrice: number) {
+    for (const i of levels) {
+      const orderLevel = this.config.ordersLevels_sell[i];
+      if (!orderLevel) continue;
+
+      const sellPrice = this.roundToStep(orderLevel.price, priceFilter.tickSize);
+      if (sellPrice <= currentPrice) continue;
+
+      const quantity = this.roundToStep(orderLevel.quantity, lotSizeFilter.stepSize);
+
+      this.logMessages.logInfo(`Reinserting LIMIT SELL order at level ${i} price ${sellPrice} quantity ${quantity}`);
+      try {
+        const order = await this.binanceService.createCrossMarginLimitOrder(
+          this.symbol, 'SELL', quantity.toString(), sellPrice.toString(), 'GTC',
+        );
+        const normalizedOrder: Order = {
+          orderId: Number(order.orderId),
+          price: sellPrice.toString(),
+          origQty: quantity.toString(),
+          timestamp: Date.now(),
+          isSell: true,
+        };
+        this.openSellOrders.set(i, normalizedOrder);
+        this.logMessages.logSuccess(`Reinserted LIMIT SELL order created ID: ${normalizedOrder.orderId} at level ${i}`);
+      } catch (err) {
+        this.logMessages.logError(`Error reinserting LIMIT SELL order at level ${i}:`, err);
+      }
+      await this.sleep(250);
+    }
+  }
+
+  private roundToStep(value: number, step: string): number {
     const stepFloat = parseFloat(step);
     const precision = (step.split('.')[1] || '').length;
-    const adjusted = Math.round(value / stepFloat) * stepFloat;
-    return adjusted.toFixed(precision);
+    const adjusted = Math.floor(value / stepFloat) * stepFloat;
+    return parseFloat(adjusted.toFixed(precision));
+  }
+
+  private async getCurrentPrice(): Promise<number> {
+    const resp = await this.binanceService.getSymbolPrice(this.symbol);
+    return parseFloat(resp.price);
   }
 
   private sleep(ms: number) {
@@ -356,25 +352,68 @@ export class GridFullStrategy implements TradingStrategy {
   private async exponentialBackoff(baseDelayMs: number, maxRetries: number) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       const waitTime = baseDelayMs * Math.pow(2, attempt);
-      this.logInfo(`Retrying in ${waitTime} ms...`);
+      this.logMessages.logInfo(`Retrying in ${waitTime} ms...`);
       await this.sleep(waitTime);
     }
   }
 
-  private logSuccess(message: string, ...args: any[]) {
-    this.logger.log(`${COLORS.fgGreen}${message}${COLORS.reset}`, ...args);
-  }
+  private async cancelExistingOrdersInRange() {
+    try {
+      const allOrders = await this.binanceService.getAllCrossMarginOrders(this.symbol, 500);
+      if ((!this.config.ordersLevels_buy?.length) && (!this.config.ordersLevels_sell?.length)) {
+        this.logMessages.logWarn('No buy or sell levels defined for cancellation range.');
+        return;
+      }
 
-  private logInfo(message: string, ...args: any[]) {
-    this.logger.log(`${COLORS.fgCyan}${message}${COLORS.reset}`, ...args);
-  }
+      const allPrices = [
+        ...this.config.ordersLevels_buy.map(l => l.price),
+        ...this.config.ordersLevels_sell.map(l => l.price),
+      ];
+      const lowerPrice = Math.min(...allPrices);
+      const upperPrice = Math.max(...allPrices);
 
-  private logWarn(message: string, ...args: any[]) {
-    this.logger.warn(`${COLORS.fgYellow}ALERTA: ${message}${COLORS.reset}`, ...args);
-  }
+      const activeOrdersInRange = allOrders.filter(o =>
+        !['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(o.status) &&
+        Number.isFinite(Number(o.price)) &&
+        Number(o.price) >= lowerPrice &&
+        Number(o.price) <= upperPrice
+      );
 
-  private logError(message: string, ...args: any[]) {
-    this.logger.error(`${COLORS.fgRed}${message}${COLORS.reset}`, ...args);
+      if (activeOrdersInRange.length === 0) {
+        this.logMessages.logInfo('No active orders in range.');
+        return;
+      }
+
+      this.logMessages.logInfo(`Canceling orders in range [${lowerPrice}, ${upperPrice}]`);
+
+      for (const order of activeOrdersInRange) {
+        try {
+          await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+          this.logMessages.logWarn(`Canceled order ID ${order.orderId} price ${order.price}`);
+
+          // Remove from openBuyOrders or openSellOrders accordingly
+          if (order.side === 'BUY') {
+            for (const [level, o] of this.openBuyOrders.entries()) {
+              if (o.orderId === order.orderId) {
+                this.openBuyOrders.delete(level);
+                break;
+              }
+            }
+          } else if (order.side === 'SELL') {
+            for (const [level, o] of this.openSellOrders.entries()) {
+              if (o.orderId === order.orderId) {
+                this.openSellOrders.delete(level);
+                break;
+              }
+            }
+          }
+        } catch (err) {
+          this.logMessages.logError(`Error canceling order ID ${order.orderId}:`, err);
+        }
+      }
+    } catch (err) {
+      this.logMessages.logError('Error fetching or canceling orders:', err);
+    }
   }
 
   getProfitLoss() {
