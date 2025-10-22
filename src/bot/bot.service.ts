@@ -9,14 +9,20 @@ import { CreateTradingStrategyDto } from 'src/strategies-trading/dto/create-stra
 export class BotService {
   private activeStrategies = new Map<string, TradingStrategy>();
 
-  constructor(private readonly binanceService: BinanceService,
-    private readonly strategiesTradingService: StrategiesTradingService
-  ) { }
+  constructor(
+    private readonly binanceService: BinanceService,
+    private readonly strategiesTradingService: StrategiesTradingService,
+  ) {}
+
+  private getKey(symbol: string, id: string): string {
+    return `${symbol}-${id}`;
+  }
 
   async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id: string) {
+    const key = this.getKey(symbol, id);
 
-    if (this.activeStrategies.has(id)) {
-      throw new Error(`Estrategia ya activa con este simbol  ${symbol} y el id ${id} `);
+    if (this.activeStrategies.has(key)) {
+      throw new Error(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
     }
 
     const strategy: TradingStrategy = StrategyFactory.createStrategy(
@@ -24,7 +30,7 @@ export class BotService {
       this.binanceService,
       id,
       symbol,
-      config
+      config,
     );
 
     const createTradingStrategyDto: CreateTradingStrategyDto = {
@@ -33,59 +39,56 @@ export class BotService {
       config: config,
       strategyType: strategyType,
       id: id,
+    };
 
+    // this.strategiesTradingService.createStrategies(createTradingStrategyDto);
 
-    }
-
-    /* this.strategiesTradingService.createStrategies(createTradingStrategyDto)*/
-    this.activeStrategies.set(symbol, strategy);
+    this.activeStrategies.set(key, strategy);
 
     await strategy.run();
   }
 
-  async stopStrategy(symbol: string) {
-    const strategy = this.activeStrategies.get(symbol);
+  async stopStrategy(symbol: string, id: string) {
+    const key = this.getKey(symbol, id);
+    const strategy = this.activeStrategies.get(key);
     if (strategy && strategy.stop) {
       await strategy.stop();
     }
-    this.activeStrategies.delete(symbol);
+    this.activeStrategies.delete(key);
   }
 
   getActiveBots(): string[] {
     return Array.from(this.activeStrategies.keys());
   }
+
   async getActiveBotsData() {
     const strategies = Array.from(this.activeStrategies.values());
 
-    const newStrategiesData = strategies.map(strategy => ({
-      id:strategy.id,
+    const newStrategiesData = strategies.map((strategy) => ({
+      id: strategy.id,
       symbol: strategy.symbol,
       config: strategy.config,
       strategyType: strategy.constructor,
     }));
-    console.log(newStrategiesData)
-    return newStrategiesData
 
-
+    console.log(newStrategiesData);
+    return newStrategiesData;
   }
+
   getBots() {
-
-    return Array.from(this.activeStrategies.entries()).map(([symbol, strategy]) => ({
-      symbol,
-      strategy
-    }));
+    return Array.from(this.activeStrategies.entries()).map(([key, strategy]) => {
+      const [symbol, id] = key.split('-');
+      return {
+        symbol,
+        id,
+        strategy,
+      };
+    });
   }
-  getBotss() {
 
-
-    return Array.from(this.activeStrategies.entries()).map(([symbol, strategy]) => ({
-      symbol,
-      strategy
-    }));
-
-  }
-    async updateOrderLevelPrice(id: string, levelIndex: number, newPrice: number) {
-    const strategy = this.activeStrategies.get(id);
+  async updateOrderLevelPrice(id: string, symbol: string, levelIndex: number, newPrice: number) {
+    const key = this.getKey(symbol, id);
+    const strategy = this.activeStrategies.get(key);
     if (!strategy) {
       throw new Error(`Estrategia con id ${id} no encontrada`);
     }
@@ -95,8 +98,10 @@ export class BotService {
     }
     throw new Error(`La estrategia con id ${id} no soporta actualizar precio de nivel`);
   }
-   async removeOrderLevel(id: string, levelIndex: number) {
-    const strategy = this.activeStrategies.get(id);
+
+  async removeOrderLevel(id: string, symbol: string, levelIndex: number) {
+    const key = this.getKey(symbol, id);
+    const strategy = this.activeStrategies.get(key);
     if (!strategy) {
       throw new Error(`Estrategia con id ${id} no encontrada`);
     }
@@ -106,8 +111,10 @@ export class BotService {
     }
     throw new Error(`La estrategia con id ${id} no soporta eliminar niveles de orden`);
   }
- addOrderLevel(id: string, orderLevel: any) {
-    const strategy = this.activeStrategies.get(id);
+
+  addOrderLevel(id: string, symbol: string, orderLevel: any) {
+    const key = this.getKey(symbol, id);
+    const strategy = this.activeStrategies.get(key);
     if (!strategy) {
       throw new Error(`Estrategia con id ${id} no encontrada`);
     }
@@ -117,8 +124,10 @@ export class BotService {
     }
     throw new Error(`La estrategia con id ${id} no soporta agregar niveles de orden`);
   }
-    updateProfitMargin(id: string, newProfitMargin: number) {
-    const strategy = this.activeStrategies.get(id);
+
+  updateProfitMargin(id: string, symbol: string, newProfitMargin: number) {
+    const key = this.getKey(symbol, id);
+    const strategy = this.activeStrategies.get(key);
     if (!strategy) {
       throw new Error(`Estrategia con id ${id} no encontrada`);
     }
