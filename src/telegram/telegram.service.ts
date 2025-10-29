@@ -7,7 +7,7 @@ export class TelegramService {
   create(createTelegramDto: CreateTelegramDto) {
     return 'This action adds a new telegram';
   }
-
+  
   findAll() {
     return `This action returns all telegram`;
   }

@@ -1,9 +1,20 @@
 import { Controller, Get, Post, Param, Body, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiQuery, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
 import { BinanceService } from './binance.service';
 import { CreateLimitOrderDto, CreateMarketOrderDto, CreateOcoOrderDto } from './dto/create-binance.dto';
 import { AuthGuard } from 'src/authA/auth.guard';
+import { IsNotEmpty, IsString } from 'class-validator';
+class RepayCrossMarginDto {
+  @ApiProperty({ description: 'Activo a repagar', example: 'USDT' })
+  @IsString()
+  @IsNotEmpty()
+  asset: string;
 
+  @ApiProperty({ description: 'Cantidad a repagar', example: '10.5' })
+  @IsString()
+  @IsNotEmpty()
+  amount: string;
+}
 @ApiBearerAuth('BearerAuth')
 @UseGuards(AuthGuard)
 @ApiTags('binance')
@@ -278,5 +289,12 @@ async getCrossMarginSaldo() {
 async getCrossMarginLiqui() {
   return this.binanceService.liquiCrossMagin();
 }
+  @Post('margin-cross/repay')
+  @ApiOperation({ summary: 'Repagar préstamo margin cruzado' })
+  @ApiResponse({ status: 200, description: 'Préstamo margin cruzado repagado correctamente.' })
+  @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
+  async repayCrossMargin(@Body() dto: RepayCrossMarginDto) {
+    return this.binanceService.repayCrossMargin(dto.asset, dto.amount);
+  }
   
 }

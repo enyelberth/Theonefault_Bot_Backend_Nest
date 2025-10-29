@@ -278,3 +278,20 @@ model CryptoPrice {
 
   @@index([symbol, timestamp])
 }
+
+model Alert {
+  id        Int      @id @default(autoincrement())
+  symbol    String   // Símbolo del activo (ejemplo: "BTCUSDT")
+  price     Float    // Precio objetivo para la alerta
+  up_down   UpDown   // Condición: arriba o abajo (usando enum para mejor control)
+  volume    Float?   // Volumen negociado opcional
+  timestamp DateTime // Momento del registro del precio
+  createdAt DateTime @default(now())
+  
+  @@index([symbol, timestamp])
+}
+
+enum UpDown {
+  up
+  down
+}
