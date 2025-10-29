@@ -966,59 +966,87 @@ async getCrossMarginSaldo() {
         })),
     };
 }
+async getDecimalsForSymbol(symbol: string): Promise<{ priceDecimals: number; quantityDecimals: number }> {
+  const { priceFilter, lotSizeFilter } = await this.obtenerFiltrosSimbolo(symbol);
+
+  if (!priceFilter || !lotSizeFilter) {
+    throw new Error(`No se encontraron filtros para el símbolo ${symbol}`);
+  }
+
+  const countDecimals = (numStr: string) => {
+    const decimalPart = numStr.split('.')[1];
+    return decimalPart ? decimalPart.replace(/0+$/, '').length : 0;
+  };
+
+  const priceDecimals = countDecimals(priceFilter.tickSize);
+  const quantityDecimals = countDecimals(lotSizeFilter.stepSize);
+
+  return { priceDecimals, quantityDecimals };
+}
+
 async liquiCrossMagin(): Promise<void> {
-  // 1. Obtener los saldos y deudas actuales en margin cruzado
+  // 1. Obtener todos los saldos y deudas actuales en margin cruzado
   const data = await this.getCrossMarginSaldo();
 
-  // Variables para activos con deuda y activos para vender
-  let debtAsset: { asset: string; netAsset: number; borrowed: number } | null = null;
-  let sellAsset: { asset: string; netAsset: number; borrowed: number } | null = null;
-  // 2. Identificar activo con deuda y activo con saldo neto considerable para vender
-  for (const element of data.assetsSummary) {
-    if (element.borrowed > 0) {
-      debtAsset = element;
+  // Separar activos con deuda y activos disponibles para vender
+  const debtAssets = data.assetsSummary.filter(a => parseFloat(a.borrowed) > 0);
+  const sellAssets = data.assetsSummary.filter(a => a.asset === 'FDUSD' && parseFloat(a.netAsset) > 1);
+
+  // Procesar cada activo con deuda, intentando pagar con FDUSD disponible
+  for (const debtAsset of debtAssets) {
+    const sellAsset = sellAssets.length > 0 ? sellAssets[0] : null;
+
+    if (!sellAsset) {
+      console.log(`No hay FDUSD disponible para liquidar deuda de ${debtAsset.asset}`);
+      continue; // Pasar a la siguiente deuda
     }
-    if (element.netAsset > 1 && element.asset !== 'FDUSD') {
-      sellAsset = element;
-    }
+
+    const symbol = `${debtAsset.asset}${sellAsset.asset}`;
+    const decimalQuantity = await this.getDecimalsForSymbol(symbol);
+    const priceData = await this.getSymbolPrice(symbol);
+    const price = parseFloat(priceData.price);
+
+    const sellQuantity = parseFloat(sellAsset.netAsset).toFixed(decimalQuantity.quantityDecimals);
+
+    // Cancelar órdenes abiertas en el par
+    await this.cancelAllCrossMarginOrdersBySide(symbol, 'BUY');
+    await this.cancelAllCrossMarginOrdersBySide(symbol, 'SELL');
+
+    // Crear orden de mercado para vender FDUSD y recibir moneda para pagar deuda
+    await this.createCrossMarginMarketOrder(symbol, 'SELL', sellQuantity);
+
+    // Repagar deuda con el dinero obtenido
+    await this.repayCrossMargin(debtAsset.asset, debtAsset.borrowed.toString());
+
+    console.log(`Deuda de ${debtAsset.asset} liquidada usando FDUSD.`);
   }
 
-  if (!debtAsset) {
-    console.log('No hay activos con deuda que liquidar.');
-    return;
+  // Si no hay deuda, pero hay balance en otras criptos distintas de FDUSD, venderlas para tener solo FDUSD
+  const nonFdusdAssets = data.assetsSummary.filter(
+    a => a.asset !== 'FDUSD' && parseFloat(a.netAsset) > 1
+  );
+
+  for (const asset of nonFdusdAssets) {
+    const symbol = `${asset.asset}FDUSD`;
+    const decimalQuantity = await this.getDecimalsForSymbol(symbol);
+    const priceData = await this.getSymbolPrice(symbol);
+    const price = parseFloat(priceData.price);
+
+    const sellQuantity = parseFloat(asset.netAsset).toFixed(decimalQuantity.quantityDecimals);
+
+    await this.cancelAllCrossMarginOrdersBySide(symbol, 'BUY');
+    await this.cancelAllCrossMarginOrdersBySide(symbol, 'SELL');
+
+    await this.createCrossMarginMarketOrder(symbol, 'SELL', sellQuantity);
+
+    console.log(`Activo ${asset.asset} vendido para convertir a FDUSD.`);
   }
-  if (!sellAsset) {
-    console.log('No hay activos disponibles para vender.');
 
-   // console.log(` hola ${sellAsset.asset}  ${sellAsset.borrowed} ${sellAsset.netAsset}`);
-    return;
+  if (debtAssets.length === 0 && nonFdusdAssets.length === 0) {
+    console.log('No hay deudas ni activos para convertir a FDUSD.');
   }
-
-  // 3. Obtener precio actual para el par del activo a vender contra FDUSD
-  const symbol = `${sellAsset.asset}FDUSD`;
-  const priceData = await this.getSymbolPrice(symbol);
-  const price = parseFloat(priceData.price);
-
-  // 4. Calcular el total valor del netAsset para venderlo
-  const sellValue = sellAsset.netAsset * price;
-  console.log(`Preparando para vender ${sellAsset.netAsset} ${sellAsset.asset} por un valor aproximado de ${sellValue.toFixed(2)} FDUSD para liquidar deuda de ${debtAsset.borrowed} ${debtAsset.asset}.`);
-/*
-  // 5. Cancelar todas las órdenes abiertas para ese símbolo tanto BUY como SELL
-  await this.cancelAllCrossMarginOrdersBySide(symbol, 'BUY');
-  await this.cancelAllCrossMarginOrdersBySide(symbol, 'SELL');
-
-  // 6. Crear orden de mercado para vender el activo neto y obtener el efectivo
-  //    Convertimos netAsset a string ya que la API espera así
-  await this.createCrossMarginMarketOrder(symbol, 'SELL', sellAsset.netAsset.toString());
-
-  // 7. Después de vender, hacer repay para pagar la deuda con el dinero obtenido
-  //    Como la deuda puede ser menor o igual al efectivo obtenido, se deben pagar todas las deudas que existan en la cuenta
-  //    Aquí simplificamos pagando la deuda del asset que se debió
-  await this.repayCrossMargin(debtAsset.asset, debtAsset.borrowed.toString());
-*/
-  //console.log(`Deuda liquidada. Se vendieron ${sellAsset.netAsset} ${sellAsset.asset} a precio ${price}.`);
- // console.log(`Se repagó la deuda de ${debtAsset.borrowed} ${debtAsset.asset}.`);
 }
+
 
 
 
