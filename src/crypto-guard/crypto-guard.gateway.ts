@@ -120,7 +120,7 @@ export class CryptoGuardGateway implements OnGatewayInit {
 
           
 
-            await this.binanceService.liquiCrossMagin();
+           await this.binanceService.liquiCrossMagin();
 
           console.log("Cancelando posiciones de margen cruzado");
         } catch (error) {

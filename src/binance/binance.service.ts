@@ -34,7 +34,7 @@ export class BinanceService {
 
   async postSigned(endpoint: string, params: Record<string, string | number>) {
     const serverTime = await this.getServerTime();
-    const allParams = { ...params, timestamp: serverTime, recvWindow: 10000 };
+    const allParams = { ...params, timestamp: serverTime, recvWindow: 30000 };
 
     const query = new URLSearchParams();
     Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
