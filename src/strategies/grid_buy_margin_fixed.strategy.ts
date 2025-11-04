@@ -62,6 +62,9 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
   }
 
   private reactivateStoppedLevels(currentPrice: number) {
+    try{
+
+
     if (!this.config.buySafetyMargin) return;
     for (const level of [...this.stoppedLossLevels]) {
       const orderLevel = this.config.ordersLevels[level];
@@ -71,11 +74,17 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
         this.stoppedLossLevels.delete(level);
       }
     }
+  }catch(error){
+    console.log(error);
+  }
   }
 
   private async getCurrentPrice(): Promise<number> {
+
+
     const resp = await this.binanceService.getSymbolPrice(this.symbol);
     return parseFloat(resp.price);
+
   }
 
   private async cancelExistingOrdersInRange() {
