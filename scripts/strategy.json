@@ -1,0 +1,161 @@
+{
+  "id": "er10",
+  "typeId": 1,
+  "symbol": "XRPFDUSD",
+  "strategyType": "gridBuyMarginFixed",
+  "config": {
+    "profitMargin": 0.0018,
+    "ordersLevels": [
+      {
+        "id": 1,
+        "price": 1.9,
+        "quantity": 3
+      },
+      {
+        "id": 2,
+        "price": 1.8991,
+        "quantity": 3
+      },
+      {
+        "id": 3,
+        "price": 1.8982,
+        "quantity": 3
+      },
+      {
+        "id": 4,
+        "price": 1.8973,
+        "quantity": 3
+      },
+      {
+        "id": 5,
+        "price": 1.8964,
+        "quantity": 3
+      },
+      {
+        "id": 6,
+        "price": 1.8955,
+        "quantity": 3
+      },
+      {
+        "id": 7,
+        "price": 1.8946,
+        "quantity": 3
+      },
+      {
+        "id": 8,
+        "price": 1.8937,
+        "quantity": 3
+      },
+      {
+        "id": 9,
+        "price": 1.8928,
+        "quantity": 3
+      },
+      {
+        "id": 10,
+        "price": 1.8919,
+        "quantity": 3
+      },
+      {
+        "id": 11,
+        "price": 1.891,
+        "quantity": 3
+      },
+      {
+        "id": 12,
+        "price": 1.8901,
+        "quantity": 3
+      },
+      {
+        "id": 13,
+        "price": 1.8892,
+        "quantity": 3
+      },
+      {
+        "id": 14,
+        "price": 1.8883,
+        "quantity": 3
+      },
+      {
+        "id": 15,
+        "price": 1.8874,
+        "quantity": 3
+      },
+      {
+        "id": 16,
+        "price": 1.8865,
+        "quantity": 3
+      },
+      {
+        "id": 17,
+        "price": 1.8856,
+        "quantity": 3
+      },
+      {
+        "id": 18,
+        "price": 1.8847,
+        "quantity": 3
+      },
+      {
+        "id": 19,
+        "price": 1.8838,
+        "quantity": 3
+      },
+      {
+        "id": 20,
+        "price": 1.8829,
+        "quantity": 3
+      },
+      {
+        "id": 21,
+        "price": 1.882,
+        "quantity": 3
+      },
+      {
+        "id": 22,
+        "price": 1.8811,
+        "quantity": 3
+      },
+      {
+        "id": 23,
+        "price": 1.8802,
+        "quantity": 3
+      },
+      {
+        "id": 24,
+        "price": 1.8793,
+        "quantity": 3
+      },
+      {
+        "id": 25,
+        "price": 1.8784,
+        "quantity": 3
+      },
+      {
+        "id": 26,
+        "price": 1.8775,
+        "quantity": 3
+      },
+      {
+        "id": 27,
+        "price": 1.8766,
+        "quantity": 3
+      },
+      {
+        "id": 28,
+        "price": 1.8757,
+        "quantity": 3
+      },
+      {
+        "id": 29,
+        "price": 1.8748,
+        "quantity": 3
+      },
+      {
+        "id": 30,
+        "price": 1.8739,
+        "quantity": 3
+      }
+    ]
+  }
+}

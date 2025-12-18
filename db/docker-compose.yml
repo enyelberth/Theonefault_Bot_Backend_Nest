@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:15-alpine # Usamos una versión específica y ligera
+    container_name: kaizen_postgres
+    restart: unless-stopped   # Más seguro que 'always' para mantenimientos
+    environment:
+      POSTGRES_USER: enyelberth
+      POSTGRES_DB: KAIZEN
+      POSTGRES_PASSWORD: 30204334}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck: # Verifica que la DB esté lista antes de que otros servicios la usen
+      test: ["CMD-SHELL", "pg_isready -U enyelberth -d KAIZEN"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    driver: local

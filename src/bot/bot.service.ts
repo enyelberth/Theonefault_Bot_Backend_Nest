@@ -19,13 +19,15 @@ export class BotService {
   }
 
   async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id: string) {
-    const key = this.getKey(symbol, id);
+    try{
 
-    if (this.activeStrategies.has(key)) {
-      throw new Error(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
-    }
+      const key = this.getKey(symbol, id);
+      
+      if (this.activeStrategies.has(key)) {
+        throw new Error(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
+      }
 
-    const strategy: TradingStrategy = StrategyFactory.createStrategy(
+      const strategy: TradingStrategy = StrategyFactory.createStrategy(
       strategyType,
       this.binanceService,
       id,
@@ -42,12 +44,15 @@ export class BotService {
     };
 
     // this.strategiesTradingService.createStrategies(createTradingStrategyDto);
-
+    
     this.activeStrategies.set(key, strategy);
-
+    
     await strategy.run();
+  }catch(error){
+    console.log(error);
   }
-
+  }
+  
   async stopStrategy(symbol: string, id: string) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
