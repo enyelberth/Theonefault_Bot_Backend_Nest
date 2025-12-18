@@ -1,0 +1,10 @@
+/crear_estrategia xrpfdusd 1 gridBuyMarginFixed 1 "config": {
+    "profitMargin": 0.0018,
+    "ordersLevels": [
+        {
+            "id": 1,
+            "price": 1.5,
+            "quantity": 3
+        }
+    ]
+}

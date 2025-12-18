@@ -46,7 +46,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     this.pollMessages();
     setInterval(() => this.checkAlerts(), 60000); // cada 1 minuto (60000 ms)
 
-   // setInterval(() => this.notifyCertainNumbersPrecios(), 240000);
+    // setInterval(() => this.notifyCertainNumbersPrecios(), 240000);
 
   }
 
@@ -126,6 +126,9 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendMessage(chatId,
           'Comandos:\n' +
           '/menu - Mostrar menú\n' +
+          '/crear_estrategia - Crear estrategia\n' +
+          '/alertadelete - Delete Alerta\n' +
+          '/add_level - add_level XRPFDUSD er10 1.85 3\n' +
           '/precios - Precios criptos\n' +
           '/preciomoneda - Precio moneda\n' +
           '/alerta [símbolo] [precio] [arriba|abajo] - Crear alerta\n' +
@@ -191,6 +194,9 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       case '/crear_estrategia':
         await this.handleCreateStrategy(chatId, args);
         break;
+      case '/add_level':
+        await this.handleAddLevelStrategy(chatId, args);
+        break;
       case '/stop_estrategia':
         if (args.length !== 2) {
           await this.sendMessage(chatId, 'Uso: /detener estrategia [symbol] [id]');
@@ -245,10 +251,42 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       const typeId = parseInt(typeIdStr);
       const configJson = configParts.join(' ');
       const config = configJson ? JSON.parse(configJson) : {};
-      await this.botService.startStrategy(symbol, typeId, strategyType, config, id);
+      this.botService.startStrategy(symbol, typeId, strategyType, config, id);
       await this.sendMessage(chatId, `Estrategia creada y arrancada: ${id} para ${symbol}`);
     } catch (error) {
       await this.sendMessage(chatId, 'Error creando estrategia: ' + (error as Error).message);
+    }
+  }
+
+  private async handleAddLevelStrategy(chatId: number, args: string[]) {
+    const [symbol, id, priceRaw, amountRaw] = args;
+
+    if (!symbol || !id || !priceRaw || !amountRaw) {
+      return await this.sendMessage(chatId, ' Formato incompleto. Uso: `/add_level XRPFDUSD er10 1.85 3`');
+    }
+
+    const price = parseFloat(priceRaw);
+    const quantity = parseFloat(amountRaw);
+
+    if (isNaN(price) || isNaN(quantity)) {
+      return await this.sendMessage(chatId, '❌ El precio y la cantidad deben ser números válidos.');
+    }
+
+    try {
+      const success = await this.botService.addOrderLevel(id, symbol.toUpperCase(), {
+        price,
+        quantity
+      });
+
+      if (success) {
+        await this.sendMessage(chatId, ` ¡Nivel agregado!\nSímbolo: ${symbol}\nPrecio: ${price}\nCant: ${quantity}`);
+      } else {
+        await this.sendMessage(chatId, ` No se encontró la estrategia con ID: ${id}`);
+      }
+
+    } catch (error) {
+      console.error('Error en addLevel:', error);
+      await this.sendMessage(chatId, ' Error interno al guardar el nivel.');
     }
   }
 
@@ -278,6 +316,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       [{ text: 'Crear Alerta', callback_data: 'create_alert' }],
       [{ text: 'Mis Cuentas', callback_data: 'list_accounts' }],
       [{ text: 'Estrategias', callback_data: 'list_strategies' }],
+      [{ text: 'Start Estrategias', callback_data: 'start_strategy' }],
     ];
     if (role === 'admin') {
       buttons.push([{ text: 'Actualizar Saldo', callback_data: 'update_balance' }]);
@@ -301,7 +340,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     await this.sendMessage(chatId, 'Toda tu información y alertas en este chat han sido borradas de nuestro sistema.');
   }
   async handleFondo(chatId: number) {
-      let data  = await this.binanceService.getCrossMarginPNLSummary();
+    let data = await this.binanceService.getCrossMarginPNLSummary();
     const precio = data?.totalUnrealizedPNL;
     const precioBTC = await this.cryptoPrice.findOne('BTCFDUSD');
     const e = Number(precio) * Number(precioBTC);
@@ -328,20 +367,17 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         await this.handleListAccounts(chatId);
         break;
       case 'list_strategies':
-           const data = this.botService.getActiveBots();
-    let msg;
-    if (data.length > 0) {
-      // Mapea cada estrategia a un string y luego une con salto de línea
-      msg = data.map(p => `${p}`).join('\n');
-    } else {
-      msg = "No hay estrategias activas";
-    }
+        await this.handleShowStrategies(chatId,[]);
+           break;
+      case 'start_strategy':
+        await this.sendMessage(chatId,'Strategia iniciada');
+        break
       case 'delete_alert':
         await this.handleDeleteAlert(chatId, []);
-        break;
+     
 
-    await this.sendMessage(chatId, msg);
-      //  await this.handleShowStrategies(chatId);
+        //await this.sendMessage(chatId, msg);
+        //  await this.handleShowStrategies(chatId);
         break;
       case 'update_balance':
         await this.sendMessage(chatId, 'Comando admin: /actualizarsaldo [id] [moneda] [saldo]');
@@ -389,27 +425,27 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     }
     this.alerts.push({ chatId, symbol, threshold, condition: condition as 'up' | 'down' });
 
-   await this.alertService.createAlertPrice(symbol, threshold, condition as 'up' | 'down');
+    await this.alertService.createAlertPrice(symbol, threshold, condition as 'up' | 'down');
     await this.sendMessage(chatId, `Alerta creada para ${symbol} ${condition} $${threshold}`);
   }
-private async handleDeleteAlert(chatId: number, args: string[]) {
-  // Se espera que args contenga solo el ID de la alerta, por ejemplo: ['/alertaDelete', '123'] → args = ['123']
-  if (args.length !== 1) {
-    await this.sendMessage(chatId, 'Uso: /alertaDelete [id]');
-    return;
+  private async handleDeleteAlert(chatId: number, args: string[]) {
+    // Se espera que args contenga solo el ID de la alerta, por ejemplo: ['/alertaDelete', '123'] → args = ['123']
+    if (args.length !== 1) {
+      await this.sendMessage(chatId, 'Uso: /alertaDelete [id]');
+      return;
+    }
+    const alertId = Number(args[0]);
+    if (isNaN(alertId)) {
+      await this.sendMessage(chatId, 'ID de alerta inválido.');
+      return;
+    }
+    try {
+      await this.alertService.deleteAlert(alertId);
+      await this.sendMessage(chatId, `Alerta eliminada: ${alertId}`);
+    } catch (error) {
+      await this.sendMessage(chatId, `Error eliminando alerta: ${(error as Error).message}`);
+    }
   }
-  const alertId = Number(args[0]);
-  if (isNaN(alertId)) {
-    await this.sendMessage(chatId, 'ID de alerta inválido.');
-    return;
-  }
-  try {
-    await this.alertService.deleteAlert(alertId);
-    await this.sendMessage(chatId, `Alerta eliminada: ${alertId}`);
-  } catch (error) {
-    await this.sendMessage(chatId, `Error eliminando alerta: ${(error as Error).message}`);
-  }
-}
 
 
   private async handleShowStrategies(chatId: number, args: string[]) {

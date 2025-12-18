@@ -9,7 +9,7 @@ async function seedAccounts() {
       bankAccountTypeId: 1, // Asegúrate que exista este tipo de cuenta bancaria o usa un ID válido
       key: 'asdas',
       secretKey: 'asda',
-      email: 'enyelberthrc22.Z@gmail.com',
+      email: 'enyelberthrc22.z@gmail.com',
       password: '30204334',
       createdAt: new Date(),
     },
