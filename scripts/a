@@ -1,10 +1,46 @@
-/crear_estrategia xrpfdusd 1 gridBuyMarginFixed 1 "config": {
-    "profitMargin": 0.0018,
-    "ordersLevels": [
-        {
-            "id": 1,
-            "price": 1.5,
-            "quantity": 3
-        }
-    ]
+/crear_estrategia SOLFDUSD 1 gridBuyMarginFixed 3 {
+  "profitMargin": 0.0018,
+  "ordersLevels": [
+    { "id": 1, "price": 124.0, "quantity": 0.045 },
+    { "id": 2, "price": 124.1, "quantity": 0.045 },
+    { "id": 3, "price": 124.2, "quantity": 0.045 },
+    { "id": 4, "price": 124.3, "quantity": 0.045 },
+    { "id": 5, "price": 124.4, "quantity": 0.045 },
+    { "id": 6, "price": 124.5, "quantity": 0.045 },
+    { "id": 7, "price": 124.6, "quantity": 0.045 },
+    { "id": 8, "price": 124.7, "quantity": 0.045 },
+    { "id": 9, "price": 124.8, "quantity": 0.045 },
+    { "id": 10, "price": 124.9, "quantity": 0.045 },
+    { "id": 11, "price": 125.0, "quantity": 0.045 },
+    { "id": 12, "price": 125.1, "quantity": 0.045 },
+    { "id": 13, "price": 125.2, "quantity": 0.045 },
+    { "id": 14, "price": 125.3, "quantity": 0.045 },
+    { "id": 15, "price": 125.4, "quantity": 0.045 },
+    { "id": 16, "price": 125.5, "quantity": 0.045 },
+    { "id": 17, "price": 125.6, "quantity": 0.045 },
+    { "id": 18, "price": 125.7, "quantity": 0.045 },
+    { "id": 19, "price": 125.8, "quantity": 0.045 },
+    { "id": 20, "price": 125.9, "quantity": 0.045 },
+    { "id": 21, "price": 126.0, "quantity": 0.045 },
+    { "id": 22, "price": 126.1, "quantity": 0.045 },
+    { "id": 23, "price": 126.2, "quantity": 0.045 },
+    { "id": 24, "price": 126.3, "quantity": 0.045 },
+    { "id": 25, "price": 126.4, "quantity": 0.045 },
+    { "id": 26, "price": 126.5, "quantity": 0.045 },
+    { "id": 27, "price": 126.6, "quantity": 0.045 },
+    { "id": 28, "price": 126.7, "quantity": 0.045 },
+    { "id": 29, "price": 126.8, "quantity": 0.045 },
+    { "id": 30, "price": 126.9, "quantity": 0.045 },
+    { "id": 31, "price": 127.0, "quantity": 0.045 },
+    { "id": 32, "price": 127.1, "quantity": 0.045 },
+    { "id": 33, "price": 127.2, "quantity": 0.045 },
+    { "id": 34, "price": 127.3, "quantity": 0.045 },
+    { "id": 35, "price": 127.4, "quantity": 0.045 },
+    { "id": 36, "price": 127.5, "quantity": 0.045 },
+    { "id": 37, "price": 127.6, "quantity": 0.045 },
+    { "id": 38, "price": 127.7, "quantity": 0.045 },
+    { "id": 39, "price": 127.8, "quantity": 0.045 },
+    { "id": 40, "price": 127.9, "quantity": 0.045 },
+    { "id": 41, "price": 128.0, "quantity": 0.045 }
+  ]
 }

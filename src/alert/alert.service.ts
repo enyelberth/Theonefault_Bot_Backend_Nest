@@ -1,17 +1,17 @@
 import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-  InternalServerErrorException,
+    Injectable,
+    Logger,
+    NotFoundException,
+    BadRequestException,
+    InternalServerErrorException,
 } from '@nestjs/common';
 import { Alert, PrismaClient } from '@prisma/client';
 @Injectable()
 export class AlertService {
-    constructor(readonly prisma: PrismaClient) {}
+    constructor(readonly prisma: PrismaClient) { }
     async getAlerts(): Promise<Alert[]> {
         try {
-            const alerts = await this.prisma.alert.findMany(); 
+            const alerts = await this.prisma.alert.findMany();
             return alerts;
         } catch (error) {
             throw new InternalServerErrorException('Error al obtener las alertas');
@@ -36,22 +36,22 @@ export class AlertService {
             throw new InternalServerErrorException('Error al crear la alerta');
         }
     }
- async createAlertPrice(symbol: string, price: number, up_down: 'up' | 'down'): Promise<Alert> {
-    try {
-      const timestamp = new Date();
-      const newAlert = await this.prisma.alert.create({
-        data: {
-          symbol,
-          price,
-          up_down,
-          timestamp,
-        },
-      });
-      return newAlert;
-    } catch (error) {
-      throw new InternalServerErrorException('Error al crear la alerta');
+    async createAlertPrice(symbol: string, price: number, up_down: 'up' | 'down'): Promise<Alert> {
+        try {
+            const timestamp = new Date();
+            const newAlert = await this.prisma.alert.create({
+                data: {
+                    symbol,
+                    price,
+                    up_down,
+                    timestamp,
+                },
+            });
+            return newAlert;
+        } catch (error) {
+            throw new InternalServerErrorException('Error al crear la alerta');
+        }
     }
-  }
     async updateAlert(id: number, alert: any): Promise<Alert> {
         try {
             const updatedAlert = await this.prisma.alert.update({ where: { id }, data: alert });
@@ -67,6 +67,15 @@ export class AlertService {
         } catch (error) {
             throw new InternalServerErrorException('Error al eliminar la alerta');
         }
-    }  
+    }
+    async deleteAllAlert(){
+        try {
+            console.log('Delete All Alerts');
+            const res = await this.prisma.alert.deleteMany();
+            return res;
+        } catch (error) {
+            console.log(error);
+        }
+    }
 
 }

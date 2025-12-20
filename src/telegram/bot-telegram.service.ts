@@ -22,15 +22,15 @@ interface PriceAlert {
 
 @Injectable()
 export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
-  private readonly botToken = '8314324600:AAHxwt3fUaP3-XNuq4jgdWPDxN6IC0UNTHY';
+  private readonly botToken = '8105793514:AAGjn1pUF2HFSKFe5ZDOofBR8mbv53wvvp4';
   private readonly apiUrl = `https://api.telegram.org/bot${this.botToken}`;
   private readonly logger = new Logger(BotTelegramService.name);
   private offset = 0;
   private chatStates = new Map<number, ChatState>();
   private alerts: PriceAlert[] = [];
 
-  private readonly adminUserIds = [8105793514, 6507628324 /* otros IDs autorizados */];
-  private readonly notifyChats = [8105793514, 6507628324];
+  private readonly adminUserIds = [7276654069 /* otros IDs autorizados */];
+  private readonly notifyChats = [7276654069 ];
 
   constructor(
     private cryptoPrice: CryptoPriceService,
@@ -128,6 +128,8 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
           '/menu - Mostrar menú\n' +
           '/crear_estrategia - Crear estrategia\n' +
           '/alertadelete - Delete Alerta\n' +
+          '/stop_estrategia - Uso: /detener estrategia [symbol] [id]\n' +
+
           '/add_level - add_level XRPFDUSD er10 1.85 3\n' +
           '/precios - Precios criptos\n' +
           '/preciomoneda - Precio moneda\n' +
