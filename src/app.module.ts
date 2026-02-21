@@ -18,6 +18,7 @@ import { UserModule } from './user/user.module';
 import { BankAccountTypeServiceModule } from './account/BankAccountType/bankAccountType.module';
 import { JournalEntryModule } from './transaction/journalEntry/journalEntry.module';
 import { TradingModule } from './trading/trading.module';
+import { CryptoPriceWatcherModule } from './crypto-price-watcher/crypto-price-watcher.module';
 import { CryptoPriceWatcherGateway } from './crypto-price-watcher/crypto-price-watcher.gateway';
 import { HttpconfigModule } from './httpconfig/httpconfig.module';
 import { BotModule } from './bot/bot.module';
@@ -31,7 +32,7 @@ import { AlertModule } from './alert/alert.module';
 import { GeminisModule } from './geminis/geminis.module';
 import { TelegramSofiaModule } from './telegram-sofia/telegram-sofia.module';
 @Module({
-  imports: [AuthModule,ScheduleModule.forRoot(),AlertModule,BotModule,TelegramBotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule, CryptoGuardModule, GeminisModule, TelegramSofiaModule],
+  imports: [AuthModule,ScheduleModule.forRoot(),CryptoPriceWatcherModule,CryptoGuardModule,AlertModule,BotModule,TelegramBotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule, CryptoGuardModule, GeminisModule, TelegramSofiaModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService],
 })

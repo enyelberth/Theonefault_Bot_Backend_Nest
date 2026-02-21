@@ -2,86 +2,83 @@ import {
   OnGatewayInit,
   WebSocketGateway,
   WebSocketServer,
+
 } from '@nestjs/websockets';
+import { OnModuleDestroy } from '@nestjs/common'; // <--- Movido aquí
 import { Server } from 'socket.io';
 import { IndicatorsService } from 'src/indicators/indicators.service';
 import * as WebSocket from 'ws';
 
-
 @WebSocketGateway({
   cors: { origin: '*' },
 })
-export class CryptoPriceWatcherGateway implements OnGatewayInit {
+export class CryptoPriceWatcherGateway implements OnGatewayInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
-  private readonly binanceSockets: Record<string, WebSocket> = {};
-  private readonly symbols = ['btcfdusd','linkfdusd','dogefdusd','xrpfdusd','bnbfdusd','dogefdusd','solfdusd']; // Puedes incluir más símbolos
-
+  private binanceWs: WebSocket | null = null;
+  private readonly symbols = ['btcfdusd', 'linkfdusd', 'dogefdusd', 'xrpfdusd', 'bnbfdusd', 'solfdusd'];
   private readonly lastRunAt: Record<string, number> = {};
-  private readonly MIN_INTERVAL_MS = 60 * 1000; // 1 minuto
+  private readonly MIN_INTERVAL_MS = 60 * 1000;
 
-  constructor(private readonly indicatorsService: IndicatorsService) {
-    this.symbols.forEach((symbol) => {
-      const wsUrl = `wss://stream.binance.com:9443/ws/${symbol}@trade`;
-      const ws = new WebSocket(wsUrl);
-      this.binanceSockets[symbol] = ws;
+  constructor(private readonly indicatorsService: IndicatorsService) {}
+
+  afterInit() {
+    this.connectToBinance();
+  }
+
+  private connectToBinance() {
+    // Usamos un Stream Combinado para ahorrar recursos
+    const streams = this.symbols.map((s) => `${s}@trade`).join('/');
+    const wsUrl = `wss://stream.binance.com:9443/stream?streams=${streams}`;
+    
+    this.binanceWs = new WebSocket(wsUrl);
+
+    this.binanceWs.on('open', () => console.log('✅ Conectado al Stream Combinado de Binance'));
+
+    this.binanceWs.on('message', async (data: WebSocket.RawData) => {
+      try {
+        const { data: tradeData } = JSON.parse(data.toString());
+        const symbol = tradeData.s.toLowerCase(); // Binance envía el símbolo en el stream
+        const price = parseFloat(tradeData.p);
+        
+        if (!isFinite(price)) return;
+
+        const now = Date.now();
+        const last = this.lastRunAt[symbol] ?? 0;
+
+        // Emitir siempre a los clientes (Tiempo Real)
+        this.server.emit(`${symbol}-price-update`, price);
+
+        // Lógica de guardado (Throttling)
+        if (now - last >= this.MIN_INTERVAL_MS) {
+          this.lastRunAt[symbol] = now;
+          
+          // No bloqueamos el stream de datos con el await del DB
+          this.indicatorsService.createCryptoPrice({
+            symbol: symbol.toUpperCase(),
+            price,
+            volume: parseFloat(tradeData.q),
+            timestamp: new Date(tradeData.T),
+          }).catch(err => console.error(`Error DB (${symbol}):`, err));
+        }
+      } catch (err) {
+        console.error('Error procesando mensaje:', err);
+      }
+    });
+
+    this.binanceWs.on('error', (err) => console.error('❌ Error en Binance WS:', err));
+
+    this.binanceWs.on('close', () => {
+      console.warn('⚠️ Conexión de Binance cerrada. Reintentando en 5s...');
+      setTimeout(() => this.connectToBinance(), 5000); // Auto-reconexión
     });
   }
 
-  afterInit() {
-    console.log('Gateway inicializado. Conectando a Binance...');
-
-    this.symbols.forEach((symbol) => {
-      const ws = this.binanceSockets[symbol];
-
-      ws.on('open', () => {
-        console.log(`Conectado a Binance WS para ${symbol}`);
-      });
-
-      ws.on('message', async (data: WebSocket.RawData) => {
-        try {
-          const tradeData = JSON.parse(data.toString());
-          const price = parseFloat(tradeData?.p); // Precio actual
-
-          if (!isFinite(price)) return;
-
-          const now = Date.now();
-          const last = this.lastRunAt[symbol] ?? 0;
-
-          // Solo guardar máximo cada minuto
-          if (now - last < this.MIN_INTERVAL_MS) {
-            // Emitir valor en tiempo real sin guardar
-            this.server.emit(`${symbol}-price-update`, price);
-            return;
-          }
-          this.lastRunAt[symbol] = now;
-
-          // Guardar precio en la base de datos
-          
-          await this.indicatorsService.createCryptoPrice({
-            symbol: symbol.toUpperCase(),
-            price,
-            volume: parseFloat(tradeData.q), // Volumen del trade
-            timestamp: new Date(tradeData.T),
-          });
-          
-
-          // Emitir actualización a clientes conectados
-          this.server.emit(`${symbol}-price-update`, price);
-         // console.log(`Precio guardado y emitido para ${symbol}: ${price}`);
-        } catch (err) {
-          console.error(`Error procesando mensaje de ${symbol}:`, err);
-        }
-      });
-
-      ws.on('error', (error) => {
-        console.error(`Error en Binance WS (${symbol}):`, error);
-      });
-
-      ws.on('close', () => {
-        console.log(`Conexión Binance WS cerrada para ${symbol}`);
-      });
-    });
+  // Limpieza al apagar la app
+  onModuleDestroy() {
+    if (this.binanceWs) {
+      this.binanceWs.terminate();
+    }
   }
 }
