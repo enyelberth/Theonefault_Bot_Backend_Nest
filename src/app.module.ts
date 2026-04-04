@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ProfileController } from './profile/profile.controller';
@@ -35,9 +35,15 @@ import { CurrencyModule } from './currency/currency.module';
 import { AccountBalanceModule } from './account-balance/account-balance.module';
 import { TradingExecutionModule } from './trading-execution/trading-execution.module';
 import { PrismaModule } from 'prisma/prisma.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { ObservabilityModule } from './observability/observability.module';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { StructuredLoggingInterceptor } from './observability/structured-logging.interceptor';
+import { CorrelationIdMiddleware } from './observability/correlation-id.middleware';
 
 @Module({
   imports: [
+    ObservabilityModule,
     AuthModule,
     PrismaModule,
     ScheduleModule.forRoot(),
@@ -50,6 +56,7 @@ import { PrismaModule } from 'prisma/prisma.module';
     CurrencyModule,
     AccountBalanceModule,
     TradingExecutionModule,
+    AnalyticsModule,
     StrategiesTradingModule,
     TradingModule,
     JournalEntryModule,
@@ -70,6 +77,18 @@ import { PrismaModule } from 'prisma/prisma.module';
     TelegramSofiaModule,
   ],
   controllers: [AppController, ProfileController],
-  providers: [AppService, ProfileService, PruebaService],
+  providers: [
+    AppService,
+    ProfileService,
+    PruebaService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: StructuredLoggingInterceptor,
+    },
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}

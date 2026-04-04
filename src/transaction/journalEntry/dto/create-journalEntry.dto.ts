@@ -7,6 +7,12 @@ export enum EntryType {
   EGRESO = 'EGRESO',
 }
 
+export enum JournalPostingStatusDto {
+  DRAFT = 'DRAFT',
+  POSTED = 'POSTED',
+  REVERSED = 'REVERSED',
+}
+
 export const ALLOWED_ENTRY_TYPES = [
   EntryType.INGRESO,
   EntryType.EGRESO,
@@ -135,6 +141,15 @@ export class SyncBinanceBalancesDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ventana de idempotencia en minutos para evitar duplicados de sync',
+    example: 60,
+    default: 60,
+  })
+  @IsOptional()
+  @IsInt()
+  idempotencyWindowMinutes?: number;
 }
 
 export class CreateJournalEntryDto {
@@ -166,6 +181,11 @@ export class CreateJournalEntryDto {
   @IsInt()
   statusId?: number;
 
+  @ApiPropertyOptional({ description: 'Estado de publicación contable', enum: JournalPostingStatusDto, default: JournalPostingStatusDto.POSTED })
+  @IsOptional()
+  @IsIn(Object.values(JournalPostingStatusDto))
+  postingStatus?: JournalPostingStatusDto;
+
   @ApiProperty({ type: [JournalEntryLineDto], description: 'Líneas (detalles) del asiento contable' })
   @ValidateNested({ each: true })
   @ArrayMinSize(1)
@@ -194,10 +214,41 @@ export class UpdateJournalEntryDto {
   @IsInt()
   statusId?: number;
 
+  @ApiPropertyOptional({ description: 'Estado de publicación contable', enum: JournalPostingStatusDto })
+  @IsOptional()
+  @IsIn(Object.values(JournalPostingStatusDto))
+  postingStatus?: JournalPostingStatusDto;
+
   @ApiPropertyOptional({ type: [JournalEntryLineDto], description: 'Líneas (detalles) del asiento contable' })
   @IsOptional()
   @ValidateNested({ each: true })
   @ArrayMinSize(1)
   @Type(() => JournalEntryLineDto)
   lines?: JournalEntryLineDto[];
+}
+
+export class CreateAccountingPeriodDto {
+  @ApiProperty({ description: 'Nombre del período contable', example: '2026-04' })
+  @IsString()
+  name: string;
+
+  @ApiProperty({ description: 'Inicio del período en formato ISO', example: '2026-04-01T00:00:00.000Z' })
+  @IsDateString()
+  startsAt: string;
+
+  @ApiProperty({ description: 'Fin del período en formato ISO', example: '2026-04-30T23:59:59.999Z' })
+  @IsDateString()
+  endsAt: string;
+}
+
+export class ReverseJournalEntryDto {
+  @ApiPropertyOptional({ description: 'Razón de reversión', example: 'Corrección por ajuste contable.' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiPropertyOptional({ description: 'Usuario/proceso que ejecuta la reversión', example: 'ACCOUNTING_ADMIN' })
+  @IsOptional()
+  @IsString()
+  reversedBy?: string;
 }

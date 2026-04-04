@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { jwtConstants } from './constantes';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './auth.guard';
+import { RolesGuard } from './roles.guard';
 import { UserModule } from 'src/user/user.module';
 import { PrismaModule } from 'prisma/prisma.module';
 import { SessionModule } from 'src/session/session.module';
@@ -26,6 +27,10 @@ import { SessionModule } from 'src/session/session.module';
     {
       provide: APP_GUARD,
       useClass: AuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
   controllers: [AuthController],

@@ -5,11 +5,12 @@ import { TradingModule } from 'src/trading/trading.module';
 import { PrismaModule } from 'prisma/prisma.module';
 import { JournalEntryService } from './journalEntry.service';
 import { JournalEntryController } from './journalEntry.controller';
+import { RateLimitGuard } from 'src/security/rate-limit.guard';
 
 @Module({
   imports: [PrismaModule, BinanceModule, TradingModule],
   controllers: [JournalEntryController],
-  providers: [JournalEntryService],
+  providers: [JournalEntryService, RateLimitGuard],
   exports: [JournalEntryService],
 })
 export class JournalEntryModule {}

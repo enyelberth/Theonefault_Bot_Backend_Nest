@@ -27,6 +27,9 @@ import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
 import { UpdateTradingOrderDto } from './dto/update-tradingOrder.dto';
 import { OrderStatus } from '@prisma/client';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
+import { Roles } from 'src/authA/roles.decorator';
+import { RateLimit } from 'src/security/rate-limit.decorator';
+import { RateLimitGuard } from 'src/security/rate-limit.guard';
 
 @ApiBearerAuth('BearerAuth')
 @UseGuards(AuthGuard)
@@ -34,8 +37,10 @@ import { AuthGuard, Public } from 'src/authA/auth.guard';
 @Controller('trading-orders')
 export class TradingController {
   constructor(private readonly tradingService: TradingService) {}
-  @Public()
   @Post()
+  @Roles('ADMIN', 'OPERATOR', 'TRADER')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 30, windowMs: 60_000 })
   @ApiOperation({ summary: 'Crear una nueva orden de trading' })
   @ApiCreatedResponse({ description: 'Orden creada exitosamente.' })
   @ApiBadRequestResponse({ description: 'Datos inválidos o error en creación.' })
@@ -60,8 +65,10 @@ export class TradingController {
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.tradingService.findOneTradingOrder(id);
   }
-  @Public()
   @Patch(':id')
+  @Roles('ADMIN', 'OPERATOR', 'TRADER')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 40, windowMs: 60_000 })
   @ApiOperation({ summary: 'Actualizar detalles de una orden' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden a actualizar' })
   @ApiResponse({ status: 200, description: 'Orden actualizada correctamente.' })
@@ -73,6 +80,9 @@ export class TradingController {
   }
 
   @Patch(':id/status')
+  @Roles('ADMIN', 'OPERATOR', 'TRADER')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 60, windowMs: 60_000 })
   @ApiOperation({ summary: 'Actualizar estado de una orden' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden' })
   @ApiQuery({ name: 'newStatus', description: 'Nuevo estado de la orden', required: true, enum: OrderStatus })
@@ -90,6 +100,9 @@ export class TradingController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'OPERATOR')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 20, windowMs: 60_000 })
   @ApiOperation({ summary: 'Eliminar una orden de trading' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden a eliminar' })
   @ApiResponse({ status: 200, description: 'Orden eliminada correctamente.' })
@@ -101,6 +114,9 @@ export class TradingController {
   }
 
   @Post('monitor')
+  @Roles('ADMIN', 'OPERATOR')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
   @ApiOperation({ summary: 'Monitorear el precio actual para completar órdenes LIMIT' })
   @ApiQuery({ name: 'currentPrice', description: 'Precio actual de la criptomoneda para monitoreo', required: true, type: Number })
   async monitor(@Query('currentPrice') currentPriceStr: string) {

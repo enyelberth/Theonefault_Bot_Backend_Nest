@@ -13,6 +13,7 @@ model User {
   email     String   @unique
   password  String
   username  String
+  role      UserRole @default(TRADER)
   key       String?
   secretKey String?
   createdAt DateTime @default(now())
@@ -77,6 +78,7 @@ model Currency {
   tradingPairsQuote TradingPair[]      @relation("QuoteCurrency")
   journalEntryLines JournalEntryLine[]
   transfers         Transfer[]
+  dailyPnlSnapshots DailyPnlSnapshot[]
 }
 
 // Cuentas bancarias jerárquicas con claves de acceso, ligadas a usuario
@@ -100,6 +102,9 @@ model Account {
   fromTransfers     Transfer[]         @relation("FromAccount")
   toTransfers       Transfer[]         @relation("ToAccount")
   tradingOrders     TradingOrder[]
+  sourceSyncLogs    BinanceSyncLog[]   @relation("BinanceSyncSourceAccount")
+  offsetSyncLogs    BinanceSyncLog[]   @relation("BinanceSyncOffsetAccount")
+  dailyPnlSnapshots DailyPnlSnapshot[]
 }
 
 // Saldo de cada cuenta por moneda
@@ -130,11 +135,19 @@ model JournalEntry {
   description String?
   createdBy   String?
   statusId    Int      @default(1)
+  postingStatus JournalPostingStatus @default(POSTED)
+  reversedEntryId Int?
   createdAt   DateTime @default(now())
 
   status   TransactionStatus  @relation(fields: [statusId], references: [id])
   lines    JournalEntryLine[]
   transfer Transfer?
+  reversedEntry JournalEntry? @relation("JournalEntryReversal", fields: [reversedEntryId], references: [id])
+  reversals JournalEntry[] @relation("JournalEntryReversal")
+  syncLogs BinanceSyncLog[]
+
+  @@index([entryDate, postingStatus])
+  @@index([statusId])
 }
 
 // Detalles de asiento contable con partidas dobles
@@ -149,6 +162,9 @@ model JournalEntryLine {
   journalEntry JournalEntry @relation(fields: [entryId], references: [id])
   account      Account      @relation(fields: [accountId], references: [id])
   currency     Currency     @relation(fields: [currencyCode], references: [code])
+
+  @@index([entryId])
+  @@index([accountId, currencyCode])
 }
 
 // Transferencias entre cuentas
@@ -215,6 +231,7 @@ model TradingOrder {
 
   @@index([accountId, symbol])
   @@index([status])
+  @@index([closed_time])
 }
 
 enum OrderType {
@@ -245,6 +262,74 @@ model TradingExecution {
   tradeTimestamp DateTime @default(now())
 
   tradingOrder TradingOrder @relation(fields: [orderId], references: [id])
+
+  @@index([tradeTimestamp])
+}
+
+model AccountingPeriod {
+  id          Int                 @id @default(autoincrement())
+  name        String              @unique
+  startsAt    DateTime
+  endsAt      DateTime
+  status      AccountingPeriodStatus @default(OPEN)
+  closedAt    DateTime?
+  closedBy    String?
+  createdAt   DateTime            @default(now())
+
+  @@index([startsAt, endsAt, status])
+}
+
+model BinanceSyncLog {
+  id              Int      @id @default(autoincrement())
+  accountId       Int
+  offsetAccountId Int
+  scope           String
+  syncHash        String   @unique
+  windowStart     DateTime
+  windowEnd       DateTime
+  differencesJson Json
+  createdBy       String?
+  journalEntryId  Int?
+  createdAt       DateTime @default(now())
+
+  account       Account       @relation("BinanceSyncSourceAccount", fields: [accountId], references: [id])
+  offsetAccount Account       @relation("BinanceSyncOffsetAccount", fields: [offsetAccountId], references: [id])
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id])
+
+  @@index([accountId, createdAt])
+  @@index([windowStart, windowEnd])
+}
+
+model DailyPnlSnapshot {
+  id            Int      @id @default(autoincrement())
+  snapshotDate  DateTime
+  accountId     Int
+  currencyCode  String   @db.VarChar(20)
+  realizedPnl   Decimal  @default(0)
+  unrealizedPnl Decimal  @default(0)
+  income        Decimal  @default(0)
+  expense       Decimal  @default(0)
+  net           Decimal  @default(0)
+  createdAt     DateTime @default(now())
+
+  account  Account  @relation(fields: [accountId], references: [id])
+  currency Currency @relation(fields: [currencyCode], references: [code])
+
+  @@unique([snapshotDate, accountId, currencyCode])
+  @@index([snapshotDate, accountId])
+}
+
+model DailyKpi {
+  id             Int      @id @default(autoincrement())
+  kpiDate        DateTime @unique
+  winRate        Decimal  @default(0)
+  profitFactor   Decimal  @default(0)
+  maxDrawdown    Decimal  @default(0)
+  sharpe         Decimal  @default(0)
+  sortino        Decimal  @default(0)
+  volatility     Decimal  @default(0)
+  totalTrades    Int      @default(0)
+  createdAt      DateTime @default(now())
 }
 
 model TradingStrategy {
@@ -294,4 +379,22 @@ model Alert {
 enum UpDown {
   up
   down
+}
+
+enum JournalPostingStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  TRADER
+  VIEWER
 }

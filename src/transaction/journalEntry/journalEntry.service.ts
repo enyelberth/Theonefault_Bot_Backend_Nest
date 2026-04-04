@@ -2,16 +2,21 @@ import { Injectable, Logger, NotFoundException, BadRequestException, InternalSer
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { BinanceService } from 'src/binance/binance.service';
+import { ObservabilityService } from 'src/observability/observability.service';
 import {
+  CreateAccountingPeriodDto,
   CreateJournalEntryDto,
   CreateJournalEntryLineDto,
   EntryType,
+  JournalPostingStatusDto,
+  ReverseJournalEntryDto,
   SyncBinanceBalancesDto,
   UpdateJournalEntryDto,
   UpdateJournalEntryLineDto,
 } from './dto/create-journalEntry.dto';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class JournalEntryService {
@@ -21,11 +26,40 @@ export class JournalEntryService {
   private readonly maxCurrencyCodeLength = 20;
   private readonly binanceSyncOffsetKey = 'binance_sync_offset';
   private readonly binanceSyncOffsetEmail = 'binance.sync.offset@local';
+  private readonly defaultSyncIdempotencyWindowMinutes = 60;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly binanceService: BinanceService,
+    private readonly observability: ObservabilityService,
   ) {}
+
+  private async notifyAdminsOnCriticalFailure(title: string, message: string) {
+    const prismaAny = this.prisma as any;
+    try {
+      const admins = await prismaAny.user.findMany({
+        where: {
+          role: { in: ['ADMIN', 'OPERATOR'] },
+        },
+        select: { id: true },
+      });
+
+      if (!admins || admins.length === 0) {
+        return;
+      }
+
+      await prismaAny.notification.createMany({
+        data: admins.map((admin: { id: number }) => ({
+          userId: admin.id,
+          title,
+          message,
+          read: false,
+        })),
+      });
+    } catch (error) {
+      this.logger.warn(`No se pudo notificar a admins: ${title}`);
+    }
+  }
 
   private async validateDto(dto: any) {
     const object = plainToInstance(dto.constructor, dto);
@@ -84,6 +118,39 @@ export class JournalEntryService {
     }
 
     throw new BadRequestException(`Tipo de asiento inválido: ${entryType}`);
+  }
+
+  private createSyncHash(payload: unknown): string {
+    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  }
+
+  private async assertAccountingPeriodOpenByDate(entryDate: Date, tx: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const prismaAny = tx as any;
+    const closedPeriod = await prismaAny.accountingPeriod?.findFirst?.({
+      where: {
+        status: 'CLOSED',
+        startsAt: { lte: entryDate },
+        endsAt: { gte: entryDate },
+      },
+    });
+
+    if (closedPeriod) {
+      throw new BadRequestException(`El período ${closedPeriod.name} está cerrado para cambios contables.`);
+    }
+  }
+
+  private async assertEntryIsEditable(entryId: number, tx: Prisma.TransactionClient) {
+    const entry = await tx.journalEntry.findUnique({ where: { id: entryId } });
+    if (!entry) {
+      throw new NotFoundException(`Entrada del diario con id ${entryId} no encontrada.`);
+    }
+
+    if ((entry as any).postingStatus === 'REVERSED') {
+      throw new BadRequestException('La entrada está revertida y no puede modificarse.');
+    }
+
+    await this.assertAccountingPeriodOpenByDate(entry.entryDate, tx);
+    return entry;
   }
 
   private async rebuildBalancesFallback(tx: Prisma.TransactionClient | PrismaService) {
@@ -275,8 +342,123 @@ export class JournalEntryService {
   }
 
   async rebuildAllBalances() {
+    try {
+      await this.executeBalanceProcedure(this.prisma);
+      this.observability.incrementCounter('accounting.rebuild.success');
+      return { message: 'Balances recalculados correctamente desde JournalEntryLine.' };
+    } catch (error) {
+      this.observability.incrementCounter('accounting.rebuild.error');
+      await this.notifyAdminsOnCriticalFailure(
+        'Fallo en rebuild-balances',
+        `Error reconstruyendo balances contables: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      throw error;
+    }
+  }
+
+  async createAccountingPeriod(dto: CreateAccountingPeriodDto) {
+    const prismaAny = this.prisma as any;
+    await this.validateDto(dto);
+    const startsAt = new Date(dto.startsAt);
+    const endsAt = new Date(dto.endsAt);
+
+    if (startsAt >= endsAt) {
+      throw new BadRequestException('El rango del período contable es inválido.');
+    }
+
+    const overlap = await prismaAny.accountingPeriod.findFirst({
+      where: {
+        startsAt: { lte: endsAt },
+        endsAt: { gte: startsAt },
+      },
+    });
+
+    if (overlap) {
+      throw new BadRequestException(`El período se superpone con ${overlap.name}.`);
+    }
+
+    return prismaAny.accountingPeriod.create({
+      data: {
+        name: dto.name,
+        startsAt,
+        endsAt,
+      },
+    });
+  }
+
+  async closeAccountingPeriod(id: number, closedBy?: string) {
+    const prismaAny = this.prisma as any;
+    const period = await prismaAny.accountingPeriod.findUnique({ where: { id } });
+    if (!period) {
+      throw new NotFoundException(`Período contable ${id} no encontrado.`);
+    }
+
+    if (period.status === 'CLOSED') {
+      return period;
+    }
+
+    return prismaAny.accountingPeriod.update({
+      where: { id },
+      data: {
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedBy: closedBy ?? 'SYSTEM',
+      },
+    });
+  }
+
+  async reverseEntry(id: number, dto: ReverseJournalEntryDto) {
+    await this.validateDto(dto);
+
+    const reversal = await this.prisma.$transaction(async (tx) => {
+      const original = await tx.journalEntry.findUnique({
+        where: { id },
+        include: { lines: true },
+      });
+
+      if (!original) {
+        throw new NotFoundException(`Entrada del diario con id ${id} no encontrada.`);
+      }
+
+      if ((original as any).postingStatus === 'REVERSED') {
+        throw new BadRequestException('La entrada ya fue revertida.');
+      }
+
+      await this.assertAccountingPeriodOpenByDate(original.entryDate, tx);
+
+      const reversalLines = original.lines.map(line => ({
+        accountId: line.accountId,
+        currencyCode: line.currencyCode,
+        amount: line.amount.toString(),
+        entryType: this.normalizeEntryType(line.entryType) === EntryType.INGRESO
+          ? EntryType.EGRESO
+          : EntryType.INGRESO,
+      }));
+
+      const reversed = await tx.journalEntry.create({
+        data: {
+          entryDate: new Date(),
+          description: `Reversión de JE ${original.id}${dto.reason ? ` | ${dto.reason}` : ''}`,
+          createdBy: dto.reversedBy ?? 'SYSTEM',
+          statusId: original.statusId,
+          postingStatus: 'POSTED',
+          reversedEntryId: original.id,
+          lines: {
+            create: reversalLines,
+          },
+        } as any,
+      });
+
+      await tx.journalEntry.update({
+        where: { id: original.id },
+        data: { postingStatus: 'REVERSED' } as any,
+      });
+
+      return reversed;
+    });
+
     await this.executeBalanceProcedure(this.prisma);
-    return { message: 'Balances recalculados correctamente desde JournalEntryLine.' };
+    return reversal;
   }
 
   private async buildRemoteBalancesForAccountType(accountId: number) {
@@ -414,6 +596,7 @@ export class JournalEntryService {
         throw new BadRequestException('Debe proporcionar al menos una línea para la entrada');
       }
       const createdEntry = await this.prisma.$transaction(async (tx) => {
+        await this.assertAccountingPeriodOpenByDate(new Date(createJournalEntryDto.entryDate), tx);
         await this.ensureAccountsExist(tx, createJournalEntryDto.lines.map(line => line.accountId));
         await this.ensureCurrenciesExist(tx, createJournalEntryDto.lines.map(line => line.currencyCode));
 
@@ -423,6 +606,7 @@ export class JournalEntryService {
             description: createJournalEntryDto.description,
             createdBy: createJournalEntryDto.createdBy,
             statusId: createJournalEntryDto.statusId ?? 1,
+            postingStatus: createJournalEntryDto.postingStatus ?? JournalPostingStatusDto.POSTED,
             lines: {
               create: createJournalEntryDto.lines.map(line => ({
                 accountId: line.accountId,
@@ -431,7 +615,7 @@ export class JournalEntryService {
                 entryType: this.normalizeEntryType(line.entryType),
               })),
             },
-          },
+          } as any,
           include: { lines: true, status: true, transfer: true },
         });
       });
@@ -488,6 +672,11 @@ export class JournalEntryService {
           throw new NotFoundException(`Entrada del diario con id ${id} no encontrada.`);
         }
 
+        await this.assertAccountingPeriodOpenByDate(existingEntry.entryDate, tx);
+        if ((existingEntry as any).postingStatus === 'REVERSED') {
+          throw new BadRequestException('No puedes actualizar una entrada revertida.');
+        }
+
         if (updateJournalEntryDto.lines) {
           await this.ensureAccountsExist(tx, updateJournalEntryDto.lines.map(line => line.accountId));
           await this.ensureCurrenciesExist(tx, updateJournalEntryDto.lines.map(line => line.currencyCode));
@@ -497,6 +686,7 @@ export class JournalEntryService {
           where: { id },
           data: {
             ...prismaData,
+            postingStatus: updateJournalEntryDto.postingStatus,
             lines: updateJournalEntryDto.lines
               ? {
                   deleteMany: {},
@@ -507,8 +697,8 @@ export class JournalEntryService {
                     entryType: this.normalizeEntryType(line.entryType),
                   })),
                 }
-              : undefined,
-          },
+                : undefined,
+              } as any,
           include: { lines: true },
         });
       });
@@ -522,18 +712,10 @@ export class JournalEntryService {
 
   async remove(id: number) {
     if (!id) throw new BadRequestException('ID es requerido');
-    try {
-      const result = await this.prisma.$transaction(async (tx) => {
-        await tx.journalEntryLine.deleteMany({ where: { entryId: id } });
-        const deletedEntry = await tx.journalEntry.delete({ where: { id } });
-        return { message: `Entrada del diario con id ${id} eliminada.`, deletedEntry };
-      });
-
-      await this.executeBalanceProcedure(this.prisma);
-      return result;
-    } catch (error) {
-      this.handlePrismaError(error, `Error eliminando entrada del diario con id ${id}`);
-    }
+    return this.reverseEntry(id, {
+      reason: 'Eliminación lógica solicitada. Se aplica reversión contable.',
+      reversedBy: 'SYSTEM',
+    });
   }
 
   async createLine(createLineDto: CreateJournalEntryLineDto & { entryId: number }) {
@@ -547,6 +729,8 @@ export class JournalEntryService {
         if (!existingEntry) {
           throw new NotFoundException(`Entrada del diario con id ${createLineDto.entryId} no encontrada.`);
         }
+
+        await this.assertEntryIsEditable(createLineDto.entryId, tx);
 
         const nextLines = [...existingEntry.lines, {
           accountId: createLineDto.accountId,
@@ -598,6 +782,8 @@ export class JournalEntryService {
           throw new NotFoundException(`Línea del asiento con id ${id} no encontrada.`);
         }
 
+        await this.assertEntryIsEditable(currentLine.entryId, tx);
+
         const data = this.mapUpdateLineDtoToPrisma(updateLineDto);
         const entryLines = await this.getEntryLinesOrFail(currentLine.entryId, tx);
         const nextLines = entryLines.map(line =>
@@ -637,6 +823,8 @@ export class JournalEntryService {
         if (!currentLine) {
           throw new NotFoundException(`Línea del asiento con id ${id} no encontrada.`);
         }
+
+        await this.assertEntryIsEditable(currentLine.entryId, tx);
 
         const entryLines = await this.getEntryLinesOrFail(currentLine.entryId, tx);
         const remainingLines = entryLines.filter(line => line.id !== id);
@@ -741,102 +929,159 @@ export class JournalEntryService {
   }
 
   async syncBinanceBalances(syncDto: SyncBinanceBalancesDto) {
-    await this.validateDto(syncDto);
+    try {
+      await this.validateDto(syncDto);
 
-    const { sourceAccount, offsetAccount } = await this.resolveOffsetAccount(
-      syncDto.accountId,
-      syncDto.offsetAccountId,
-    );
+      const { offsetAccount } = await this.resolveOffsetAccount(
+        syncDto.accountId,
+        syncDto.offsetAccountId,
+      );
 
-    const {
-      account,
-      scope,
-      localBalances,
-      remoteBalances,
-    } = await this.buildRemoteBalancesForAccountType(syncDto.accountId);
-
-    const includeZeroBalances = syncDto.includeZeroBalances ?? true;
-    const currencies = new Set<string>(remoteBalances.keys());
-
-    if (includeZeroBalances) {
-      for (const currencyCode of localBalances.keys()) {
-        currencies.add(currencyCode);
-      }
-    }
-
-    const lines: CreateJournalEntryDto['lines'] = [];
-    const adjustments: Array<{
-      currencyCode: string;
-      localBalance: string;
-      remoteBalance: string;
-      difference: string;
-    }> = [];
-
-    for (const currencyCode of currencies) {
-      const localBalance = localBalances.get(currencyCode) ?? new Prisma.Decimal(0);
-      const remoteBalance = remoteBalances.get(currencyCode) ?? new Prisma.Decimal(0);
-      const difference = remoteBalance.minus(localBalance);
-
-      if (difference.equals(0)) {
-        continue;
-      }
-
-      const amount = difference.abs().toString();
-      const primaryEntryType = difference.gt(0) ? EntryType.INGRESO : EntryType.EGRESO;
-      const offsetEntryType = difference.gt(0) ? EntryType.EGRESO : EntryType.INGRESO;
-
-      lines.push({
-        accountId: syncDto.accountId,
-        currencyCode,
-        amount,
-        entryType: primaryEntryType,
-      });
-
-      lines.push({
-        accountId: offsetAccount.id,
-        currencyCode,
-        amount,
-        entryType: offsetEntryType,
-      });
-
-      adjustments.push({
-        currencyCode,
-        localBalance: localBalance.toString(),
-        remoteBalance: remoteBalance.toString(),
-        difference: difference.toString(),
-      });
-    }
-
-    if (lines.length === 0) {
-      return {
-        message: 'No hubo diferencias entre Binance y los balances locales.',
-        accountId: syncDto.accountId,
+      const {
+        account,
         scope,
-        adjustments: [],
+        localBalances,
+        remoteBalances,
+      } = await this.buildRemoteBalancesForAccountType(syncDto.accountId);
+
+      const includeZeroBalances = syncDto.includeZeroBalances ?? true;
+      const currencies = new Set<string>(remoteBalances.keys());
+
+      if (includeZeroBalances) {
+        for (const currencyCode of localBalances.keys()) {
+          currencies.add(currencyCode);
+        }
+      }
+
+      const lines: CreateJournalEntryDto['lines'] = [];
+      const adjustments: Array<{
+        currencyCode: string;
+        localBalance: string;
+        remoteBalance: string;
+        difference: string;
+      }> = [];
+
+      for (const currencyCode of currencies) {
+        const localBalance = localBalances.get(currencyCode) ?? new Prisma.Decimal(0);
+        const remoteBalance = remoteBalances.get(currencyCode) ?? new Prisma.Decimal(0);
+        const difference = remoteBalance.minus(localBalance);
+
+        if (difference.equals(0)) {
+          continue;
+        }
+
+        const amount = difference.abs().toString();
+        const primaryEntryType = difference.gt(0) ? EntryType.INGRESO : EntryType.EGRESO;
+        const offsetEntryType = difference.gt(0) ? EntryType.EGRESO : EntryType.INGRESO;
+
+        lines.push({
+          accountId: syncDto.accountId,
+          currencyCode,
+          amount,
+          entryType: primaryEntryType,
+        });
+
+        lines.push({
+          accountId: offsetAccount.id,
+          currencyCode,
+          amount,
+          entryType: offsetEntryType,
+        });
+
+        adjustments.push({
+          currencyCode,
+          localBalance: localBalance.toString(),
+          remoteBalance: remoteBalance.toString(),
+          difference: difference.toString(),
+        });
+      }
+
+      if (lines.length === 0) {
+        this.observability.incrementCounter('binance.sync.no_changes');
+        return {
+          message: 'No hubo diferencias entre Binance y los balances locales.',
+          accountId: syncDto.accountId,
+          scope,
+          adjustments: [],
+        };
+      }
+
+      const windowMinutes = syncDto.idempotencyWindowMinutes ?? this.defaultSyncIdempotencyWindowMinutes;
+      const normalizedWindow = Math.max(1, windowMinutes);
+      const windowMs = normalizedWindow * 60 * 1000;
+      const now = new Date();
+      const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
+      const windowEnd = new Date(windowStart.getTime() + windowMs);
+      const syncHash = this.createSyncHash({
+        accountId: syncDto.accountId,
+        offsetAccountId: offsetAccount.id,
+        scope,
+        windowStart: windowStart.toISOString(),
+        adjustments,
+      });
+
+      const prismaAny = this.prisma as any;
+      const existingSync = await prismaAny.binanceSyncLog.findUnique({ where: { syncHash } });
+      if (existingSync) {
+        this.observability.incrementCounter('binance.sync.idempotent_skip');
+        return {
+          message: 'Sync omitido por idempotencia: ya existe para esta ventana.',
+          scope,
+          accountId: syncDto.accountId,
+          offsetAccountId: offsetAccount.id,
+          journalEntryId: existingSync.journalEntryId,
+          adjustments,
+          idempotent: true,
+        };
+      }
+
+      const descriptionParts = [
+        `[BINANCE_REFLECTION][${scope}] Sync de balance para cuenta ${account.id}`,
+        syncDto.description,
+      ].filter(Boolean);
+
+      const createdEntry = await this.create({
+        entryDate: new Date().toISOString(),
+        description: descriptionParts.join(' | '),
+        createdBy: syncDto.createdBy ?? 'BINANCE_SYNC',
+        statusId: 1,
+        lines,
+      });
+
+      await prismaAny.binanceSyncLog.create({
+        data: {
+          accountId: syncDto.accountId,
+          offsetAccountId: offsetAccount.id,
+          scope,
+          syncHash,
+          windowStart,
+          windowEnd,
+          differencesJson: adjustments,
+          createdBy: syncDto.createdBy ?? 'BINANCE_SYNC',
+          journalEntryId: createdEntry?.id,
+        },
+      });
+
+      this.observability.incrementCounter('binance.sync.success');
+      this.observability.setGauge('binance.sync.last_adjustments', adjustments.length);
+
+      return {
+        message: 'Saldos de Binance sincronizados a local y registrados en journal entry.',
+        scope,
+        accountId: syncDto.accountId,
+        offsetAccountId: offsetAccount.id,
+        journalEntryId: createdEntry?.id,
+        adjustments,
+        idempotent: false,
       };
+    } catch (error) {
+      this.observability.incrementCounter('binance.sync.error');
+      await this.notifyAdminsOnCriticalFailure(
+        'Fallo en sync-binance',
+        `Error sincronizando Binance para cuenta ${syncDto.accountId}: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      throw error;
     }
-
-    const descriptionParts = [
-      `[BINANCE_REFLECTION][${scope}] Sync de balance para cuenta ${account.id}`,
-      syncDto.description,
-    ].filter(Boolean);
-
-    const createdEntry = await this.create({
-      entryDate: new Date().toISOString(),
-      description: descriptionParts.join(' | '),
-      createdBy: syncDto.createdBy ?? 'BINANCE_SYNC',
-      statusId: 1,
-      lines,
-    });
-
-    return {
-      message: 'Saldos de Binance sincronizados a local y registrados en journal entry.',
-      scope,
-      accountId: syncDto.accountId,
-      offsetAccountId: offsetAccount.id,
-      journalEntryId: createdEntry?.id,
-      adjustments,
-    };
   }
 
   private mapCreateEntryDtoToPrisma(createDto: CreateJournalEntryDto) {
@@ -845,6 +1090,7 @@ export class JournalEntryService {
       description: createDto.description,
       createdBy: createDto.createdBy,
       status: createDto.statusId ? { connect: { id: createDto.statusId } } : undefined,
+      postingStatus: createDto.postingStatus,
       lines: {
         create: createDto.lines.map(line => ({
           accountId: line.accountId,
@@ -862,6 +1108,7 @@ export class JournalEntryService {
       description: updateDto.description,
       createdBy: updateDto.createdBy,
       status: updateDto.statusId ? { connect: { id: updateDto.statusId } } : undefined,
+      postingStatus: updateDto.postingStatus,
     };
   }
 

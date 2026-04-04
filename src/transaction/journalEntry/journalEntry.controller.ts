@@ -22,10 +22,15 @@ import {
 } from '@nestjs/swagger';
 import { UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/authA/auth.guard';
+import { Roles } from 'src/authA/roles.decorator';
+import { RateLimit } from 'src/security/rate-limit.decorator';
+import { RateLimitGuard } from 'src/security/rate-limit.guard';
 import { JournalEntryService } from './journalEntry.service';
 import {
+  CreateAccountingPeriodDto,
   CreateJournalEntryDto,
   CreateJournalEntryLineDto,
+  ReverseJournalEntryDto,
   SyncBinanceBalancesDto,
   UpdateJournalEntryDto,
   UpdateJournalEntryLineDto,
@@ -101,6 +106,9 @@ export class JournalEntryController {
   @Post('accounting/rebuild-balances')
   @ApiOperation({ summary: 'Recalcular todos los balances locales desde JournalEntryLine' })
   @ApiResponse({ status: 200, description: 'Balances recalculados correctamente.' })
+  @Roles('ADMIN', 'OPERATOR')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
   async rebuildBalances() {
     return this.journalEntryService.rebuildAllBalances();
   }
@@ -109,9 +117,38 @@ export class JournalEntryController {
   @ApiOperation({ summary: 'Sincronizar saldos de Binance a local generando un journal entry de reflejo' })
   @ApiCreatedResponse({ description: 'Sincronización Binance aplicada correctamente.' })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos para la sincronización.' })
+  @Roles('ADMIN', 'OPERATOR')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 20, windowMs: 60_000 })
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async syncBinanceBalances(@Body() syncDto: SyncBinanceBalancesDto) {
     return this.journalEntryService.syncBinanceBalances(syncDto);
+  }
+
+  @Post('accounting/periods')
+  @ApiOperation({ summary: 'Crear período contable' })
+  @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  async createAccountingPeriod(@Body() dto: CreateAccountingPeriodDto) {
+    return this.journalEntryService.createAccountingPeriod(dto);
+  }
+
+  @Post('accounting/periods/:id/close')
+  @ApiOperation({ summary: 'Cerrar período contable y bloquear cambios históricos' })
+  @Roles('ADMIN')
+  async closeAccountingPeriod(@Param('id', ParseIntPipe) id: number) {
+    return this.journalEntryService.closeAccountingPeriod(id, 'ADMIN');
+  }
+
+  @Post(':id/reverse')
+  @ApiOperation({ summary: 'Revertir asiento contable generando asiento inverso' })
+  @Roles('ADMIN', 'OPERATOR')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  async reverseEntry(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReverseJournalEntryDto,
+  ) {
+    return this.journalEntryService.reverseEntry(id, dto);
   }
 
   // ===== JournalEntryLine Endpoints =====
