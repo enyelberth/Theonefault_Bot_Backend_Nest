@@ -102,4 +102,34 @@ export class StrategiesTradingController {
   async removeStrategyType(@Param('id', ParseIntPipe) id: number): Promise<StrategyType> {
     return await this.strategiesTradingService.removeTypeStrategy(id);
   }
+
+  @Post(':id/snapshot')
+  @ApiOperation({ summary: 'Generar snapshot/versionado de configuración de estrategia' })
+  async createSnapshot(@Param('id') id: string, @Body() body: { label?: string }) {
+    return this.strategiesTradingService.createVersionSnapshot(id, body?.label);
+  }
+
+  @Patch(':id/runtime-mode')
+  @ApiOperation({ summary: 'Encender/apagar estrategia y configurar paper trading/alcance' })
+  async setRuntimeMode(
+    @Param('id') id: string,
+    @Body() body: { enabled?: boolean; paperTrading?: boolean; accountId?: number; marketScope?: string },
+  ) {
+    return this.strategiesTradingService.setStrategyExecutionMode(id, body);
+  }
+
+  @Get(':id/metrics')
+  @ApiOperation({ summary: 'Métricas por estrategia: win rate, expectancy, drawdown, profit factor, tiempo medio' })
+  async getMetrics(@Param('id') id: string) {
+    return this.strategiesTradingService.getStrategyMetrics(id);
+  }
+
+  @Post(':id/backtest-preview')
+  @ApiOperation({ summary: 'Backtesting reproducible basado en snapshot/órdenes históricas' })
+  async runBacktestPreview(
+    @Param('id') id: string,
+    @Body() body: { from?: string; to?: string; initialCapital?: number },
+  ) {
+    return this.strategiesTradingService.runBacktestPreview(id, body?.from, body?.to, body?.initialCapital);
+  }
 }

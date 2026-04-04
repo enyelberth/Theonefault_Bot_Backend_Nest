@@ -301,4 +301,93 @@ export class AccountService {
       );
     }
   }
+
+  async getHierarchySummary(userId?: number) {
+    const accounts = await this.prisma.account.findMany({
+      where: { userId: userId ?? undefined },
+      include: {
+        subAccounts: true,
+        bankAccountType: true,
+        accountBalances: true,
+      },
+    });
+
+    return accounts.map(account => ({
+      accountId: account.id,
+      userId: account.userId,
+      accountTypeName: account.bankAccountType.typeName,
+      hierarchyRole: account.parentAccountId
+        ? 'OPERATIVA'
+        : account.key === 'binance_sync_offset'
+          ? 'TECNICA'
+          : 'PATRIMONIO',
+      parentAccountId: account.parentAccountId,
+      childrenCount: account.subAccounts.length,
+      balances: account.accountBalances.map(balance => ({
+        currencyCode: balance.currencyCode,
+        balance: balance.balance.toString(),
+      })),
+    }));
+  }
+
+  async getBalanceAuditSnapshots(accountId?: number) {
+    const prismaAny = this.prisma as any;
+    if (prismaAny.dailyPnlSnapshot?.findMany) {
+      return prismaAny.dailyPnlSnapshot.findMany({
+        where: { accountId: accountId ?? undefined },
+        orderBy: { snapshotDate: 'desc' },
+        take: 100,
+      });
+    }
+
+    return this.prisma.accountBalance.findMany({
+      where: { accountId: accountId ?? undefined },
+      orderBy: { accountId: 'asc' },
+    });
+  }
+
+  async reconcileAccountingAndExchange(accountId?: number) {
+    const [balances, lines] = await Promise.all([
+      this.prisma.accountBalance.findMany({
+        where: { accountId: accountId ?? undefined },
+      }),
+      this.prisma.journalEntryLine.findMany({
+        where: { accountId: accountId ?? undefined },
+      }),
+    ]);
+
+    const journalTotals = new Map<string, Prisma.Decimal>();
+    for (const line of lines) {
+      const key = `${line.accountId}:${line.currencyCode}`;
+      const signed = line.entryType.toUpperCase().includes('INGRESO') || line.entryType.toUpperCase().includes('DEBIT')
+        ? new Prisma.Decimal(line.amount)
+        : new Prisma.Decimal(line.amount).mul(-1);
+      journalTotals.set(key, (journalTotals.get(key) ?? new Prisma.Decimal(0)).plus(signed));
+    }
+
+    const prismaAny = this.prisma as any;
+    const latestSyncs = prismaAny.binanceSyncLog?.findMany
+      ? await prismaAny.binanceSyncLog.findMany({
+          where: { accountId: accountId ?? undefined },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        })
+      : [];
+
+    return balances.map(balance => {
+      const key = `${balance.accountId}:${balance.currencyCode}`;
+      const journalBalance = journalTotals.get(key) ?? new Prisma.Decimal(0);
+      const lastSync = latestSyncs.find((item: any) => item.accountId === balance.accountId);
+
+      return {
+        accountId: balance.accountId,
+        currencyCode: balance.currencyCode,
+        accountBalance: balance.balance.toString(),
+        journalBalance: journalBalance.toString(),
+        differenceLocal: new Prisma.Decimal(balance.balance).minus(journalBalance).toString(),
+        lastExchangeSyncAt: lastSync?.createdAt ?? null,
+        lastExchangeScope: lastSync?.scope ?? null,
+      };
+    });
+  }
 }

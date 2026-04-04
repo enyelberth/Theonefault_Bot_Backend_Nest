@@ -40,6 +40,12 @@ export class TransactionController {
     return this.transactionService.createTranfer(createTransferDto);
   }
 
+  @Post('managed')
+  @ApiOperation({ summary: 'Crear transferencia con idempotencia, referencia externa y comprobante adjunto' })
+  async createManaged(@Body() body: CreateTransferDto & { idempotencyKey?: string; externalReference?: string; receiptUrl?: string }) {
+    return this.transactionService.createManagedTransfer(body);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Obtener todas las tranferencias' })
   @ApiResponse({ status: 200, description: 'Lista de transferencias obtenida correctamente.' })
@@ -67,6 +73,27 @@ export class TransactionController {
     @Body() updateTransferDto: UpdateTransferDto,
   ) {
     return this.transactionService.update(id, updateTransferDto);
+  }
+
+  @Patch(':id/status/:statusName')
+  @ApiOperation({ summary: 'Transicionar workflow de transferencia: pending, confirmed, failed, reversed' })
+  async transitionStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('statusName') statusName: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERSED',
+  ) {
+    return this.transactionService.transitionTransferStatus(id, statusName);
+  }
+
+  @Get(':id/reconcile')
+  @ApiOperation({ summary: 'Conciliar transferencia con asiento contable generado' })
+  async reconcile(@Param('id', ParseIntPipe) id: number) {
+    return this.transactionService.reconcileTransfer(id);
+  }
+
+  @Get('diagnostics/summary')
+  @ApiOperation({ summary: 'Diagnóstico y resumen operativo de transferencias' })
+  async diagnostics() {
+    return this.transactionService.getTransferDiagnostics();
   }
 
   @Delete(':id')

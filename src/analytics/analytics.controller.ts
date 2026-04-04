@@ -185,4 +185,37 @@ export class AnalyticsController {
   getRuntimeMetrics() {
     return this.analyticsService.getRuntimeMetrics();
   }
+
+  @Get('comparison/periods')
+  @ApiOperation({ summary: 'Comparativas por período: hoy vs ayer y semana vs semana anterior' })
+  getPeriodComparison(@Query('accountId') accountId?: string) {
+    return this.analyticsService.getPeriodComparison(accountId ? Number(accountId) : undefined);
+  }
+
+  @Get('benchmark')
+  @ApiOperation({ summary: 'Benchmark por cuenta y símbolo' })
+  getBenchmark(@Query('accountId') accountId?: string) {
+    return this.analyticsService.getBenchmark(accountId ? Number(accountId) : undefined);
+  }
+
+  @Get('heatmap')
+  @ApiOperation({ summary: 'Heatmap de horas y días con mejor rendimiento' })
+  getHeatmap(@Query('accountId') accountId?: string) {
+    return this.analyticsService.getHeatmap(accountId ? Number(accountId) : undefined);
+  }
+
+  @Get('cohorts')
+  @ApiOperation({ summary: 'Cohortes de operaciones por setup o tipo de señal' })
+  getCohorts(@Query('accountId') accountId?: string) {
+    return this.analyticsService.getCohorts(accountId ? Number(accountId) : undefined);
+  }
+
+  @Get('drilldown')
+  @ApiOperation({ summary: 'Drill-down desde dashboard a órdenes y asientos concretos' })
+  getDrilldown(
+    @Query('accountId') accountId?: string,
+    @Query('symbol') symbol?: string,
+  ) {
+    return this.analyticsService.getDrilldown(accountId ? Number(accountId) : undefined, symbol);
+  }
 }

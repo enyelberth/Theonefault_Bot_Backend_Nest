@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Patch, Delete, Param, Get, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Patch, Delete, Param, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { BotService } from './bot.service';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
@@ -137,5 +137,14 @@ export class BotController {
   async updateOrderLevelPrice(@Param('symbol') symbol: string, @Param('id') id: string, @Param('levelIndex') levelIndex: number, @Body() body: { newPrice: number }) {
     await this.botService.updateOrderLevelPrice(id, symbol, levelIndex, body.newPrice);
     return { message: `Precio actualizado para nivel ${levelIndex} en estrategia ${id}` };
+  }
+
+  @Get('decision-log')
+  @ApiOperation({ summary: 'Bitácora de decisiones del bot y resultados operativos' })
+  getDecisionLog(
+    @Query('symbol') symbol?: string,
+    @Query('strategyId') strategyId?: string,
+  ) {
+    return this.botService.getDecisionLog(symbol, strategyId);
   }
 }

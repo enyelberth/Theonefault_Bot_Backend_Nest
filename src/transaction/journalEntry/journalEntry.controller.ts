@@ -140,6 +140,13 @@ export class JournalEntryController {
     return this.journalEntryService.closeAccountingPeriod(id, 'ADMIN');
   }
 
+  @Post('accounting/periods/:id/reopen')
+  @ApiOperation({ summary: 'Reabrir período contable solo para administración controlada' })
+  @Roles('ADMIN')
+  async reopenAccountingPeriod(@Param('id', ParseIntPipe) id: number) {
+    return this.journalEntryService.reopenAccountingPeriod(id, 'ADMIN');
+  }
+
   @Post(':id/reverse')
   @ApiOperation({ summary: 'Revertir asiento contable generando asiento inverso' })
   @Roles('ADMIN', 'OPERATOR')
@@ -149,6 +156,30 @@ export class JournalEntryController {
     @Body() dto: ReverseJournalEntryDto,
   ) {
     return this.journalEntryService.reverseEntry(id, dto);
+  }
+
+  @Get('reports/journal')
+  @ApiOperation({ summary: 'Reporte diario contable por rango de fechas' })
+  async getJournalReport() {
+    return this.journalEntryService.getJournalReport();
+  }
+
+  @Get('reports/ledger/:accountId')
+  @ApiOperation({ summary: 'Mayor contable por cuenta' })
+  async getGeneralLedger(@Param('accountId', ParseIntPipe) accountId: number) {
+    return this.journalEntryService.getGeneralLedger(accountId);
+  }
+
+  @Get('reports/trial-balance')
+  @ApiOperation({ summary: 'Balance de comprobación contable' })
+  async getTrialBalance() {
+    return this.journalEntryService.getTrialBalance();
+  }
+
+  @Get('reports/pnl')
+  @ApiOperation({ summary: 'PnL por período contable' })
+  async getProfitLossReport() {
+    return this.journalEntryService.getProfitLossReport();
   }
 
   // ===== JournalEntryLine Endpoints =====

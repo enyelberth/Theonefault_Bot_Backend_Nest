@@ -8,9 +8,11 @@ import {
   PrismaClient,
   OrderStatus,
   TradingOrder,
+  Prisma,
 } from '@prisma/client';
 import { UpdateTradingOrderDto } from './dto/update-tradingOrder.dto';
 import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
+import { SimulateTradingOrderDto } from './dto/simulate-trading-order.dto';
 
 @Injectable()
 export class TradingService {
@@ -18,13 +20,156 @@ export class TradingService {
 
   constructor(private readonly prisma: PrismaClient) { }
 
+  private toDecimal(value: Prisma.Decimal | number | string | null | undefined) {
+    return new Prisma.Decimal(value ?? 0);
+  }
+
+  private toPersistenceInput(createTradingDto: CreateTradingOrderDto) {
+    return {
+      accountId: createTradingDto.accountId,
+      symbol: createTradingDto.symbol,
+      orderId: createTradingDto.orderId,
+      client_order_id: createTradingDto.paperTrading
+        ? `paper:${createTradingDto.client_order_id}`
+        : createTradingDto.client_order_id,
+      side: createTradingDto.side,
+      price: createTradingDto.price,
+      quantity: createTradingDto.quantity,
+      quantityExecuted: createTradingDto.quantityExecuted,
+      status: createTradingDto.status,
+      type: createTradingDto.type,
+      stopPrice: createTradingDto.stopPrice,
+      quantityStop: createTradingDto.quantityStop,
+      isWorking: createTradingDto.isWorking,
+      closingOrderId: createTradingDto.closingOrderId,
+      profit_loss: createTradingDto.profit_loss,
+    };
+  }
+
+  private async evaluateOrderGuardrails(input: {
+    accountId: number;
+    symbol: string;
+    quantity: number;
+    price?: number | null;
+    maxDailyLoss?: number;
+    maxDrawdown?: number;
+    maxSymbolExposure?: number;
+    allowedFromHourUtc?: number;
+    allowedToHourUtc?: number;
+  }) {
+    const now = new Date();
+    const hour = now.getUTCHours();
+    const fromHour = input.allowedFromHourUtc;
+    const toHour = input.allowedToHourUtc;
+
+    if (
+      Number.isInteger(fromHour) &&
+      Number.isInteger(toHour) &&
+      (hour < Number(fromHour) || hour > Number(toHour))
+    ) {
+      return {
+        allowed: false,
+        code: 'TRADING_WINDOW_CLOSED',
+        message: `Fuera de horario permitido UTC ${fromHour}-${toHour}. Hora actual: ${hour}.`,
+      };
+    }
+
+    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+
+    const [dayOrders, symbolOrders] = await Promise.all([
+      this.prisma.tradingOrder.findMany({
+        where: {
+          accountId: input.accountId,
+          closed_time: { gte: dayStart },
+          profit_loss: { not: null },
+        },
+        select: { profit_loss: true },
+      }),
+      this.prisma.tradingOrder.findMany({
+        where: {
+          accountId: input.accountId,
+          symbol: input.symbol,
+          status: { in: ['OPEN', 'PARTIALLY_FILLED', 'FILLED'] },
+        },
+        select: { quantity: true, price: true },
+      }),
+    ]);
+
+    const dailyPnl = dayOrders.reduce(
+      (acc, order) => acc.plus(this.toDecimal(order.profit_loss)),
+      new Prisma.Decimal(0),
+    );
+
+    let cumulative = new Prisma.Decimal(0);
+    let peak = new Prisma.Decimal(0);
+    let maxDrawdown = new Prisma.Decimal(0);
+    for (const order of dayOrders) {
+      cumulative = cumulative.plus(this.toDecimal(order.profit_loss));
+      if (cumulative.gt(peak)) {
+        peak = cumulative;
+      }
+      const drawdown = peak.minus(cumulative);
+      if (drawdown.gt(maxDrawdown)) {
+        maxDrawdown = drawdown;
+      }
+    }
+
+    const currentExposure = symbolOrders.reduce(
+      (acc, order) => acc.plus(this.toDecimal(order.quantity).mul(this.toDecimal(order.price ?? 1))),
+      new Prisma.Decimal(0),
+    );
+    const incomingExposure = this.toDecimal(input.quantity).mul(this.toDecimal(input.price ?? 1));
+    const projectedExposure = currentExposure.plus(incomingExposure);
+
+    if (input.maxDailyLoss !== undefined && dailyPnl.lte(new Prisma.Decimal(input.maxDailyLoss).mul(-1))) {
+      return {
+        allowed: false,
+        code: 'MAX_DAILY_LOSS_REACHED',
+        message: `Límite de pérdida diaria alcanzado. PnL diario=${dailyPnl.toString()}`,
+      };
+    }
+
+    if (input.maxDrawdown !== undefined && maxDrawdown.gte(this.toDecimal(input.maxDrawdown))) {
+      return {
+        allowed: false,
+        code: 'MAX_DRAWDOWN_REACHED',
+        message: `Drawdown máximo excedido. Actual=${maxDrawdown.toString()}`,
+      };
+    }
+
+    if (input.maxSymbolExposure !== undefined && projectedExposure.gt(this.toDecimal(input.maxSymbolExposure))) {
+      return {
+        allowed: false,
+        code: 'MAX_SYMBOL_EXPOSURE_REACHED',
+        message: `Exposición proyectada ${projectedExposure.toString()} excede el máximo permitido.`,
+      };
+    }
+
+    return {
+      allowed: true,
+      code: 'OK',
+      message: 'La orden cumple reglas de horario y riesgo.',
+      diagnostics: {
+        dailyPnl: dailyPnl.toString(),
+        maxDrawdown: maxDrawdown.toString(),
+        currentExposure: currentExposure.toString(),
+        projectedExposure: projectedExposure.toString(),
+      },
+    };
+  }
+
   // --------------------
   // Crear orden
   // --------------------
   async createTradingOrder(createTradingDto: CreateTradingOrderDto): Promise<TradingOrder> {
     try {
+      const riskCheck = await this.evaluateOrderGuardrails(createTradingDto);
+      if (!riskCheck.allowed) {
+        throw new BadRequestException(riskCheck.message);
+      }
+
       const order = await this.prisma.tradingOrder.create({
-        data: createTradingDto,
+        data: this.toPersistenceInput(createTradingDto),
       });
       return order;
     } catch (error) {
@@ -114,6 +259,65 @@ export class TradingService {
     });
 
     return result._sum.profit_loss?.toString() ?? '0';
+  }
+
+  async simulateTradingOrder(simulateDto: SimulateTradingOrderDto) {
+    const riskCheck = await this.evaluateOrderGuardrails(simulateDto);
+    const notional = this.toDecimal(simulateDto.quantity).mul(this.toDecimal(simulateDto.price ?? 1));
+
+    return {
+      ok: riskCheck.allowed,
+      code: riskCheck.code,
+      message: riskCheck.message,
+      preview: {
+        accountId: simulateDto.accountId,
+        symbol: simulateDto.symbol,
+        side: simulateDto.side,
+        type: simulateDto.type,
+        quantity: simulateDto.quantity,
+        price: simulateDto.price ?? null,
+        estimatedNotional: notional.toString(),
+        paperTrading: simulateDto.paperTrading ?? false,
+        decisionReason: simulateDto.decisionReason ?? null,
+      },
+      diagnostics: riskCheck.diagnostics ?? null,
+    };
+  }
+
+  async getTradingDiagnostics(accountId?: number) {
+    const where = accountId ? { accountId } : {};
+    const [orders, pnlAgg] = await Promise.all([
+      this.prisma.tradingOrder.groupBy({
+        by: ['status', 'symbol'],
+        where,
+        _count: { id: true },
+        _sum: { profit_loss: true, quantity: true },
+      }),
+      this.prisma.tradingOrder.aggregate({
+        where: {
+          ...where,
+          profit_loss: { not: null },
+        },
+        _sum: { profit_loss: true },
+        _count: { id: true },
+      }),
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      accountId: accountId ?? null,
+      totals: {
+        orders: pnlAgg._count.id,
+        realizedPnl: pnlAgg._sum.profit_loss?.toString() ?? '0',
+      },
+      bySymbolAndStatus: orders.map(item => ({
+        symbol: item.symbol,
+        status: item.status,
+        count: item._count.id,
+        quantity: item._sum.quantity?.toString() ?? '0',
+        profitLoss: item._sum.profit_loss?.toString() ?? '0',
+      })),
+    };
   }
 
 

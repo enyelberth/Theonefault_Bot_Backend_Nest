@@ -102,4 +102,25 @@ export class AccountController {
       updateBalanceDto.newBalance,
     );
   }
+
+  @Get('diagnostics/hierarchy')
+  @ApiOperation({ summary: 'Jerarquía explícita de cuentas: operativa, técnica y patrimonio' })
+  @ApiQuery({ name: 'userId', required: false, type: Number })
+  async getHierarchySummary(@Query('userId') userId?: string) {
+    return this.accountService.getHierarchySummary(userId ? Number(userId) : undefined);
+  }
+
+  @Get('diagnostics/snapshots')
+  @ApiOperation({ summary: 'Snapshots diarios/semanales de balances para auditoría' })
+  @ApiQuery({ name: 'accountId', required: false, type: Number })
+  async getBalanceAuditSnapshots(@Query('accountId') accountId?: string) {
+    return this.accountService.getBalanceAuditSnapshots(accountId ? Number(accountId) : undefined);
+  }
+
+  @Get('diagnostics/reconcile')
+  @ApiOperation({ summary: 'Reconciliación entre journalEntryLine, accountBalance y último sync de exchange' })
+  @ApiQuery({ name: 'accountId', required: false, type: Number })
+  async reconcileAccounting(@Query('accountId') accountId?: string) {
+    return this.accountService.reconcileAccountingAndExchange(accountId ? Number(accountId) : undefined);
+  }
 }

@@ -9,11 +9,34 @@ import { CreateTradingStrategyDto } from 'src/strategies-trading/dto/create-stra
 export class BotService {
   private readonly logger = new Logger(BotService.name);
   private activeStrategies = new Map<string, TradingStrategy>();
+  private readonly decisionLog: Array<{
+    symbol: string;
+    strategyId: string;
+    event: string;
+    reason?: string;
+    result?: string;
+    timestamp: string;
+  }> = [];
 
   constructor(
     private readonly binanceService: BinanceService,
     private readonly strategiesTradingService: StrategiesTradingService,
   ) {}
+
+  private recordDecision(symbol: string, strategyId: string, event: string, reason?: string, result?: string) {
+    this.decisionLog.unshift({
+      symbol,
+      strategyId,
+      event,
+      reason,
+      result,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (this.decisionLog.length > 300) {
+      this.decisionLog.pop();
+    }
+  }
 
   private getKey(symbol: string, id: string): string {
     return `${symbol}-${id}`;
@@ -43,13 +66,16 @@ export class BotService {
     };
 
     await this.ensureStrategyMetadata(createTradingStrategyDto);
+    this.recordDecision(symbol, id, 'START_REQUESTED', 'manual_start', 'pending');
 
     this.activeStrategies.set(key, strategy);
 
     try {
       await strategy.run();
+      this.recordDecision(symbol, id, 'STARTED', 'strategy_run', 'ok');
     } catch (error) {
       this.activeStrategies.delete(key);
+      this.recordDecision(symbol, id, 'START_FAILED', error instanceof Error ? error.message : 'unknown', 'error');
       this.logger.error(`Error iniciando estrategia ${id} para ${symbol}`, error instanceof Error ? error.stack : undefined);
       throw error;
     }
@@ -67,6 +93,7 @@ export class BotService {
     }
 
     this.activeStrategies.delete(key);
+    this.recordDecision(symbol, id, 'STOPPED', 'manual_stop', 'ok');
   }
 
   getActiveBots(): string[] {
@@ -94,6 +121,18 @@ export class BotService {
         id,
         strategy,
       };
+    });
+  }
+
+  getDecisionLog(symbol?: string, strategyId?: string) {
+    return this.decisionLog.filter(item => {
+      if (symbol && item.symbol !== symbol) {
+        return false;
+      }
+      if (strategyId && item.strategyId !== strategyId) {
+        return false;
+      }
+      return true;
     });
   }
 

@@ -7,6 +7,13 @@ export class ObservabilityService {
   private readonly latencyByRoute = new Map<string, number[]>();
   private readonly customCounters = new Map<string, number>();
   private readonly customGauges = new Map<string, number>();
+  private readonly domainEvents: Array<{
+    event: string;
+    module: string;
+    severity: 'info' | 'warning' | 'error';
+    payload?: unknown;
+    timestamp: string;
+  }> = [];
 
   trackRequest(route: string, durationMs: number, isError: boolean) {
     this.requestCountByRoute.set(route, (this.requestCountByRoute.get(route) ?? 0) + 1);
@@ -28,6 +35,53 @@ export class ObservabilityService {
 
   setGauge(metric: string, value: number) {
     this.customGauges.set(metric, value);
+  }
+
+  recordDomainEvent(
+    module: string,
+    event: string,
+    severity: 'info' | 'warning' | 'error' = 'info',
+    payload?: unknown,
+  ) {
+    this.domainEvents.unshift({
+      module,
+      event,
+      severity,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (this.domainEvents.length > 500) {
+      this.domainEvents.pop();
+    }
+  }
+
+  getDomainEvents(module?: string, limit = 100) {
+    return this.domainEvents
+      .filter(item => !module || item.module === module)
+      .slice(0, Math.max(1, Math.min(limit, 500)));
+  }
+
+  getModuleHealthSummary() {
+    const grouped = new Map<string, { total: number; errors: number; warnings: number }>();
+
+    for (const event of this.domainEvents) {
+      const current = grouped.get(event.module) ?? { total: 0, errors: 0, warnings: 0 };
+      current.total += 1;
+      if (event.severity === 'error') {
+        current.errors += 1;
+      }
+      if (event.severity === 'warning') {
+        current.warnings += 1;
+      }
+      grouped.set(event.module, current);
+    }
+
+    return [...grouped.entries()].map(([module, stats]) => ({
+      module,
+      status: stats.errors > 0 ? 'degraded' : stats.warnings > 0 ? 'warning' : 'healthy',
+      ...stats,
+    }));
   }
 
   getMetricsSnapshot() {
@@ -64,6 +118,8 @@ export class ObservabilityService {
       routes: metrics,
       counters: [...this.customCounters.entries()].map(([metric, value]) => ({ metric, value })),
       gauges: [...this.customGauges.entries()].map(([metric, value]) => ({ metric, value })),
+      moduleHealth: this.getModuleHealthSummary(),
+      recentDomainEvents: this.getDomainEvents(undefined, 25),
     };
   }
 }

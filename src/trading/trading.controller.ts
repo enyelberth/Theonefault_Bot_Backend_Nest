@@ -25,6 +25,7 @@ import {
 import { TradingService } from './trading.service';
 import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
 import { UpdateTradingOrderDto } from './dto/update-tradingOrder.dto';
+import { SimulateTradingOrderDto } from './dto/simulate-trading-order.dto';
 import { OrderStatus } from '@prisma/client';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
 import { Roles } from 'src/authA/roles.decorator';
@@ -47,6 +48,15 @@ export class TradingController {
   @ApiNotFoundResponse({ description: 'Cuenta o entidad relacionada no encontrada.' })
   async create(@Body() createDto: CreateTradingOrderDto) {
     return this.tradingService.createTradingOrder(createDto);
+  }
+
+  @Post('simulate')
+  @Roles('ADMIN', 'OPERATOR', 'TRADER')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 30, windowMs: 60_000 })
+  @ApiOperation({ summary: 'Simular orden antes de ejecutarla con validaciones de riesgo y horario' })
+  async simulate(@Body() simulateDto: SimulateTradingOrderDto) {
+    return this.tradingService.simulateTradingOrder(simulateDto);
   }
   @Public()
 
@@ -127,5 +137,13 @@ export class TradingController {
     // Si implementas monitorPricesAndCompleteOrders, descomenta y ajusta esta llamada
     // await this.tradingService.monitorPricesAndCompleteOrders(currentPrice);
     return { message: 'Monitoreo ejecutado correctamente.' };
+  }
+
+  @Get('diagnostics/summary')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiQuery({ name: 'accountId', required: false, type: Number })
+  @ApiOperation({ summary: 'Diagnóstico operativo del módulo de trading' })
+  async getDiagnostics(@Query('accountId') accountId?: string) {
+    return this.tradingService.getTradingDiagnostics(accountId ? Number(accountId) : undefined);
   }
 }

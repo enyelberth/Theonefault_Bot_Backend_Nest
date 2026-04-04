@@ -731,4 +731,110 @@ export class AnalyticsService {
   getRuntimeMetrics() {
     return this.observability.getMetricsSnapshot();
   }
+
+  async getPeriodComparison(accountId?: number) {
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const prevWeekStart = new Date(todayStart.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    const [today, yesterday, week, prevWeek] = await Promise.all([
+      this.getRiskMetrics(todayStart.toISOString(), now.toISOString(), accountId),
+      this.getRiskMetrics(yesterdayStart.toISOString(), todayStart.toISOString(), accountId),
+      this.getRiskMetrics(weekStart.toISOString(), now.toISOString(), accountId),
+      this.getRiskMetrics(prevWeekStart.toISOString(), weekStart.toISOString(), accountId),
+    ]);
+
+    return { today, yesterday, week, prevWeek };
+  }
+
+  async getBenchmark(accountId?: number) {
+    const orders = await this.prisma.tradingOrder.findMany({
+      where: { accountId: accountId ?? undefined, profit_loss: { not: null } },
+      select: { accountId: true, symbol: true, profit_loss: true },
+    });
+
+    const grouped = new Map<string, number>();
+    for (const order of orders) {
+      const key = `${order.accountId}:${order.symbol}`;
+      grouped.set(key, (grouped.get(key) ?? 0) + Number(order.profit_loss ?? 0));
+    }
+
+    return [...grouped.entries()]
+      .map(([key, totalPnl]) => {
+        const [accountIdValue, symbol] = key.split(':');
+        return { accountId: Number(accountIdValue), symbol, totalPnl };
+      })
+      .sort((a, b) => b.totalPnl - a.totalPnl);
+  }
+
+  async getHeatmap(accountId?: number) {
+    const orders = await this.prisma.tradingOrder.findMany({
+      where: { accountId: accountId ?? undefined, closed_time: { not: null }, profit_loss: { not: null } },
+      select: { closed_time: true, profit_loss: true },
+    });
+
+    const heatmap = new Map<string, number>();
+    for (const order of orders) {
+      if (!order.closed_time) {
+        continue;
+      }
+      const day = order.closed_time.getUTCDay();
+      const hour = order.closed_time.getUTCHours();
+      const key = `${day}:${hour}`;
+      heatmap.set(key, (heatmap.get(key) ?? 0) + Number(order.profit_loss ?? 0));
+    }
+
+    return [...heatmap.entries()].map(([key, totalPnl]) => {
+      const [dayOfWeek, hour] = key.split(':');
+      return { dayOfWeek: Number(dayOfWeek), hourUtc: Number(hour), totalPnl };
+    });
+  }
+
+  async getCohorts(accountId?: number) {
+    const orders = await this.prisma.tradingOrder.findMany({
+      where: { accountId: accountId ?? undefined, closed_time: { not: null }, profit_loss: { not: null } },
+      select: { symbol: true, client_order_id: true, profit_loss: true, closed_time: true },
+    });
+
+    const cohorts = new Map<string, { trades: number; pnl: number }>();
+    for (const order of orders) {
+      const cohort = order.client_order_id.startsWith('paper:') ? 'paper' : order.symbol;
+      const current = cohorts.get(cohort) ?? { trades: 0, pnl: 0 };
+      current.trades += 1;
+      current.pnl += Number(order.profit_loss ?? 0);
+      cohorts.set(cohort, current);
+    }
+
+    return [...cohorts.entries()].map(([cohort, value]) => ({ cohort, ...value }));
+  }
+
+  async getDrilldown(accountId?: number, symbol?: string) {
+    const [orders, journalEntries] = await Promise.all([
+      this.prisma.tradingOrder.findMany({
+        where: {
+          accountId: accountId ?? undefined,
+          symbol: symbol ?? undefined,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.journalEntry.findMany({
+        where: {
+          lines: accountId
+            ? { some: { accountId } }
+            : undefined,
+        },
+        include: { lines: true },
+        orderBy: { entryDate: 'desc' },
+        take: 100,
+      }),
+    ]);
+
+    return {
+      orders,
+      journalEntries,
+    };
+  }
 }

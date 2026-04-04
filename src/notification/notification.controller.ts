@@ -20,6 +20,26 @@ export class NotificationController {
   async create(@Body() createNotificationDto: CreateNotificationDto): Promise<Notification> {
     return await this.notificationService.create(createNotificationDto);
   }
+
+  @Post('templated')
+  @ApiOperation({ summary: 'Crear notificación usando plantilla por severidad y canal' })
+  async createTemplated(
+    @Body() body: {
+      userId: number;
+      severity: 'INFO' | 'WARNING' | 'CRITICAL';
+      channel: 'OPERATIVA' | 'SEGURIDAD' | 'CONTABILIDAD' | 'SISTEMA';
+      event: string;
+      message: string;
+    },
+  ) {
+    return this.notificationService.createTemplatedNotification(body);
+  }
+
+  @Post('daily-digest/:userId')
+  @ApiOperation({ summary: 'Generar digest diario automático con PnL, syncs y eventos recientes' })
+  async createDailyDigest(@Param('userId') userId: string) {
+    return this.notificationService.createDailyDigest(Number(userId));
+  }
   @Patch(':id/read')
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   @ApiParam({ name: 'id', type: Number })

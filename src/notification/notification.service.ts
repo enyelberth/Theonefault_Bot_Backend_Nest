@@ -64,4 +64,53 @@ export class NotificationService {
       where: { id },
     });
   }
+
+  async createTemplatedNotification(payload: {
+    userId: number;
+    severity: 'INFO' | 'WARNING' | 'CRITICAL';
+    channel: 'OPERATIVA' | 'SEGURIDAD' | 'CONTABILIDAD' | 'SISTEMA';
+    event: string;
+    message: string;
+  }): Promise<Notification> {
+    return this.prisma.notification.create({
+      data: {
+        userId: payload.userId,
+        title: `[${payload.severity}][${payload.channel}] ${payload.event}`,
+        message: payload.message,
+        read: false,
+      },
+    });
+  }
+
+  async createDailyDigest(userId: number) {
+    const [notifications, latestSyncs, latestKpis] = await Promise.all([
+      this.prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      (this.prisma as any).binanceSyncLog?.findMany?.({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }) ?? [],
+      (this.prisma as any).dailyKpi?.findMany?.({
+        orderBy: { kpiDate: 'desc' },
+        take: 3,
+      }) ?? [],
+    ]);
+
+    const digestLines = [
+      `Notificaciones recientes: ${notifications.length}`,
+      `Syncs Binance recientes: ${latestSyncs.length}`,
+      `KPIs diarios recientes: ${latestKpis.length}`,
+    ];
+
+    return this.createTemplatedNotification({
+      userId,
+      severity: 'INFO',
+      channel: 'SISTEMA',
+      event: 'DAILY_DIGEST',
+      message: digestLines.join(' | '),
+    });
+  }
 }

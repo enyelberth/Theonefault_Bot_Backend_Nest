@@ -73,4 +73,38 @@ export class CreateTradingOrderDto {
   @IsOptional()
   @IsDecimal()
   profit_loss?: number | null;
+
+  @ApiPropertyOptional({ description: 'Límite máximo de pérdida diaria permitido para esta operación' })
+  @IsOptional()
+  @IsDecimal()
+  maxDailyLoss?: number;
+
+  @ApiPropertyOptional({ description: 'Máximo drawdown permitido para la cuenta al intentar operar' })
+  @IsOptional()
+  @IsDecimal()
+  maxDrawdown?: number;
+
+  @ApiPropertyOptional({ description: 'Exposición máxima permitida por símbolo' })
+  @IsOptional()
+  @IsDecimal()
+  maxSymbolExposure?: number;
+
+  @ApiPropertyOptional({ description: 'Hora UTC inicial permitida para ejecutar la orden', minimum: 0, maximum: 23 })
+  @IsOptional()
+  @IsInt()
+  allowedFromHourUtc?: number;
+
+  @ApiPropertyOptional({ description: 'Hora UTC final permitida para ejecutar la orden', minimum: 0, maximum: 23 })
+  @IsOptional()
+  @IsInt()
+  allowedToHourUtc?: number;
+
+  @ApiPropertyOptional({ description: 'Motivo o señal del bot para auditar la decisión' })
+  @IsOptional()
+  @IsString()
+  decisionReason?: string;
+
+  @ApiPropertyOptional({ description: 'Marca la orden como paper trading' })
+  @IsOptional()
+  paperTrading?: boolean;
 }

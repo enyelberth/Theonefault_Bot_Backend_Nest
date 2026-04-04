@@ -407,6 +407,200 @@ export class JournalEntryService {
     });
   }
 
+  async reopenAccountingPeriod(id: number, reopenedBy?: string) {
+    const prismaAny = this.prisma as any;
+    const period = await prismaAny.accountingPeriod.findUnique({ where: { id } });
+    if (!period) {
+      throw new NotFoundException(`Período contable ${id} no encontrado.`);
+    }
+
+    return prismaAny.accountingPeriod.update({
+      where: { id },
+      data: {
+        status: 'OPEN',
+        closedAt: null,
+        closedBy: reopenedBy ? `REOPENED_BY:${reopenedBy}` : null,
+      },
+    });
+  }
+
+  async getJournalReport(from?: string, to?: string) {
+    const where = {
+      entryDate: {
+        gte: from ? new Date(from) : undefined,
+        lte: to ? new Date(to) : undefined,
+      },
+    };
+
+    const entries = await this.prisma.journalEntry.findMany({
+      where,
+      include: {
+        lines: true,
+        status: true,
+      },
+      orderBy: [{ entryDate: 'asc' }, { id: 'asc' }],
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totalEntries: entries.length,
+      entries,
+    };
+  }
+
+  async getGeneralLedger(accountId: number, from?: string, to?: string) {
+    const lines = await this.prisma.journalEntryLine.findMany({
+      where: {
+        accountId,
+        journalEntry: {
+          entryDate: {
+            gte: from ? new Date(from) : undefined,
+            lte: to ? new Date(to) : undefined,
+          },
+        },
+      },
+      include: {
+        journalEntry: true,
+      },
+      orderBy: [{ journalEntry: { entryDate: 'asc' } }, { id: 'asc' }],
+    });
+
+    let runningBalance = new Prisma.Decimal(0);
+    const movements = lines.map(line => {
+      const signed = this.normalizeEntryType(line.entryType) === EntryType.INGRESO
+        ? this.toDecimal(line.amount)
+        : this.toDecimal(line.amount).mul(-1);
+      runningBalance = runningBalance.plus(signed);
+
+      return {
+        entryId: line.entryId,
+        date: line.journalEntry.entryDate,
+        currencyCode: line.currencyCode,
+        entryType: this.normalizeEntryType(line.entryType),
+        amount: this.decimalToString(line.amount),
+        runningBalance: runningBalance.toString(),
+        description: line.journalEntry.description,
+      };
+    });
+
+    return {
+      accountId,
+      from,
+      to,
+      movements,
+      endingBalance: runningBalance.toString(),
+    };
+  }
+
+  async getTrialBalance(from?: string, to?: string) {
+    const lines = await this.prisma.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          entryDate: {
+            gte: from ? new Date(from) : undefined,
+            lte: to ? new Date(to) : undefined,
+          },
+        },
+      },
+      include: {
+        account: true,
+      },
+    });
+
+    const balances = new Map<string, {
+      accountId: number;
+      accountEmail: string;
+      currencyCode: string;
+      debit: Prisma.Decimal;
+      credit: Prisma.Decimal;
+      net: Prisma.Decimal;
+    }>();
+
+    for (const line of lines) {
+      const key = `${line.accountId}:${line.currencyCode}`;
+      const current = balances.get(key) ?? {
+        accountId: line.accountId,
+        accountEmail: line.account.email,
+        currencyCode: line.currencyCode,
+        debit: new Prisma.Decimal(0),
+        credit: new Prisma.Decimal(0),
+        net: new Prisma.Decimal(0),
+      };
+
+      if (this.normalizeEntryType(line.entryType) === EntryType.INGRESO) {
+        current.debit = current.debit.plus(line.amount);
+        current.net = current.net.plus(line.amount);
+      } else {
+        current.credit = current.credit.plus(line.amount);
+        current.net = current.net.minus(line.amount);
+      }
+
+      balances.set(key, current);
+    }
+
+    return {
+      from,
+      to,
+      rows: [...balances.values()].map(item => ({
+        accountId: item.accountId,
+        accountEmail: item.accountEmail,
+        currencyCode: item.currencyCode,
+        debit: item.debit.toString(),
+        credit: item.credit.toString(),
+        net: item.net.toString(),
+      })),
+    };
+  }
+
+  async getProfitLossReport(from?: string, to?: string) {
+    const [accounting, trading] = await Promise.all([
+      this.getJournalReport(from, to),
+      this.prisma.tradingOrder.findMany({
+        where: {
+          closed_time: {
+            gte: from ? new Date(from) : undefined,
+            lte: to ? new Date(to) : undefined,
+          },
+          profit_loss: { not: null },
+        },
+        select: {
+          symbol: true,
+          status: true,
+          profit_loss: true,
+          closed_time: true,
+        },
+      }),
+    ]);
+
+    let income = new Prisma.Decimal(0);
+    let expense = new Prisma.Decimal(0);
+    for (const entry of accounting.entries) {
+      for (const line of entry.lines) {
+        if (this.normalizeEntryType(line.entryType) === EntryType.INGRESO) {
+          income = income.plus(line.amount);
+        } else {
+          expense = expense.plus(line.amount);
+        }
+      }
+    }
+
+    const realizedTrading = trading.reduce(
+      (acc, order) => acc.plus(this.toDecimal(order.profit_loss ?? 0)),
+      new Prisma.Decimal(0),
+    );
+
+    return {
+      from,
+      to,
+      accountingIncome: income.toString(),
+      accountingExpense: expense.toString(),
+      accountingNet: income.minus(expense).toString(),
+      tradingRealizedPnL: realizedTrading.toString(),
+      consolidatedPnL: income.minus(expense).plus(realizedTrading).toString(),
+      tradingOrders: trading,
+    };
+  }
+
   async reverseEntry(id: number, dto: ReverseJournalEntryDto) {
     await this.validateDto(dto);
 
