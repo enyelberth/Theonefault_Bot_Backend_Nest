@@ -1,58 +1,62 @@
 import { BinanceService } from "src/binance/binance.service";
-import { GridBuyStrategy } from "src/strategies/grid-buy.strategy";
-import { GridBuyMarginStrategy } from "src/strategies/grid_buy_margin.strategy";
-import { GridFullStrategy } from "src/strategies/grid_full_strategy";
-import { GridSellMarginFixedStrategy } from "src/strategies/grid_sell_margin.fixed.strategy";
-import { GridSellMarginStrategy } from "src/strategies/grid_sell_margin.strategy";
-import { RsiStrategy } from "src/strategies/rsi.strategy";
+import { GridBuyStrategy } from "src/strategies/spot/grid-buy.strategy";
+import { GridBuyMarginStrategy } from "src/strategies/margin/grid_buy_margin.strategy";
+import { GridFullStrategy } from "src/strategies/margin/grid_full_strategy";
+import { GridSellMarginFixedStrategy } from "src/strategies/margin/grid_sell_margin.fixed.strategy";
+import { GridSellMarginStrategy } from "src/strategies/margin/grid_sell_margin.strategy";
+import { EmaAdxTrendMarginStrategy } from "src/strategies/margin/ema-adx-trend-margin.strategy";
+import { StochRsiScalperMarginStrategy } from "src/strategies/margin/stoch-rsi-scalper-margin.strategy";
+import { EmaAdxTrendStrategy } from "src/strategies/spot/ema-adx-trend.strategy";
+import { RsiStrategy } from "src/strategies/spot/rsi.strategy";
+import { StochRsiScalperStrategy } from "src/strategies/spot/stoch-rsi-scalper.strategy";
 import { TradingStrategy } from "src/strategies/trading-strategy.interface";
-import {GridBuyMarginFixedStrategy} from "src/strategies/grid_buy_margin_fixed.strategy"
+import {GridBuyMarginFixedStrategy} from "src/strategies/margin/grid_buy_margin_fixed.strategy"
+
+export type StrategyType =
+  | 'gridBuy'
+  | 'gridBuyMargin'
+  | 'gridSellMargin'
+  | 'gridBuyMarginFixed'
+  | 'gridSellMarginFixed'
+  | 'rsi'
+  | 'emaAdxTrend'
+  | 'emaAdxTrendMargin'
+  | 'stochRsiScalper'
+  | 'stochRsiScalperMargin'
+  | 'gridFull';
 
 export class StrategyFactory {
-  static createStrategy(type: string, binanceService: BinanceService,id:string ,symbol: string, config: any): TradingStrategy {
+  static createStrategy(type: string, binanceService: BinanceService,id:string ,symbol: string, config: unknown): TradingStrategy {
+    const assignBase = (strategy: TradingStrategy): TradingStrategy => {
+      strategy.symbol = symbol;
+      strategy.config = config;
+      strategy.id = id;
+      return strategy;
+    };
+
     switch (type) {
       case 'gridBuy':
-        const grid = new GridBuyStrategy(binanceService);
-        grid.symbol = symbol;
-        grid.config = config;
-        grid.id = id;
-        return grid;
+        return assignBase(new GridBuyStrategy(binanceService));
       case 'gridBuyMargin':
-        const gridBuyMargin = new GridBuyMarginStrategy(binanceService);
-        gridBuyMargin.symbol = symbol;
-        gridBuyMargin.config = config;
-        gridBuyMargin.id= id;
-        return gridBuyMargin;
+        return assignBase(new GridBuyMarginStrategy(binanceService));
       case 'gridSellMargin':
-        const gridSellMargin = new GridSellMarginStrategy(binanceService);
-        gridSellMargin.symbol = symbol;
-        gridSellMargin.config = config;
-        gridSellMargin.id= id;
-        return gridSellMargin;
+        return assignBase(new GridSellMarginStrategy(binanceService));
         case 'gridBuyMarginFixed':
-        const gridBuyMarginFixed = new GridBuyMarginFixedStrategy(binanceService);
-        gridBuyMarginFixed.symbol = symbol;
-        gridBuyMarginFixed.config = config;
-        gridBuyMarginFixed.id= id;
-        return gridBuyMarginFixed;
+        return assignBase(new GridBuyMarginFixedStrategy(binanceService));
       case 'gridSellMarginFixed':
-        const gridSellMarginFixed = new GridSellMarginFixedStrategy(binanceService);
-        gridSellMarginFixed.symbol = symbol;
-        gridSellMarginFixed.config = config;
-        gridSellMarginFixed.id= id;
-        return gridSellMarginFixed;
+        return assignBase(new GridSellMarginFixedStrategy(binanceService));
       case 'rsi':
-        const rsi = new RsiStrategy(binanceService);
-        rsi.symbol = symbol;
-        rsi.config = config;
-        rsi.id =id;
-        return rsi;
+        return assignBase(new RsiStrategy(binanceService));
+      case 'emaAdxTrend':
+        return assignBase(new EmaAdxTrendStrategy(binanceService));
+      case 'emaAdxTrendMargin':
+        return assignBase(new EmaAdxTrendMarginStrategy(binanceService));
+      case 'stochRsiScalper':
+        return assignBase(new StochRsiScalperStrategy(binanceService));
+      case 'stochRsiScalperMargin':
+        return assignBase(new StochRsiScalperMarginStrategy(binanceService));
       case 'gridFull':
-        const gridFull = new GridFullStrategy(binanceService);
-        gridFull.symbol = symbol;
-        gridFull.config = config;
-        gridFull.id=id;
-        return gridFull;
+        return assignBase(new GridFullStrategy(binanceService));
       default:
         throw new Error(`Estrategia desconocida: ${type}`);
     }

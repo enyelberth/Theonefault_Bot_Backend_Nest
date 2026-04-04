@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TradingStrategy } from './trading-strategy.interface';
-import { BinanceService } from '../binance/binance.service';
+import { TradingStrategy } from '../trading-strategy.interface';
+import { BinanceService } from '../../binance/binance.service';
 import { LoggerMessages } from 'src/utils/logs';
 import { Order, OrderLevel } from 'src/interfaces/order';
+import { StrategyRuntimeUtils } from '../shared/strategy-runtime.utils';
 
 @Injectable()
 export class GridBuyMarginFixedStrategy implements TradingStrategy {
@@ -75,7 +76,7 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
       }
     }
   }catch(error){
-    console.log(error);
+    this.logMessages.logError('Error reactivating stopped levels:', error);
   }
   }
 
@@ -312,29 +313,24 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
   }
 
   private roundToStep(value: number, step: string): number {
-    const stepFloat = parseFloat(step);
-    const precision = (step.split('.')[1] || '').length;
-    const adjusted = Math.floor(value / stepFloat) * stepFloat;
-    return parseFloat(adjusted.toFixed(precision));
+    return StrategyRuntimeUtils.roundToStep(value, step);
   }
 
-  private sleep(ms: number) {
-    return new Promise((res) => setTimeout(res, ms));
+  private async sleep(ms: number): Promise<void> {
+    await StrategyRuntimeUtils.sleepInterruptible(ms, () => this.isRunning);
   }
 
   private calculateSleepDuration(): number {
-    const minMs = this.config.minSleepMs ?? 15000;
-    const maxMs = this.config.maxSleepMs ?? minMs;
-    if (maxMs <= minMs) return minMs;
-    return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    return StrategyRuntimeUtils.calculateSleepDuration(this.config.minSleepMs, this.config.maxSleepMs);
   }
 
   private async exponentialBackoff(baseDelayMs: number, maxRetries: number) {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const waitTime = baseDelayMs * 2 ** attempt;
-      this.logMessages.logInfo(`Retrying in ${waitTime} ms...`);
-      await this.sleep(waitTime);
-    }
+    await StrategyRuntimeUtils.exponentialBackoff(
+      baseDelayMs,
+      maxRetries,
+      () => this.isRunning,
+      (waitTime) => this.logMessages.logInfo(`Retrying in ${waitTime} ms...`),
+    );
   }
 
   public updateProfitMargin(newProfitMargin: number) {
@@ -378,6 +374,30 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
         this.logMessages.logInfo(`Orden SELL cancelada en nivel ${levelIndex}`);
       }
     }
+
+    this.reindexStructuresAfterLevelRemoval(levelIndex);
+  }
+
+  private reindexStructuresAfterLevelRemoval(levelIndex: number) {
+    this.openBuyOrders = this.reindexOrderMap(this.openBuyOrders, levelIndex);
+    this.openSellOrders = this.reindexOrderMap(this.openSellOrders, levelIndex);
+
+    this.stoppedLossLevels = new Set(
+      Array.from(this.stoppedLossLevels)
+        .filter((index) => index !== levelIndex)
+        .map((index) => (index > levelIndex ? index - 1 : index)),
+    );
+  }
+
+  private reindexOrderMap(source: Map<number, Order>, levelIndex: number): Map<number, Order> {
+    const reindexed = new Map<number, Order>();
+    for (const [index, order] of source.entries()) {
+      if (index === levelIndex) {
+        continue;
+      }
+      reindexed.set(index > levelIndex ? index - 1 : index, order);
+    }
+    return reindexed;
   }
 
   public updateOrderLevelQuantity(levelIndex: number, newQuantity: number) {
@@ -405,8 +425,7 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
   }
 
   public async clearAllOrderLevels() {
-    // Clonamos array para evitar modificar mientras iteramos
-    const levelsIndices = this.config.ordersLevels.map((_, i) => i);
+    const levelsIndices = this.config.ordersLevels.map((_, i) => i).sort((a, b) => b - a);
     for (const index of levelsIndices) {
       await this.removeOrderLevel(index);
     }
@@ -439,5 +458,10 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
     } else {
       this.logMessages.logWarn(`Nivel ${levelIndex} no estaba detenido.`);
     }
+  }
+
+  async stop(): Promise<void> {
+    this.isRunning = false;
+    this.logMessages.logInfo(`Stopping Grid BUY FIXED on ${this.symbol}`);
   }
 }

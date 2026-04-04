@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TradingStrategy } from './trading-strategy.interface';
-import { BinanceService } from '../binance/binance.service';
+import { TradingStrategy } from '../trading-strategy.interface';
+import { BinanceService } from '../../binance/binance.service';
 import { Order, OrderLevel } from 'src/interfaces/order';
 import { LoggerMessages } from 'src/utils/logs';
+import { StrategyRuntimeUtils } from '../shared/strategy-runtime.utils';
 
 
 @Injectable()
@@ -327,10 +328,7 @@ export class GridFullStrategy implements TradingStrategy {
   }
 
   private roundToStep(value: number, step: string): number {
-    const stepFloat = parseFloat(step);
-    const precision = (step.split('.')[1] || '').length;
-    const adjusted = Math.floor(value / stepFloat) * stepFloat;
-    return parseFloat(adjusted.toFixed(precision));
+    return StrategyRuntimeUtils.roundToStep(value, step);
   }
 
   private async getCurrentPrice(): Promise<number> {
@@ -338,23 +336,21 @@ export class GridFullStrategy implements TradingStrategy {
     return parseFloat(resp.price);
   }
 
-  private sleep(ms: number) {
-    return new Promise((res) => setTimeout(res, ms));
+  private async sleep(ms: number): Promise<void> {
+    await StrategyRuntimeUtils.sleepInterruptible(ms, () => this.isRunning);
   }
 
   private calculateSleepDuration(): number {
-    const minMs = this.config.minSleepMs ?? 15000;
-    const maxMs = this.config.maxSleepMs ?? minMs;
-    if (maxMs <= minMs) return minMs;
-    return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    return StrategyRuntimeUtils.calculateSleepDuration(this.config.minSleepMs, this.config.maxSleepMs);
   }
 
   private async exponentialBackoff(baseDelayMs: number, maxRetries: number) {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const waitTime = baseDelayMs * Math.pow(2, attempt);
-      this.logMessages.logInfo(`Retrying in ${waitTime} ms...`);
-      await this.sleep(waitTime);
-    }
+    await StrategyRuntimeUtils.exponentialBackoff(
+      baseDelayMs,
+      maxRetries,
+      () => this.isRunning,
+      (waitTime) => this.logMessages.logInfo(`Retrying in ${waitTime} ms...`),
+    );
   }
 
   private async cancelExistingOrdersInRange() {
@@ -418,5 +414,10 @@ export class GridFullStrategy implements TradingStrategy {
 
   getProfitLoss() {
     return this.profitLoss;
+  }
+
+  async stop(): Promise<void> {
+    this.isRunning = false;
+    this.logMessages.logInfo(`Stopping Grid Full Strategy on ${this.symbol}`);
   }
 }

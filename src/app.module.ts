@@ -37,12 +37,14 @@ import { TradingExecutionModule } from './trading-execution/trading-execution.mo
 import { PrismaModule } from 'prisma/prisma.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { StrategyMonitoringModule } from './strategy-monitoring/strategy-monitoring.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { StructuredLoggingInterceptor } from './observability/structured-logging.interceptor';
 import { CorrelationIdMiddleware } from './observability/correlation-id.middleware';
 
 @Module({
   imports: [
+    StrategyMonitoringModule,
     ObservabilityModule,
     AuthModule,
     PrismaModule,

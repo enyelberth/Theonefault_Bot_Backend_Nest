@@ -6,9 +6,11 @@ import { AccountService } from 'src/account/account.service';
 import { BinanceService } from 'src/binance/binance.service';
 import { BotService } from 'src/bot/bot.service';
 import { AlertService } from 'src/alert/alert.service';
+import { StrategyOpsService } from 'src/strategy-monitoring/strategy-ops.service';
 
 interface ChatState {
   waitingForSymbol?: boolean;
+  waitingForPanicStrategyId?: boolean;
   userId?: number;
   role?: 'admin' | 'user';
 }
@@ -30,6 +32,8 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
   private alerts: PriceAlert[] = [];
   private isPolling = false;
   private alertIntervalRef?: NodeJS.Timeout;
+  private riskEventIntervalRef?: NodeJS.Timeout;
+  private readonly notifiedRiskEvents = new Set<string>();
 
   private readonly adminUserIds = this.readNumberList(
     process.env.ADMIN_TELEGRAM_IDS,
@@ -47,6 +51,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     private binanceService: BinanceService,
     private botService: BotService,
     private alertService: AlertService,
+    private strategyOpsService: StrategyOpsService,
   ) { }
 
   private readNumberList(rawValue: string | undefined, defaults: number[]): number[] {
@@ -74,6 +79,9 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     this.alertIntervalRef = setInterval(() => {
       void this.checkAlerts();
     }, 60000);
+    this.riskEventIntervalRef = setInterval(() => {
+      void this.notifyCriticalRiskEvents();
+    }, 20000);
 
     // setInterval(() => this.notifyCertainNumbersPrecios(), 240000);
 
@@ -85,6 +93,10 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     if (this.alertIntervalRef) {
       clearInterval(this.alertIntervalRef);
       this.alertIntervalRef = undefined;
+    }
+    if (this.riskEventIntervalRef) {
+      clearInterval(this.riskEventIntervalRef);
+      this.riskEventIntervalRef = undefined;
     }
   }
   async notifyCertainNumbersPrecios() {
@@ -137,6 +149,13 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    if (state.waitingForPanicStrategyId) {
+      state.waitingForPanicStrategyId = false;
+      this.chatStates.set(chatId, state);
+      await this.executePanicStop(chatId, text.trim());
+      return;
+    }
+
 
     if (text.startsWith('/crear_estrategia_json')) {
       // Separar el texto después del comando como JSON
@@ -160,6 +179,12 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendMessage(chatId,
           'Comandos:\n' +
           '/menu - Mostrar menú\n' +
+          '/dashboard [strategyId] - Resumen operativo\n' +
+          '/performance [strategyId] - Rendimiento de estrategia\n' +
+          '/performance_history [strategyId] [from] [to] - Histórico diario\n' +
+          '/execution_log [strategyId] [symbol] - Eventos de ejecución\n' +
+          '/risk_events - Últimos eventos críticos de riesgo\n' +
+          '/panic_stop [strategyId] [symbolOpcional] [spot|margin] - Liquidación de emergencia\n' +
           '/crear_estrategia - Crear estrategia\n' +
           '/alertadelete [id] - Eliminar alerta\n' +
           '/stop_estrategia - Uso: /stop_estrategia [symbol] [id]\n' +
@@ -254,6 +279,36 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
           await this.sendMessage(chatId, 'Error deteniendo estrategia: ' + (error as Error).message);
         }
         break;
+      case '/dashboard':
+        await this.handleDashboard(chatId, args);
+        break;
+      case '/performance':
+        await this.handlePerformance(chatId, args);
+        break;
+      case '/performance_history':
+        await this.handlePerformanceHistory(chatId, args);
+        break;
+      case '/execution_log':
+        await this.handleExecutionLog(chatId, args);
+        break;
+      case '/risk_events':
+        await this.handleRiskEvents(chatId);
+        break;
+      case '/panic_stop':
+        if (state.role !== 'admin') {
+          await this.sendMessage(chatId, 'No tienes permiso para ejecutar panic stop.');
+          return;
+        }
+
+        if (args.length === 0) {
+          state.waitingForPanicStrategyId = true;
+          this.chatStates.set(chatId, state);
+          await this.sendMessage(chatId, 'Escribe el strategyId para ejecutar panic stop.');
+          break;
+        }
+
+        await this.executePanicStop(chatId, args.join(' '));
+        break;
       case '/reset':
         await this.sendMessage(chatId, 'Uso: /reset');
         break;
@@ -324,6 +379,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const success = await this.botService.addOrderLevel(id, symbol.toUpperCase(), {
+        id: Date.now(),
         price,
         quantity
       });
@@ -367,17 +423,16 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
   }
   private async showMainMenu(chatId: number, role: 'admin' | 'user' = 'user') {
     const buttons = [
-      [{ text: 'Precios Criptos', callback_data: 'show_prices' }],
-      [{ text: 'Precio Moneda', callback_data: 'ask_symbol' }],
-      [{ text: 'Crear Alerta', callback_data: 'create_alert' }],
-      [{ text: 'Mis Cuentas', callback_data: 'list_accounts' }],
-      [{ text: 'Estrategias', callback_data: 'list_strategies' }],
-      [{ text: 'Start Estrategias', callback_data: 'start_strategy' }],
+      [{ text: 'Precios', callback_data: 'show_prices' }, { text: 'Moneda', callback_data: 'ask_symbol' }],
+      [{ text: 'Estrategias Activas', callback_data: 'list_strategies' }, { text: 'Dashboard', callback_data: 'show_dashboard' }],
+      [{ text: 'Performance', callback_data: 'show_performance' }, { text: 'Execution Log', callback_data: 'show_execution_log' }],
+      [{ text: 'Riesgo Crítico', callback_data: 'show_risk_events' }, { text: 'Panic Stop', callback_data: 'panic_stop' }],
+      [{ text: 'Alertas', callback_data: 'create_alert' }, { text: 'Mis Cuentas', callback_data: 'list_accounts' }],
     ];
     if (role === 'admin') {
       buttons.push([{ text: 'Actualizar Saldo', callback_data: 'update_balance' }]);
     }
-    buttons.push([{ text: 'Ayuda', callback_data: 'help' }]);
+    buttons.push([{ text: 'Ayuda', callback_data: 'help' }, { text: 'Refrescar Menu', callback_data: 'refresh_menu' }]);
 
     await this.sendMessage(chatId, '<b>Menú Principal</b> Selección:', {
       parse_mode: 'HTML',
@@ -425,9 +480,30 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       case 'list_strategies':
         await this.handleShowStrategies(chatId,[]);
            break;
-      case 'start_strategy':
-        await this.sendMessage(chatId,'Strategia iniciada');
-        break
+      case 'show_dashboard':
+        await this.handleDashboard(chatId, []);
+        break;
+      case 'show_performance':
+        await this.handlePerformance(chatId, []);
+        break;
+      case 'show_execution_log':
+        await this.handleExecutionLog(chatId, []);
+        break;
+      case 'show_risk_events':
+        await this.handleRiskEvents(chatId);
+        break;
+      case 'panic_stop': {
+        const state = this.chatStates.get(chatId);
+        if (state?.role !== 'admin') {
+          await this.sendMessage(chatId, 'No tienes permisos para panic stop.');
+          break;
+        }
+
+        state.waitingForPanicStrategyId = true;
+        this.chatStates.set(chatId, state);
+        await this.sendMessage(chatId, 'Escribe el strategyId para ejecutar panic stop.');
+        break;
+      }
       case 'delete_alert':
         await this.handleDeleteAlert(chatId, []);
      
@@ -442,6 +518,11 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       case 'help':
         await this.sendMessage(chatId, 'Usa /menu para opciones disponibles');
         break;
+      case 'refresh_menu': {
+        const state = this.chatStates.get(chatId);
+        await this.showMainMenu(chatId, state?.role);
+        break;
+      }
       default:
         await this.sendMessage(chatId, 'Opción no reconocida');
     }
@@ -578,6 +659,170 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
             `Alerta: ${alert.symbol} está ${alert.up_down} de $${alert.price}. Precio actual: $${price.toFixed(4)}`
           );
         }
+      }
+    }
+  }
+
+  private async handleDashboard(chatId: number, args: string[]) {
+    try {
+      const strategyId = args[0];
+      const dashboard = await this.botService.getDashboard(strategyId);
+      const totals = dashboard?.totals;
+      const topStrategies = (dashboard?.strategies ?? []).slice(0, 5)
+        .map((item: any) => `${item.strategyId} | ${item.symbol ?? '-'} | pnl=${Number(item.realizedPnl ?? 0).toFixed(4)} | fills=${item.fills}`)
+        .join('\n');
+
+      const message = [
+        '<b>Dashboard Operativo</b>',
+        `Estrategias: ${totals?.strategies ?? 0}`,
+        `Ordenes: ${totals?.orders ?? 0} | Fills: ${totals?.fills ?? 0}`,
+        `Canceladas: ${totals?.cancelled ?? 0} | Rechazadas: ${totals?.rejected ?? 0}`,
+        `PnL Realizado: ${Number(totals?.realizedPnl ?? 0).toFixed(4)}`,
+        topStrategies ? `\nTop estrategias:\n${topStrategies}` : '',
+      ].filter(Boolean).join('\n');
+
+      await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error cargando dashboard: ${(error as Error).message}`);
+    }
+  }
+
+  private async handlePerformance(chatId: number, args: string[]) {
+    try {
+      const strategyId = args[0];
+      const data = await this.botService.getPerformance(strategyId) as any;
+      const list = Array.isArray(data) ? data : data ? [data] : [];
+
+      if (!list.length) {
+        await this.sendMessage(chatId, 'No hay datos de performance disponibles.');
+        return;
+      }
+
+      const msg = list.slice(0, 8).map((item: any) =>
+        `${item.strategyId} | ${item.symbol} | pnl=${Number(item.realizedPnl ?? 0).toFixed(4)} | winRate=${Number(item.winRate ?? 0).toFixed(2)}% | openLots=${item.openLots ?? 0}`,
+      ).join('\n');
+
+      await this.sendMessage(chatId, `<b>Performance</b>\n${msg}`, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error obteniendo performance: ${(error as Error).message}`);
+    }
+  }
+
+  private async handlePerformanceHistory(chatId: number, args: string[]) {
+    try {
+      const [strategyId, from, to] = args;
+      const data = await this.botService.getPerformanceHistory(strategyId, from, to) as any;
+      const timeline = (data?.timeline ?? []).slice(-7);
+
+      if (!timeline.length) {
+        await this.sendMessage(chatId, 'No hay histórico para el rango solicitado.');
+        return;
+      }
+
+      const msg = timeline.map((item: any) =>
+        `${item.day}: pnlDia=${Number(item.dailyPnl ?? 0).toFixed(4)} | pnlAcum=${Number(item.cumulativePnl ?? 0).toFixed(4)} | fills=${item.fills}`,
+      ).join('\n');
+
+      await this.sendMessage(chatId, `<b>Histórico de Performance</b>\n${msg}`, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error en histórico: ${(error as Error).message}`);
+    }
+  }
+
+  private async handleExecutionLog(chatId: number, args: string[]) {
+    try {
+      const strategyId = args[0];
+      const symbol = args[1];
+      const rows = this.botService.getExecutionLog(strategyId, symbol).slice(0, 10) as any[];
+
+      if (!rows.length) {
+        await this.sendMessage(chatId, 'No hay eventos de ejecución para ese filtro.');
+        return;
+      }
+
+      const msg = rows.map((item: any) =>
+        `${item.timestamp ?? '-'} | ${item.event ?? '-'} | ${item.strategyId ?? '-'} | ${item.symbol ?? '-'}`,
+      ).join('\n');
+
+      await this.sendMessage(chatId, `<b>Execution Log</b>\n${msg}`, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error en execution log: ${(error as Error).message}`);
+    }
+  }
+
+  private async handleRiskEvents(chatId: number) {
+    const events = this.botService
+      .getExecutionLog()
+      .filter((item: any) => item.event === 'RISK_BLOCKED' || item.event === 'RISK_LIQUIDATION_TRIGGERED')
+      .slice(0, 10) as any[];
+
+    if (!events.length) {
+      await this.sendMessage(chatId, 'Sin eventos críticos de riesgo recientes.');
+      return;
+    }
+
+    const msg = events.map((item: any) =>
+      `${item.timestamp ?? '-'} | ${item.event} | ${item.strategyId ?? '-'} | ${item.reason ?? '-'}`,
+    ).join('\n');
+
+    await this.sendMessage(chatId, `<b>Risk Events</b>\n${msg}`, { parse_mode: 'HTML' });
+  }
+
+  private async executePanicStop(chatId: number, payload: string) {
+    const [strategyId, symbol, marketRaw] = payload.split(' ').filter(Boolean);
+    if (!strategyId) {
+      await this.sendMessage(chatId, 'Uso: /panic_stop [strategyId] [symbolOpcional] [spot|margin]');
+      return;
+    }
+
+    const market = marketRaw === 'margin' ? 'margin' : marketRaw === 'spot' ? 'spot' : undefined;
+
+    try {
+      const result = await this.botService.panicStop(strategyId, {
+        symbol,
+        market,
+      });
+
+      await this.sendMessage(
+        chatId,
+        `Panic stop ejecutado\nEstrategia: ${result.strategyId}\nSymbol: ${result.symbol}\nMarket: ${result.market}`,
+      );
+    } catch (error) {
+      await this.sendMessage(chatId, `Error ejecutando panic stop: ${(error as Error).message}`);
+    }
+  }
+
+  private async notifyCriticalRiskEvents() {
+    const events = this.strategyOpsService
+      .getExecutionLog()
+      .filter((item: any) => item.event === 'RISK_LIQUIDATION_TRIGGERED' || item.event === 'RISK_BLOCKED')
+      .slice(0, 30) as any[];
+
+    for (const event of events.reverse()) {
+      const key = `${event.timestamp}|${event.event}|${event.strategyId}|${event.symbol}|${event.reason ?? ''}`;
+      if (this.notifiedRiskEvents.has(key)) {
+        continue;
+      }
+
+      this.notifiedRiskEvents.add(key);
+      if (this.notifiedRiskEvents.size > 1000) {
+        const first = this.notifiedRiskEvents.values().next().value;
+        if (first) {
+          this.notifiedRiskEvents.delete(first);
+        }
+      }
+
+      const message = [
+        '<b>Alerta de Riesgo</b>',
+        `Evento: ${event.event}`,
+        `Estrategia: ${event.strategyId ?? '-'}`,
+        `Símbolo: ${event.symbol ?? '-'}`,
+        `Razón: ${event.reason ?? '-'}`,
+        `Hora: ${event.timestamp ?? '-'}`,
+      ].join('\n');
+
+      for (const chatId of this.notifyChats) {
+        await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
       }
     }
   }

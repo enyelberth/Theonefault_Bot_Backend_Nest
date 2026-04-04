@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
-import { GridBuyStrategy } from "./grid-buy.strategy";
-import { RsiStrategy } from "./rsi.strategy";
+import { GridBuyStrategy } from "./spot/grid-buy.strategy";
+import { RsiStrategy } from "./spot/rsi.strategy";
 import { PrismaClient } from "@prisma/client";
-import { GridFullStrategy } from "./grid_full_strategy";
-import {GridBuyMarginFixedStrategy} from "./grid_buy_margin_fixed.strategy"
+import { GridFullStrategy } from "./margin/grid_full_strategy";
+import {GridBuyMarginFixedStrategy} from "./margin/grid_buy_margin_fixed.strategy"
 
 @Module({
   providers: [GridBuyStrategy,GridBuyMarginFixedStrategy, GridFullStrategy,RsiStrategy,PrismaClient],

@@ -266,6 +266,20 @@ model TradingExecution {
   @@index([tradeTimestamp])
 }
 
+model StrategyEventLog {
+  id         BigInt   @id @default(autoincrement())
+  strategyId String?  @map("strategy_id")
+  symbol     String?
+  eventType  String   @map("event_type")
+  payload    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([strategyId, createdAt], map: "idx_strategy_event_log_strategy_time")
+  @@index([symbol, createdAt], map: "idx_strategy_event_log_symbol_time")
+  @@index([eventType, createdAt], map: "idx_strategy_event_log_type_time")
+  @@map("strategy_event_log")
+}
+
 model AccountingPeriod {
   id          Int                 @id @default(autoincrement())
   name        String              @unique

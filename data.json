@@ -1,0 +1,136 @@
+{
+  "startPayloads": [
+    {
+      "id": "ema-adx-spot-1",
+      "typeId": 1,
+      "symbol": "BTCUSDT",
+      "strategyType": "emaAdxTrend",
+      "config": {
+        "tradeQuantity": 0.001,
+        "interval": "1m",
+        "emaFastPeriod": 9,
+        "emaSlowPeriod": 21,
+        "adxPeriod": 14,
+        "adxThreshold": 20,
+        "atrPeriod": 14,
+        "stopLossAtrMultiplier": 1.0,
+        "takeProfitAtrMultiplier": 1.5,
+        "minSleepMs": 5000
+      }
+    },
+    {
+      "id": "ema-adx-margin-1",
+      "typeId": 1,
+      "symbol": "BTCUSDT",
+      "strategyType": "emaAdxTrendMargin",
+      "config": {
+        "tradeQuantity": 0.001,
+        "interval": "1m",
+        "emaFastPeriod": 9,
+        "emaSlowPeriod": 21,
+        "adxPeriod": 14,
+        "adxThreshold": 20,
+        "atrPeriod": 14,
+        "stopLossAtrMultiplier": 1.0,
+        "takeProfitAtrMultiplier": 1.5,
+        "minSleepMs": 5000
+      }
+    },
+    {
+      "id": "stoch-rsi-spot-1m-1",
+      "typeId": 1,
+      "symbol": "XRPFDUSD",
+      "strategyType": "stochRsiScalper",
+      "config": {
+        "tradeQuantity": 3,
+        "interval": "1m",
+        "emaFastPeriod": 9,
+        "emaSlowPeriod": 21,
+        "stochRsiPeriod": 14,
+        "stochRsiKPeriod": 3,
+        "stochRsiDPeriod": 3,
+        "stochRsiLowerBand": 25,
+        "stochRsiUpperBand": 80,
+        "atrPeriod": 14,
+        "stopLossAtrMultiplier": 1.0,
+        "takeProfitAtrMultiplier": 1.5,
+        "volumeLookback": 20,
+        "volumeMultiplier": 1.2,
+        "maxTradeDurationCandles": 12,
+        "minSleepMs": 5000
+      }
+    },
+    {
+      "id": "stoch-rsi-margin-1m-1",
+      "typeId": 1,
+      "symbol": "XRPFDUSD",
+      "strategyType": "stochRsiScalperMargin",
+      "config": {
+        "tradeQuantity": 3,
+        "interval": "1m",
+        "emaFastPeriod": 9,
+        "emaSlowPeriod": 21,
+        "stochRsiPeriod": 14,
+        "stochRsiKPeriod": 3,
+        "stochRsiDPeriod": 3,
+        "stochRsiLowerBand": 25,
+        "stochRsiUpperBand": 80,
+        "atrPeriod": 14,
+        "stopLossAtrMultiplier": 1.0,
+        "takeProfitAtrMultiplier": 1.5,
+        "volumeLookback": 20,
+        "volumeMultiplier": 1.2,
+        "maxTradeDurationCandles": 12,
+        "minSleepMs": 5000
+      }
+    },
+    {
+      "id": "stoch-rsi-spot-5m-1",
+      "typeId": 1,
+      "symbol": "XRPFDUSD",
+      "strategyType": "stochRsiScalper",
+      "config": {
+        "tradeQuantity": 3,
+        "interval": "5m",
+        "emaFastPeriod": 9,
+        "emaSlowPeriod": 21,
+        "stochRsiPeriod": 14,
+        "stochRsiKPeriod": 3,
+        "stochRsiDPeriod": 3,
+        "stochRsiLowerBand": 20,
+        "stochRsiUpperBand": 80,
+        "atrPeriod": 14,
+        "stopLossAtrMultiplier": 1.2,
+        "takeProfitAtrMultiplier": 1.8,
+        "volumeLookback": 20,
+        "volumeMultiplier": 1.1,
+        "maxTradeDurationCandles": 10,
+        "minSleepMs": 7000
+      }
+    },
+    {
+      "id": "stoch-rsi-margin-5m-1",
+      "typeId": 1,
+      "symbol": "XRPFDUSD",
+      "strategyType": "stochRsiScalperMargin",
+      "config": {
+        "tradeQuantity": 3,
+        "interval": "5m",
+        "emaFastPeriod": 9,
+        "emaSlowPeriod": 21,
+        "stochRsiPeriod": 14,
+        "stochRsiKPeriod": 3,
+        "stochRsiDPeriod": 3,
+        "stochRsiLowerBand": 20,
+        "stochRsiUpperBand": 80,
+        "atrPeriod": 14,
+        "stopLossAtrMultiplier": 1.2,
+        "takeProfitAtrMultiplier": 1.8,
+        "volumeLookback": 20,
+        "volumeMultiplier": 1.1,
+        "maxTradeDurationCandles": 10,
+        "minSleepMs": 7000
+      }
+    }
+  ]
+}

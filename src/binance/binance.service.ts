@@ -4,6 +4,9 @@ import axios from 'axios';
 import * as https from 'https';
 import { isNotEmptyObject } from 'class-validator';
 import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
+import { StrategyOpsService } from 'src/strategy-monitoring/strategy-ops.service';
+import { StrategyRuntimeContextService } from 'src/strategy-monitoring/strategy-runtime-context.service';
+import { PendingLiquidation } from 'src/strategy-monitoring/strategy-ops.service';
 
 @Injectable()
 export class BinanceService {
@@ -13,7 +16,10 @@ export class BinanceService {
   private readonly isProduction: boolean;
   private readonly enableMarginInDev: boolean;
 
-  constructor() {
+  constructor(
+    private readonly strategyOpsService: StrategyOpsService,
+    private readonly strategyRuntimeContext: StrategyRuntimeContextService,
+  ) {
     this.API_KEY = process.env.BINANCE_API_KEY || '';
     this.API_SECRET = process.env.BINANCE_API_SECRET || '';
     this.isProduction = process.env.NODE_ENV === 'production';
@@ -31,6 +37,158 @@ export class BinanceService {
     return crypto.createHmac('sha256', this.API_SECRET)
       .update(querystring)
       .digest('hex');
+  }
+
+  private getContext() {
+    return this.strategyRuntimeContext.getContext();
+  }
+
+  private floorToStep(quantity: number, stepSize: number): number {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return 0;
+    }
+
+    if (!Number.isFinite(stepSize) || stepSize <= 0) {
+      return quantity;
+    }
+
+    const steps = Math.floor(quantity / stepSize);
+    return Number((steps * stepSize).toFixed(12));
+  }
+
+  private extractBaseAsset(symbol: string): string {
+    const knownQuotes = ['USDT', 'FDUSD', 'BUSD', 'USDC', 'BTC', 'ETH', 'BNB', 'TRY'];
+    const quote = knownQuotes.find((q) => symbol.endsWith(q));
+    if (!quote) {
+      return symbol.slice(0, 3);
+    }
+
+    return symbol.slice(0, symbol.length - quote.length);
+  }
+
+  private async executeRiskLiquidation(trigger: PendingLiquidation): Promise<void> {
+    if (trigger.market === 'margin') {
+      await this.executeCrossMarginRiskLiquidation(trigger);
+      return;
+    }
+
+    await this.executeSpotRiskLiquidation(trigger);
+  }
+
+  private async executeSpotRiskLiquidation(trigger: PendingLiquidation): Promise<void> {
+    await this.cancelAllOrders(trigger.symbol);
+
+    const baseAsset = this.extractBaseAsset(trigger.symbol);
+    const accountInfo = await this.getAccountInfo();
+    const balance = accountInfo.balances?.find((asset: any) => asset.asset === baseAsset);
+    const freeQty = Number(balance?.free ?? 0);
+
+    if (!Number.isFinite(freeQty) || freeQty <= 0) {
+      return;
+    }
+
+    const { lotSizeFilter } = await this.obtenerFiltrosSimbolo(trigger.symbol);
+    const stepSize = Number(lotSizeFilter?.stepSize ?? 0);
+    const qty = this.floorToStep(freeQty, stepSize);
+
+    if (qty <= 0) {
+      return;
+    }
+
+    const context = {
+      strategyId: trigger.strategyId,
+      strategyType: trigger.strategyType,
+      symbol: trigger.symbol,
+      config: {},
+    };
+
+    const params = {
+      symbol: trigger.symbol,
+      side: 'SELL',
+      type: 'MARKET',
+      quantity: qty.toString(),
+      newClientOrderId: this.strategyOpsService.buildClientOrderId(context, 'SELL', 'spot'),
+    };
+
+    const response = await this.postSigned('/api/v3/order', params);
+    await this.strategyOpsService.recordOrderPlacement(context, {
+      side: 'SELL',
+      type: 'MARKET',
+      market: 'spot',
+      quantity: qty,
+      response,
+    });
+    await this.strategyOpsService.recordOrderStatus(trigger.symbol, response, 'spot', context);
+  }
+
+  private async executeCrossMarginRiskLiquidation(trigger: PendingLiquidation): Promise<void> {
+    if (!this.canUseMargin()) {
+      return;
+    }
+
+    await this.cancelAllCrossMarginOrders(trigger.symbol);
+
+    const baseAsset = this.extractBaseAsset(trigger.symbol);
+    const accountInfo = await this.getCrossMarginAccountInfo();
+    const balance = accountInfo.userAssets?.find((asset: any) => asset.asset === baseAsset);
+    const freeQty = Number(balance?.free ?? 0);
+
+    if (!Number.isFinite(freeQty) || freeQty <= 0) {
+      return;
+    }
+
+    const { lotSizeFilter } = await this.obtenerFiltrosSimbolo(trigger.symbol);
+    const stepSize = Number(lotSizeFilter?.stepSize ?? 0);
+    const qty = this.floorToStep(freeQty, stepSize);
+
+    if (qty <= 0) {
+      return;
+    }
+
+    const context = {
+      strategyId: trigger.strategyId,
+      strategyType: trigger.strategyType,
+      symbol: trigger.symbol,
+      config: {},
+    };
+
+    const params = {
+      symbol: trigger.symbol,
+      side: 'SELL',
+      type: 'MARKET',
+      quantity: qty.toString(),
+      newClientOrderId: this.strategyOpsService.buildClientOrderId(context, 'SELL', 'margin'),
+    };
+
+    const response = await this.postSigned('/sapi/v1/margin/order', params);
+    await this.strategyOpsService.recordOrderPlacement(context, {
+      side: 'SELL',
+      type: 'MARKET',
+      market: 'margin',
+      quantity: qty,
+      response,
+    });
+    await this.strategyOpsService.recordOrderStatus(trigger.symbol, response, 'margin', context);
+  }
+
+  async panicLiquidateSymbol(payload: {
+    strategyId: string;
+    strategyType: string;
+    symbol: string;
+    market: 'spot' | 'margin';
+  }): Promise<void> {
+    const trigger: PendingLiquidation = {
+      strategyId: payload.strategyId,
+      strategyType: payload.strategyType,
+      symbol: payload.symbol,
+      market: payload.market,
+      reason: 'maxDailyLoss',
+      threshold: 0,
+      currentDailyPnl: 0,
+      triggeredAt: new Date().toISOString(),
+    };
+
+    await this.executeRiskLiquidation(trigger);
   }
   //Firmas 
 
@@ -79,14 +237,61 @@ export class BinanceService {
   }
   //Create ordenes 
   async createLimitOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
-    const params = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
-    return this.postSigned('/api/v3/order', params);
+    const context = this.getContext();
+    if (context) {
+      this.strategyOpsService.assertRisk(context, side, Number(quantity), Number(price));
+    }
+
+    const params: Record<string, string> = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
+    if (context) {
+      params.newClientOrderId = this.strategyOpsService.buildClientOrderId(context, side, 'spot');
+    }
+
+    const response = await this.postSigned('/api/v3/order', params);
+
+    if (context) {
+      await this.strategyOpsService.recordOrderPlacement(context, {
+        side,
+        type: 'LIMIT',
+        market: 'spot',
+        quantity: Number(quantity),
+        requestedPrice: Number(price),
+        response,
+      });
+    }
+
+    return response;
   }
 
  
   async createMarketOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string) {
-    const params = { symbol, side, type: 'MARKET', quantity };
-    return this.postSigned('/api/v3/order', params);
+    const context = this.getContext();
+    if (context) {
+      this.strategyOpsService.assertRisk(context, side, Number(quantity));
+    }
+
+    const params: Record<string, string> = { symbol, side, type: 'MARKET', quantity };
+    if (context) {
+      params.newClientOrderId = this.strategyOpsService.buildClientOrderId(context, side, 'spot');
+    }
+
+    const response = await this.postSigned('/api/v3/order', params);
+
+    if (context) {
+      await this.strategyOpsService.recordOrderPlacement(context, {
+        side,
+        type: 'MARKET',
+        market: 'spot',
+        quantity: Number(quantity),
+        response,
+      });
+    }
+
+    const liquidation = await this.strategyOpsService.recordOrderStatus(symbol, response, 'spot', context);
+    if (liquidation) {
+      await this.executeRiskLiquidation(liquidation);
+    }
+    return response;
   }
   async getSymbolTickSize(symbol: string): Promise<number> {
     const { priceFilter } = await this.obtenerFiltrosSimbolo(symbol);
@@ -141,6 +346,10 @@ export class BinanceService {
       httpsAgent: this.httpsAgent,
     });
 
+    const liquidation = await this.strategyOpsService.recordOrderStatus(symbol, response.data, 'spot', this.getContext());
+    if (liquidation) {
+      await this.executeRiskLiquidation(liquidation);
+    }
     return response.data;
   }
   async cancelOrder(symbol: string, orderId?: number) {
@@ -164,6 +373,10 @@ export class BinanceService {
       httpsAgent: this.httpsAgent,
     });
 
+    const liquidation = await this.strategyOpsService.recordOrderStatus(symbol, response.data, 'spot', this.getContext());
+    if (liquidation) {
+      await this.executeRiskLiquidation(liquidation);
+    }
     return response.data;
   }
 
@@ -553,8 +766,30 @@ export class BinanceService {
     price: string,
     timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
   ) {
-    const params = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
-    return this.postSigned('/sapi/v1/margin/order', params);
+    const context = this.getContext();
+    if (context) {
+      this.strategyOpsService.assertRisk(context, side, Number(quantity), Number(price));
+    }
+
+    const params: Record<string, string> = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
+    if (context) {
+      params.newClientOrderId = this.strategyOpsService.buildClientOrderId(context, side, 'margin');
+    }
+
+    const response = await this.postSigned('/sapi/v1/margin/order', params);
+
+    if (context) {
+      await this.strategyOpsService.recordOrderPlacement(context, {
+        side,
+        type: 'LIMIT',
+        market: 'margin',
+        quantity: Number(quantity),
+        requestedPrice: Number(price),
+        response,
+      });
+    }
+
+    return response;
   }
 
   async createCrossMarginMarketOrder(
@@ -562,8 +797,33 @@ export class BinanceService {
     side: 'BUY' | 'SELL',
     quantity: string
   ) {
-    const params = { symbol, side, type: 'MARKET', quantity };
-    return this.postSigned('/sapi/v1/margin/order', params);
+    const context = this.getContext();
+    if (context) {
+      this.strategyOpsService.assertRisk(context, side, Number(quantity));
+    }
+
+    const params: Record<string, string> = { symbol, side, type: 'MARKET', quantity };
+    if (context) {
+      params.newClientOrderId = this.strategyOpsService.buildClientOrderId(context, side, 'margin');
+    }
+
+    const response = await this.postSigned('/sapi/v1/margin/order', params);
+
+    if (context) {
+      await this.strategyOpsService.recordOrderPlacement(context, {
+        side,
+        type: 'MARKET',
+        market: 'margin',
+        quantity: Number(quantity),
+        response,
+      });
+    }
+
+    const liquidation = await this.strategyOpsService.recordOrderStatus(symbol, response, 'margin', context);
+    if (liquidation) {
+      await this.executeRiskLiquidation(liquidation);
+    }
+    return response;
   }
 
 
@@ -669,6 +929,10 @@ export class BinanceService {
       httpsAgent: this.httpsAgent,
     });
 
+    const liquidation = await this.strategyOpsService.recordOrderStatus(symbol, response.data, 'margin', this.getContext());
+    if (liquidation) {
+      await this.executeRiskLiquidation(liquidation);
+    }
     return response.data;
   }
 async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
@@ -733,6 +997,10 @@ async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
       httpsAgent: this.httpsAgent,
     });
 
+    const liquidation = await this.strategyOpsService.recordOrderStatus(symbol, response.data, 'margin', this.getContext());
+    if (liquidation) {
+      await this.executeRiskLiquidation(liquidation);
+    }
     return response.data;
   }
   async createCrossMarginStopLossOrder(

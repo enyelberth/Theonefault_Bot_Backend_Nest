@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RsiStrategyConfig, TradingStrategy } from './trading-strategy.interface';
-import { BinanceService } from '../binance/binance.service';
+import { RsiStrategyConfig, TradingStrategy } from '../trading-strategy.interface';
+import { BinanceService } from '../../binance/binance.service';
+import { StrategyRuntimeUtils } from '../shared/strategy-runtime.utils';
 
 interface Order {
   orderId: string;
@@ -259,7 +260,7 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
   }
 
   private sleep(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return StrategyRuntimeUtils.sleepInterruptible(ms, () => this.isRunning);
   }
 
   private logInfo(message: string, ...args: any[]) {
@@ -272,5 +273,10 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
 
   private logSuccess(message: string, ...args: any[]) {
     this.logger.log(message, ...args);
+  }
+
+  async stop(): Promise<void> {
+    this.isRunning = false;
+    this.logInfo(`Deteniendo estrategia RSI en ${this.symbol}`);
   }
 }
