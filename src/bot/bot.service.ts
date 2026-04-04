@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TradingStrategy } from 'src/strategies/trading-strategy.interface';
 import { StrategyFactory } from './strategy.factory';
 import { BinanceService } from 'src/binance/binance.service';
@@ -7,6 +7,7 @@ import { CreateTradingStrategyDto } from 'src/strategies-trading/dto/create-stra
 
 @Injectable()
 export class BotService {
+  private readonly logger = new Logger(BotService.name);
   private activeStrategies = new Map<string, TradingStrategy>();
 
   constructor(
@@ -19,15 +20,13 @@ export class BotService {
   }
 
   async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id: string) {
-    try{
+    const key = this.getKey(symbol, id);
 
-      const key = this.getKey(symbol, id);
-      
-      if (this.activeStrategies.has(key)) {
-        throw new Error(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
-      }
+    if (this.activeStrategies.has(key)) {
+      throw new BadRequestException(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
+    }
 
-      const strategy: TradingStrategy = StrategyFactory.createStrategy(
+    const strategy: TradingStrategy = StrategyFactory.createStrategy(
       strategyType,
       this.binanceService,
       id,
@@ -43,22 +42,30 @@ export class BotService {
       id: id,
     };
 
-    // this.strategiesTradingService.createStrategies(createTradingStrategyDto);
-    
+    await this.ensureStrategyMetadata(createTradingStrategyDto);
+
     this.activeStrategies.set(key, strategy);
-    
-    await strategy.run();
-  }catch(error){
-    console.log(error);
-  }
+
+    try {
+      await strategy.run();
+    } catch (error) {
+      this.activeStrategies.delete(key);
+      this.logger.error(`Error iniciando estrategia ${id} para ${symbol}`, error instanceof Error ? error.stack : undefined);
+      throw error;
+    }
   }
   
   async stopStrategy(symbol: string, id: string) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
-    if (strategy && strategy.stop) {
+    if (!strategy) {
+      throw new NotFoundException(`Estrategia con símbolo ${symbol} e id ${id} no encontrada`);
+    }
+
+    if (strategy.stop) {
       await strategy.stop();
     }
+
     this.activeStrategies.delete(key);
   }
 
@@ -76,7 +83,6 @@ export class BotService {
       strategyType: strategy.constructor,
     }));
 
-    console.log(newStrategiesData);
     return newStrategiesData;
   }
 
@@ -97,51 +103,70 @@ export class BotService {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['updateOrderLevelPrice'] === 'function') {
       await strategy['updateOrderLevelPrice'](levelIndex, newPrice);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta actualizar precio de nivel`);
+    throw new BadRequestException(`La estrategia con id ${id} no soporta actualizar precio de nivel`);
   }
 
   async removeOrderLevel(id: string, symbol: string, levelIndex: number) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['removeOrderLevel'] === 'function') {
       await strategy['removeOrderLevel'](levelIndex);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta eliminar niveles de orden`);
+    throw new BadRequestException(`La estrategia con id ${id} no soporta eliminar niveles de orden`);
   }
 
   addOrderLevel(id: string, symbol: string, orderLevel: any) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['addOrderLevel'] === 'function') {
       strategy['addOrderLevel'](orderLevel);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta agregar niveles de orden`);
+    throw new BadRequestException(`La estrategia con id ${id} no soporta agregar niveles de orden`);
   }
 
   updateProfitMargin(id: string, symbol: string, newProfitMargin: number) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['updateProfitMargin'] === 'function') {
       strategy['updateProfitMargin'](newProfitMargin);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta actualización de profit margin`);
+    throw new BadRequestException(`La estrategia con id ${id} no soporta actualización de profit margin`);
+  }
+
+  private async ensureStrategyMetadata(createTradingStrategyDto: CreateTradingStrategyDto) {
+    try {
+      await this.strategiesTradingService.getStrategyById(createTradingStrategyDto.id);
+      await this.strategiesTradingService.updateStrategy(createTradingStrategyDto.id, {
+        symbol: createTradingStrategyDto.symbol,
+        typeId: createTradingStrategyDto.typeId,
+        config: createTradingStrategyDto.config,
+        strategyType: createTradingStrategyDto.strategyType,
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        await this.strategiesTradingService.createStrategies(createTradingStrategyDto);
+        return;
+      }
+
+      throw error;
+    }
   }
 }

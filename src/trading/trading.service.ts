@@ -3,13 +3,9 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import {
   PrismaClient,
-  Prisma,
-  OrderType,
-  OrderSide,
   OrderStatus,
   TradingOrder,
 } from '@prisma/client';
@@ -19,7 +15,6 @@ import { CreateTradingOrderDto } from './dto/create-tradingOrder.dto';
 @Injectable()
 export class TradingService {
   private readonly logger = new Logger(TradingService.name);
-  private readonly processingPairs = new Set<number>();
 
   constructor(private readonly prisma: PrismaClient) { }
 
@@ -70,18 +65,16 @@ export class TradingService {
     }
   }
 
-  async closeOrder(orderId: number, closingOrderId: number, closedTime: Date): Promise<any> {
-    
-        return this.prisma.tradingOrder.update({
-        where: { id: orderId },
-        data: {
-          status: 'CLOSED',
-          closingOrderId,
-          closed_time: closedTime,
-          isWorking: false,
-        },
-      });
-      
+  async closeOrder(orderId: number, closingOrderId: number, closedTime: Date): Promise<TradingOrder> {
+    return this.prisma.tradingOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'CLOSED',
+        closingOrderId,
+        closed_time: closedTime,
+        isWorking: false,
+      },
+    });
   }
   async cancelOrder(orderId: number): Promise<TradingOrder> {
     return this.prisma.tradingOrder.update({
@@ -114,14 +107,13 @@ export class TradingService {
       },
     });
   }
-  async getAccountProfitLoss(accountId: number): Promise<any> {
+  async getAccountProfitLoss(accountId: number): Promise<string> {
     const result = await this.prisma.tradingOrder.aggregate({
       _sum: { profit_loss: true },
       where: { accountId, profit_loss: { not: null } },
     });
 
-    //return result._sum.profit_loss ?? new Decimal(0);
-    return ""
+    return result._sum.profit_loss?.toString() ?? '0';
   }
 
 
@@ -221,7 +213,10 @@ export class TradingService {
     id: number,
     newStatus: OrderStatus,
     cryptoPrice: number,
-  ): Promise<any> {
+  ): Promise<never> {
+    void id;
+    void newStatus;
+    void cryptoPrice;
     /*
     if (this.processingPairs.has(id)) {
       throw new ConflictException(`Order ${id} is already being processed`);
@@ -278,5 +273,6 @@ export class TradingService {
       this.processingPairs.delete(id);
     }
       */
+    throw new BadRequestException('updateTradingOrderStatus no está implementado para el modelo actual de órdenes.');
   }
 }

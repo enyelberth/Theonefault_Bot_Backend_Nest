@@ -1,13 +1,31 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from 'prisma/prisma.service';
+import { randomUUID, scryptSync, timingSafeEqual } from 'crypto';
+import { SessionService } from 'src/session/session.service';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly sessionService: SessionService,
   ) { }
+
+  private verifyPassword(password: string, stored: string): boolean {
+    const [salt, key] = stored.split(':');
+    if (!salt || !key) {
+      return false;
+    }
+
+    const candidate = scryptSync(password, salt, 64);
+    const storedKey = Buffer.from(key, 'hex');
+    if (candidate.length !== storedKey.length) {
+      return false;
+    }
+
+    return timingSafeEqual(candidate, storedKey);
+  }
 
   private isEmail(value: string): boolean {
     // Regex simple para validar email
@@ -44,32 +62,41 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token iunválido');
     }
   }
-  async logout(userId: string): Promise<void> {
-    // Aquí eliminarías o invalidarías el refresh token almacenado en DB
-    /*await this.prisma.refreshToken.deleteMany({ where: { userId } });*/
-
-    // No se devuelve nada, simplemente indica que se cerró sesión
-  }
-
-
 
   async signIn(
     userOrEmail: string,
     pass: string,
-  ): Promise<{ access_token: string }> {
+    userAgent?: string,
+    ipAddress?: string,
+  ): Promise<{ access_token: string; sessionId: number }> {
     const whereCondition = this.isEmail(userOrEmail)
       ? { email: userOrEmail }
       : { username: userOrEmail };
 
     const user = await this.prisma.user.findFirst({ where: whereCondition });
-    //console.log(user)
-    if (!user || user.password !== pass) {
+    if (!user || !this.verifyPassword(pass, user.password)) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const payload = { sub: user.id, email: user.email };
+    const access_token = await this.jwtService.signAsync(payload);
+
+    const expiresAt = new Date(Date.now() + 260 * 60 * 1000);
+    const session = await this.sessionService.create({
+      userId: user.id,
+      token: randomUUID(),
+      expiresAt: expiresAt.toISOString(),
+      userAgent,
+      ipAddress,
+    });
+
     return {
-      access_token: await this.jwtService.signAsync(payload),
+      access_token,
+      sessionId: session.id,
     };
+  }
+
+  async logout(userId: string): Promise<void> {
+    await this.prisma.session.deleteMany({ where: { userId: Number(userId) } });
   }
 }

@@ -1,22 +1,17 @@
 import { Module } from '@nestjs/common';
 import { BotTelegramController } from './bot-telegram.controller';
 import { BotTelegramService } from './bot-telegram.service';
-import { CryptoPriceModule } from '../crypto-price/crypto-price.module'; // Importa el módulo, no el servicio
-import { AccountService } from 'src/account/account.service';
-import { BinanceService } from 'src/binance/binance.service';
-import { PrismaClient } from '@prisma/client';
-import { BotService } from 'src/bot/bot.service';
-import { CryptoPairService } from 'src/crypto-pair/crypto-pair.service';
-import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
-import { ProfileService } from 'src/profile/profile.service';
-import { TradingService } from 'src/trading/trading.service';
+import { CryptoPriceModule } from '../crypto-price/crypto-price.module';
 import { BotModule } from 'src/bot/bot.module';
-import { AlertService } from 'src/alert/alert.service';
+import { AlertModule } from 'src/alert/alert.module';
+import { TradingModule } from 'src/trading/trading.module';
+import { AccountModule } from 'src/account/account.module';
+import { BinanceModule } from 'src/binance/binance.module';
 
 @Module({
-  imports: [CryptoPriceModule,BotModule], // Aquí se importan módulos
+  imports: [CryptoPriceModule, BotModule, AlertModule, TradingModule, AccountModule, BinanceModule],
   controllers: [BotTelegramController],
-  providers: [BotTelegramService,AccountService,AlertService,BinanceService,PrismaClient,CryptoPairService,CryptoPriceService,ProfileService,TradingService],
+  providers: [BotTelegramService],
   exports: [BotTelegramService],
 })
 export class TelegramBotModule {}

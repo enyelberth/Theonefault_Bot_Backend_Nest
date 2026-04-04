@@ -1,31 +1,36 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import axios from 'axios';
-import { CryptoPriceService } from '../crypto-price/crypto-price.service';
-import { BinanceService } from 'src/binance/binance.service';
-import { BotService } from 'src/bot/bot.service';
-import { AlertService } from 'src/alert/alert.service';
 import { GeminiService } from '../geminis/geminis.service'; // Asegúrate de que la ruta sea correcta
 
 @Injectable()
-export class TelegramSofiaGateway implements OnModuleInit {
-  private readonly botToken = '8552823999:AAHxaw253153k6oacPS86FEMmS3cH55YGVg';
-  private readonly apiUrl = `https://api.telegram.org/bot${this.botToken}`;
+export class TelegramSofiaGateway implements OnModuleInit, OnModuleDestroy {
+  private readonly botToken = process.env.SOFIA_BOT ?? process.env.TELEGRAM_SOFIA_BOT_TOKEN ?? '';
+  private readonly apiUrl = this.botToken ? `https://api.telegram.org/bot${this.botToken}` : '';
   private readonly logger = new Logger(TelegramSofiaGateway.name);
   private offset = 0;
-  private readonly adminUserIds = [7276654069];
+  private isPolling = false;
 
   constructor(
-    private geminiService: GeminiService, 
+    private geminiService: GeminiService,
   ) {}
 
   async onModuleInit() {
-    this.logger.log('Sofía despertando...');
-    this.pollMessages();
+    if (!this.apiUrl) {
+      this.logger.warn('Telegram Sofía deshabilitado: falta SOFIA_BOT/TELEGRAM_SOFIA_BOT_TOKEN en entorno.');
+      return;
+    }
 
+    this.logger.log('Sofía despertando...');
+    this.isPolling = true;
+    void this.pollMessages();
+  }
+
+  async onModuleDestroy() {
+    this.isPolling = false;
   }
 
   async pollMessages() {
-    while (true) {
+    while (this.isPolling) {
       try {
         const res = await axios.get(`${this.apiUrl}/getUpdates`, {
           params: { offset: this.offset + 1, timeout: 10 },
@@ -108,10 +113,15 @@ export class TelegramSofiaGateway implements OnModuleInit {
 
 
   async sendMessage(chat_id: number, text: string, extra = {}): Promise<void> {
+    if (!this.apiUrl) {
+      this.logger.warn('No se envió mensaje de Sofía: token no configurado.');
+      return;
+    }
+
     try {
       await axios.post(`${this.apiUrl}/sendMessage`, { chat_id, text, ...extra });
     } catch (e) {
-      this.logger.error('Error enviando mensaje', e.message);
+      this.logger.error('Error enviando mensaje', e instanceof Error ? e.message : String(e));
     }
   }
 }

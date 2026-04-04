@@ -1,16 +1,48 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from 'prisma/prisma.service';
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
-  constructor(private readonly prisma: PrismaClient) { }
+  constructor(private readonly prisma: PrismaService) { }
+
+  private hashPassword(password: string): string {
+    const salt = randomBytes(16).toString('hex');
+    const hash = scryptSync(password, salt, 64).toString('hex');
+    return `${salt}:${hash}`;
+  }
+
+  private verifyPassword(password: string, stored: string): boolean {
+    const [salt, key] = stored.split(':');
+    if (!salt || !key) {
+      return false;
+    }
+
+    const candidate = scryptSync(password, salt, 64);
+    const storedKey = Buffer.from(key, 'hex');
+    if (candidate.length !== storedKey.length) {
+      return false;
+    }
+
+    return timingSafeEqual(candidate, storedKey);
+  }
+
+  private sanitizeUser<T extends { password: string }>(user: T): Omit<T, 'password'> {
+    const { password, ...safeUser } = user;
+    return safeUser;
+  }
 
   async create(createUserDto: CreateUserDto) {
     try {
-      return await this.prisma.user.create({ data: createUserDto });
+      const payload = {
+        ...createUserDto,
+        password: this.hashPassword(createUserDto.password),
+      };
+      const user = await this.prisma.user.create({ data: payload });
+      return this.sanitizeUser(user);
     } catch (error) {
       this.logger.error('Error creating user', error);
       throw new BadRequestException('Error creating user');
@@ -18,7 +50,8 @@ export class UserService {
   }
 
   async findAll() {
-    return await this.prisma.user.findMany();
+    const users = await this.prisma.user.findMany();
+    return users.map((user) => this.sanitizeUser(user));
   }
 
   async findOne(id: number) {
@@ -26,7 +59,7 @@ export class UserService {
     if (!user) {
       throw new NotFoundException(`User with id ${id} not found`);
     }
-    return user;
+    return this.sanitizeUser(user);
   }
   async findByEmail(email: string) {
     return await this.prisma.user.findUnique({ where: { email } });
@@ -41,7 +74,12 @@ export class UserService {
   async update(id: number, updateUserDto: UpdateUserDto) {
     try {
       await this.findOne(id); // Verifica que exista antes de actualizar
-      return await this.prisma.user.update({ where: { id }, data: updateUserDto });
+      const data = {
+        ...updateUserDto,
+        ...(updateUserDto.password ? { password: this.hashPassword(updateUserDto.password) } : {}),
+      };
+      const user = await this.prisma.user.update({ where: { id }, data });
+      return this.sanitizeUser(user);
     } catch (error) {
       this.logger.error(`Error updating user with id ${id}`, error);
       throw new BadRequestException('Error updating user');
@@ -51,7 +89,8 @@ export class UserService {
   async remove(id: number) {
     try {
       await this.findOne(id); // Verifica que exista antes de eliminar
-      return await this.prisma.user.delete({ where: { id } });
+      const user = await this.prisma.user.delete({ where: { id } });
+      return this.sanitizeUser(user);
     } catch (error) {
       this.logger.error(`Error deleting user with id ${id}`, error);
       throw new BadRequestException('Error deleting user');
@@ -75,10 +114,9 @@ export class UserService {
     if (!user) {
       throw new BadRequestException('Invalid credentials');
     }
-    // Aquí debes comparar password hasheado, ejemplo con bcrypt.compare, esto es solo para ilustrar
-    if (user.password !== password) {
+    if (!this.verifyPassword(password, user.password)) {
       throw new BadRequestException('Invalid credentials');
     }
-    return user;
+    return this.sanitizeUser(user);
   }
 }

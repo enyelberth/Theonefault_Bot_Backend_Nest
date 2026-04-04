@@ -6,14 +6,15 @@ import {
   HttpStatus,
   Post,
   Query,
-  Request,
+  Delete,
+  Param,
+  Req,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth, ApiProperty, ApiQuery } from '@nestjs/swagger';
 import { AuthGuard, Public } from './auth.guard';
 import { AuthService } from './auth.service';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 // DTO para login
 export class SignInDto {
   @ApiProperty({ example: 'enyelberth10', description: 'Nombre de usuario' })
@@ -45,9 +46,15 @@ export class AuthController {
   @Post('login/cookie')
   async signInCookies(
     @Body() signInDto: SignInDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) response: Response, // para acceder a la respuesta
   ) {
-    const { access_token } = await this.authService.signIn(signInDto.username, signInDto.password);
+    const { access_token } = await this.authService.signIn(
+      signInDto.username,
+      signInDto.password,
+      req.headers['user-agent'],
+      req.ip,
+    );
 
     // Configura la cookie con el JWT, marca HttpOnly para seguridad
     response.cookie('jwt', access_token, {
@@ -60,6 +67,14 @@ export class AuthController {
 
     // Opcional: devolver algo en el body o vacío
     return { message: 'Inicio de sesión exitoso' };
+  }
+
+  @Delete('logout/:userId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cerrar sesión de un usuario' })
+  async logout(@Param('userId') userId: string) {
+    await this.authService.logout(userId);
+    return { message: 'Sesiones eliminadas correctamente' };
   }
 
   @Public()

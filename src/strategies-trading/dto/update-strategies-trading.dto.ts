@@ -16,6 +16,11 @@ export class UpdateTradingStrategyDto {
   @IsOptional()
   @IsJSON()
   config?: any;
+
+  @ApiPropertyOptional({ description: 'Tipo de estrategia' })
+  @IsOptional()
+  @IsString()
+  strategyType?: string | null;
 }
 export class UpdateStrategyTypeDto {
   @ApiPropertyOptional({ description: 'Nombre del tipo de estrategia' })

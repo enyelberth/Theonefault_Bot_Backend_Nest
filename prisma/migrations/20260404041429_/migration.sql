@@ -5,7 +5,10 @@ CREATE TYPE "OrderType" AS ENUM ('LIMIT', 'MARKET', 'STOP_LIMIT');
 CREATE TYPE "OrderSide" AS ENUM ('BUY', 'SELL');
 
 -- CreateEnum
-CREATE TYPE "OrderStatus" AS ENUM ('OPEN', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED');
+CREATE TYPE "OrderStatus" AS ENUM ('OPEN', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED', 'CLOSED');
+
+-- CreateEnum
+CREATE TYPE "UpDown" AS ENUM ('up', 'down');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -197,14 +200,13 @@ CREATE TABLE "TradingExecution" (
 
 -- CreateTable
 CREATE TABLE "TradingStrategy" (
-    "id" SERIAL NOT NULL,
+    "id" TEXT NOT NULL,
     "symbol" TEXT NOT NULL,
     "typeId" INTEGER NOT NULL,
+    "strategyType" TEXT,
     "config" JSONB NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "TradingStrategy_pkey" PRIMARY KEY ("id")
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 -- CreateTable
@@ -215,6 +217,19 @@ CREATE TABLE "StrategyType" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "StrategyType_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Alert" (
+    "id" SERIAL NOT NULL,
+    "symbol" TEXT NOT NULL,
+    "price" DOUBLE PRECISION NOT NULL,
+    "up_down" "UpDown" NOT NULL,
+    "volume" DOUBLE PRECISION,
+    "timestamp" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Alert_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -251,10 +266,16 @@ CREATE INDEX "TradingOrder_accountId_symbol_idx" ON "TradingOrder"("accountId", 
 CREATE INDEX "TradingOrder_status_idx" ON "TradingOrder"("status");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "TradingStrategy_id_key" ON "TradingStrategy"("id");
+
+-- CreateIndex
 CREATE INDEX "TradingStrategy_typeId_idx" ON "TradingStrategy"("typeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "StrategyType_name_key" ON "StrategyType"("name");
+
+-- CreateIndex
+CREATE INDEX "Alert_symbol_timestamp_idx" ON "Alert"("symbol", "timestamp");
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "Profile"("id") ON DELETE SET NULL ON UPDATE CASCADE;

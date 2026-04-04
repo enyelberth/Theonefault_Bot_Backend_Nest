@@ -24,6 +24,8 @@ export class CryptoGuardGateway implements OnGatewayInit {
   private riskLevel: string | undefined;
   private totalLiabilityOfBtc: string | undefined;
   private pnlAsPercentageOfLiability: string | undefined;
+  private readonly isProduction = process.env.NODE_ENV === 'production';
+  private readonly enableMarginInDev = (process.env.ENABLE_MARGIN_IN_DEV || 'false').toLowerCase() === 'true';
 
   constructor(
     private accountService: AccountService,
@@ -32,6 +34,11 @@ export class CryptoGuardGateway implements OnGatewayInit {
   ) {}
 
   async afterInit() {
+    if (!this.isProduction && !this.enableMarginInDev) {
+      console.log('CryptoGuard desactivado en desarrollo. Activa ENABLE_MARGIN_IN_DEV=true para habilitar margin.');
+      return;
+    }
+
     const cryptosRaw = await this.accountService.findCryptosByUserId(1);
     this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
 

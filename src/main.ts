@@ -1,8 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { applyRuntimeEnvMode } from './utils/runtime-env';
+import { validateRuntimeEnv } from './utils/env-validation';
 
 async function bootstrap() {
+  applyRuntimeEnvMode();
+  validateRuntimeEnv();
+
   const app = await NestFactory.create(AppModule);
 
   // Configurar CORS para aceptar solicitudes desde cualquier origen

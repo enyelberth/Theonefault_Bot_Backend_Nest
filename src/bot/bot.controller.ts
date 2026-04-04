@@ -58,11 +58,7 @@ export class BotController {
   @ApiOperation({ summary: 'Listar información completa de bots' })
   @ApiResponse({ status: 200, description: 'Listado completo de información de bots' })
   getBotActiveInfo() {
-    // la lógica interna permanece igual, ajusta si quieres usar el método correcto
-    // pero aquí lo ajusto para que solo llame getBots()
-    const data = this.botService.getBots();
-
-    // resto del código como estaba...
+    return this.botService.getBots();
   }
 
   @Get('data')

@@ -6,7 +6,7 @@ datasource db {
   provider = "postgresql" // o "postgresql", según tu base de datos
   url      = env("DATABASE_URL")
 }
-
+ 
 // Usuarios y notificaciones para gestión de acceso y comunicación
 model User {
   id        Int      @id @default(autoincrement())

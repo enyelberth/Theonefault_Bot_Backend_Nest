@@ -10,13 +10,21 @@ export class BinanceService {
   private readonly API_KEY: string;
   private readonly API_SECRET: string;
   private readonly httpsAgent: https.Agent;
+  private readonly isProduction: boolean;
+  private readonly enableMarginInDev: boolean;
 
   constructor() {
     this.API_KEY = process.env.BINANCE_API_KEY || '';
     this.API_SECRET = process.env.BINANCE_API_SECRET || '';
+    this.isProduction = process.env.NODE_ENV === 'production';
+    this.enableMarginInDev = (process.env.ENABLE_MARGIN_IN_DEV || 'false').toLowerCase() === 'true';
     this.httpsAgent = new https.Agent({
       rejectUnauthorized: false, // ⚠️ Solo para desarrollo - no usar en producción
     });
+  }
+
+  private canUseMargin(): boolean {
+    return this.isProduction || this.enableMarginInDev;
   }
 
   sign(querystring: string): string {
@@ -895,6 +903,19 @@ async createCrossMarginOcoOrder(
 // En su BinanceService.ts
 
 async getCrossMarginPNLSummary() {
+    if (!this.canUseMargin()) {
+      return {
+        totalUnrealizedPNL: '0.00000000',
+        pnlCurrency: 'USDT',
+        marginLevel: '999.00000000',
+        riskLevel: 'BAJO',
+        liquidationStatus: 'Margin desactivado en desarrollo. Activa ENABLE_MARGIN_IN_DEV=true para habilitarlo.',
+        totalLiabilityOfBtc: '0.00000000',
+        pnlAsPercentageOfLiability: '0.00',
+        assetsSummary: [],
+      };
+    }
+
     // Reutilizamos la función existente para obtener la información de la cuenta
     const accountInfo = await this.getCrossMarginAccountInfo();
 
@@ -985,6 +1006,11 @@ async getDecimalsForSymbol(symbol: string): Promise<{ priceDecimals: number; qua
 }
 
 async liquiCrossMagin(): Promise<void> {
+  if (!this.canUseMargin()) {
+    console.log('liquiCrossMagin deshabilitado en desarrollo. Usa ENABLE_MARGIN_IN_DEV=true para habilitar margin.');
+    return;
+  }
+
   // 1. Obtener todos los saldos y deudas actuales en margin cruzado
   const data = await this.getCrossMarginSaldo();
 

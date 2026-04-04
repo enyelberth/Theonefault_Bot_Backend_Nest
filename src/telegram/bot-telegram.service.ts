@@ -22,15 +22,23 @@ interface PriceAlert {
 
 @Injectable()
 export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
-  private readonly botToken = '8105793514:AAGjn1pUF2HFSKFe5ZDOofBR8mbv53wvvp4';
-  private readonly apiUrl = `https://api.telegram.org/bot${this.botToken}`;
+  private readonly botToken = process.env.BOOT ?? process.env.TELEGRAM_BOT_TOKEN ?? '';
+  private readonly apiUrl = this.botToken ? `https://api.telegram.org/bot${this.botToken}` : '';
   private readonly logger = new Logger(BotTelegramService.name);
   private offset = 0;
   private chatStates = new Map<number, ChatState>();
   private alerts: PriceAlert[] = [];
+  private isPolling = false;
+  private alertIntervalRef?: NodeJS.Timeout;
 
-  private readonly adminUserIds = [7276654069 /* otros IDs autorizados */];
-  private readonly notifyChats = [7276654069 ];
+  private readonly adminUserIds = this.readNumberList(
+    process.env.ADMIN_TELEGRAM_IDS,
+    [7276654069],
+  );
+  private readonly notifyChats = this.readNumberList(
+    process.env.NOTIFY_TELEGRAM_CHATS,
+    this.adminUserIds,
+  );
 
   constructor(
     private cryptoPrice: CryptoPriceService,
@@ -41,10 +49,31 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     private alertService: AlertService,
   ) { }
 
+  private readNumberList(rawValue: string | undefined, defaults: number[]): number[] {
+    if (!rawValue || rawValue.trim() === '') {
+      return defaults;
+    }
+
+    const ids = rawValue
+      .split(',')
+      .map((item) => Number(item.trim()))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    return ids.length > 0 ? ids : defaults;
+  }
+
   async onModuleInit() {
+    if (!this.apiUrl) {
+      this.logger.warn('Telegram BOT deshabilitado: falta BOOT/TELEGRAM_BOT_TOKEN en entorno.');
+      return;
+    }
+
     this.logger.log('Iniciando polling para Telegram bot...');
-    this.pollMessages();
-    setInterval(() => this.checkAlerts(), 60000); // cada 1 minuto (60000 ms)
+    this.isPolling = true;
+    void this.pollMessages();
+    this.alertIntervalRef = setInterval(() => {
+      void this.checkAlerts();
+    }, 60000);
 
     // setInterval(() => this.notifyCertainNumbersPrecios(), 240000);
 
@@ -52,6 +81,11 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.logger.log('Deteniendo bot...');
+    this.isPolling = false;
+    if (this.alertIntervalRef) {
+      clearInterval(this.alertIntervalRef);
+      this.alertIntervalRef = undefined;
+    }
   }
   async notifyCertainNumbersPrecios() {
     for (const chatId of this.notifyChats) {
@@ -60,7 +94,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
   async pollMessages() {
-    while (true) {
+    while (this.isPolling) {
       try {
         const res = await axios.get(`${this.apiUrl}/getUpdates`, {
           params: { offset: this.offset + 1, timeout: 10 },
@@ -127,8 +161,8 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
           'Comandos:\n' +
           '/menu - Mostrar menú\n' +
           '/crear_estrategia - Crear estrategia\n' +
-          '/alertadelete - Delete Alerta\n' +
-          '/stop_estrategia - Uso: /detener estrategia [symbol] [id]\n' +
+          '/alertadelete [id] - Eliminar alerta\n' +
+          '/stop_estrategia - Uso: /stop_estrategia [symbol] [id]\n' +
 
           '/add_level - add_level XRPFDUSD er10 1.85 3\n' +
           '/precios - Precios criptos\n' +
@@ -197,11 +231,19 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         await this.handleCreateStrategy(chatId, args);
         break;
       case '/add_level':
+        if (state.role !== 'admin') {
+          await this.sendMessage(chatId, 'No tienes permiso para agregar niveles.');
+          return;
+        }
         await this.handleAddLevelStrategy(chatId, args);
         break;
       case '/stop_estrategia':
+        if (state.role !== 'admin') {
+          await this.sendMessage(chatId, 'No tienes permiso para detener estrategias.');
+          return;
+        }
         if (args.length !== 2) {
-          await this.sendMessage(chatId, 'Uso: /detener estrategia [symbol] [id]');
+          await this.sendMessage(chatId, 'Uso: /stop_estrategia [symbol] [id]');
           break;
         }
         try {
@@ -244,6 +286,12 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     chatId: number,
     args: string[],
   ) {
+    const state = this.chatStates.get(chatId);
+    if (state?.role !== 'admin') {
+      await this.sendMessage(chatId, 'No tienes permiso para crear estrategias.');
+      return;
+    }
+
     if (args.length < 4) {
       await this.sendMessage(chatId, 'Uso: /crear_estrategia [symbol] [typeId] [strategyType] [id] [configJsonOpcional]');
       return;
@@ -296,6 +344,12 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     chatId: number,
     jsonString: string,
   ) {
+    const state = this.chatStates.get(chatId);
+    if (state?.role !== 'admin') {
+      await this.sendMessage(chatId, 'No tienes permiso para crear estrategias.');
+      return;
+    }
+
     try {
       const strategyData = JSON.parse(jsonString);
       const { id, typeId, symbol, strategyType, config } = strategyData;
@@ -431,6 +485,12 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     await this.sendMessage(chatId, `Alerta creada para ${symbol} ${condition} $${threshold}`);
   }
   private async handleDeleteAlert(chatId: number, args: string[]) {
+    const state = this.chatStates.get(chatId);
+    if (state?.role !== 'admin') {
+      await this.sendMessage(chatId, 'No tienes permiso para eliminar alertas.');
+      return;
+    }
+
     // Se espera que args contenga solo el ID de la alerta, por ejemplo: ['/alertaDelete', '123'] → args = ['123']
     if (args.length !== 1) {
       await this.sendMessage(chatId, 'Uso: /alertaDelete [id]');
@@ -513,16 +573,21 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         (alert.up_down === 'down' && price <= alert.price)) {
 
 
-        this.adminUserIds.forEach(async (chatId) => {
+        for (const chatId of this.adminUserIds) {
           await this.sendMessage(chatId,
             `Alerta: ${alert.symbol} está ${alert.up_down} de $${alert.price}. Precio actual: $${price.toFixed(4)}`
           );
-        });
+        }
       }
     }
   }
 
   async sendMessage(chatId: number, text: string, options = {}): Promise<void> {
+    if (!this.apiUrl) {
+      this.logger.warn('No se envió mensaje: BOOT/TELEGRAM_BOT_TOKEN no configurado.');
+      return;
+    }
+
     try {
       await axios.post(`${this.apiUrl}/sendMessage`, {
         chat_id: chatId,

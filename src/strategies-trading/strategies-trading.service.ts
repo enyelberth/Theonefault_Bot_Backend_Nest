@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   UpdateStrategyTypeDto,
@@ -58,12 +59,16 @@ export class StrategiesTradingService {
         where: { id },
       });
       if (!strategy) {
-        throw new BadRequestException(
+        throw new NotFoundException(
           `Estrategia de trading con id ${id} no encontrada.`,
         );
       }
       return strategy;
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
       this.logger.error(`Error fetching trading strategy with id ${id}`, error);
       throw new InternalServerErrorException(
         'Error inesperado al obtener la estrategia de trading.',
@@ -81,6 +86,12 @@ export class StrategiesTradingService {
         data: updateTradingStrategyDto,
       });
     } catch (error) {
+      if ('code' in error && error.code === 'P2025') {
+        throw new NotFoundException(
+          `Estrategia de trading con id ${id} no encontrada.`,
+        );
+      }
+
       this.logger.error(`Error updating strategy with id ${id}`, error);
       throw new InternalServerErrorException(
         'Error inesperado al actualizar la estrategia de trading.',
