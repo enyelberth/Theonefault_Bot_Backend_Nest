@@ -18,10 +18,21 @@ import {
   ApiCreatedResponse,
   ApiBadRequestResponse,
   ApiNotFoundResponse,
+  ApiBearerAuth,
 } from '@nestjs/swagger';
+import { UseGuards } from '@nestjs/common';
+import { AuthGuard } from 'src/authA/auth.guard';
 import { JournalEntryService } from './journalEntry.service';
-import { CreateJournalEntryDto, UpdateJournalEntryDto } from './dto/create-journalEntry.dto';
+import {
+  CreateJournalEntryDto,
+  CreateJournalEntryLineDto,
+  SyncBinanceBalancesDto,
+  UpdateJournalEntryDto,
+  UpdateJournalEntryLineDto,
+} from './dto/create-journalEntry.dto';
 
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('journal-entries')
 @Controller('journal-entries')
 export class JournalEntryController {
@@ -80,6 +91,29 @@ export class JournalEntryController {
     return this.journalEntryService.remove(id);
   }
 
+  @Get('accounting/summary')
+  @ApiOperation({ summary: 'Obtener resumen contable de ingresos, egresos, balances y trading' })
+  @ApiResponse({ status: 200, description: 'Resumen contable obtenido correctamente.' })
+  async getAccountingSummary() {
+    return this.journalEntryService.getAccountingSummary();
+  }
+
+  @Post('accounting/rebuild-balances')
+  @ApiOperation({ summary: 'Recalcular todos los balances locales desde JournalEntryLine' })
+  @ApiResponse({ status: 200, description: 'Balances recalculados correctamente.' })
+  async rebuildBalances() {
+    return this.journalEntryService.rebuildAllBalances();
+  }
+
+  @Post('accounting/sync-binance')
+  @ApiOperation({ summary: 'Sincronizar saldos de Binance a local generando un journal entry de reflejo' })
+  @ApiCreatedResponse({ description: 'Sincronización Binance aplicada correctamente.' })
+  @ApiBadRequestResponse({ description: 'Parámetros inválidos para la sincronización.' })
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  async syncBinanceBalances(@Body() syncDto: SyncBinanceBalancesDto) {
+    return this.journalEntryService.syncBinanceBalances(syncDto);
+  }
+
   // ===== JournalEntryLine Endpoints =====
 
   @Post(':entryId/lines')
@@ -90,10 +124,9 @@ export class JournalEntryController {
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async createLine(
     @Param('entryId', ParseIntPipe) entryId: number,
-    @Body() lineDto: any, // Deberías crear DTO específico para línea
+    @Body() lineDto: CreateJournalEntryLineDto,
   ) {
-    lineDto.entryId = entryId;
-    return this.journalEntryService.createLine(lineDto);
+    return this.journalEntryService.createLine({ ...lineDto, entryId });
   }
 
   @Get(':entryId/lines')
@@ -122,7 +155,7 @@ export class JournalEntryController {
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async updateLine(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: any, // Crear DTO específico
+    @Body() updateDto: UpdateJournalEntryLineDto,
   ) {
     return this.journalEntryService.updateLine(id, updateDto);
   }

@@ -68,7 +68,7 @@ model BankAccountType {
 
 // Monedas (fiat y criptomonedas)
 model Currency {
-  code        String   @id @db.VarChar(5)
+  code        String   @id @db.VarChar(20)
   description String?
   createdAt   DateTime @default(now())
 
@@ -106,7 +106,7 @@ model Account {
 model AccountBalance {
   id           Int     @id @default(autoincrement())
   accountId    Int
-  currencyCode String  @db.VarChar(5)
+  currencyCode String  @db.VarChar(20)
   balance      Decimal @default(0)
 
   account  Account  @relation(fields: [accountId], references: [id])
@@ -142,7 +142,7 @@ model JournalEntryLine {
   id           Int     @id @default(autoincrement())
   entryId      Int
   accountId    Int     @map("accountId")
-  currencyCode String  @db.VarChar(5)
+  currencyCode String  @db.VarChar(20)
   amount       Decimal
   entryType    String
 
@@ -156,7 +156,7 @@ model Transfer {
   id             Int      @id @default(autoincrement())
   fromAccountId  Int
   toAccountId    Int
-  currencyCode   String   @db.VarChar(5)
+  currencyCode   String   @db.VarChar(20)
   amount         Decimal
   transferDate   DateTime @default(now())
   journalEntryId Int      @unique
@@ -173,8 +173,8 @@ model Transfer {
 // Pares de trading spot
 model TradingPair {
   id                Int    @id @default(autoincrement())
-  baseCurrencyCode  String @db.VarChar(5)
-  quoteCurrencyCode String @db.VarChar(5)
+  baseCurrencyCode  String @db.VarChar(20)
+  quoteCurrencyCode String @db.VarChar(20)
 
   baseCurrency  Currency @relation("BaseCurrency", fields: [baseCurrencyCode], references: [code])
   quoteCurrency Currency @relation("QuoteCurrency", fields: [quoteCurrencyCode], references: [code])

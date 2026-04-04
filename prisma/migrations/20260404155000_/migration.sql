@@ -74,7 +74,7 @@ CREATE TABLE "BankAccountType" (
 
 -- CreateTable
 CREATE TABLE "Currency" (
-    "code" VARCHAR(5) NOT NULL,
+    "code" VARCHAR(20) NOT NULL,
     "description" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -100,7 +100,7 @@ CREATE TABLE "Account" (
 CREATE TABLE "AccountBalance" (
     "id" SERIAL NOT NULL,
     "accountId" INTEGER NOT NULL,
-    "currencyCode" VARCHAR(5) NOT NULL,
+    "currencyCode" VARCHAR(20) NOT NULL,
     "balance" DECIMAL(65,30) NOT NULL DEFAULT 0,
 
     CONSTRAINT "AccountBalance_pkey" PRIMARY KEY ("id")
@@ -131,7 +131,7 @@ CREATE TABLE "JournalEntryLine" (
     "id" SERIAL NOT NULL,
     "entryId" INTEGER NOT NULL,
     "accountId" INTEGER NOT NULL,
-    "currencyCode" VARCHAR(5) NOT NULL,
+    "currencyCode" VARCHAR(20) NOT NULL,
     "amount" DECIMAL(65,30) NOT NULL,
     "entryType" TEXT NOT NULL,
 
@@ -143,7 +143,7 @@ CREATE TABLE "Transfer" (
     "id" SERIAL NOT NULL,
     "fromAccountId" INTEGER NOT NULL,
     "toAccountId" INTEGER NOT NULL,
-    "currencyCode" VARCHAR(5) NOT NULL,
+    "currencyCode" VARCHAR(20) NOT NULL,
     "amount" DECIMAL(65,30) NOT NULL,
     "transferDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "journalEntryId" INTEGER NOT NULL,
@@ -156,8 +156,8 @@ CREATE TABLE "Transfer" (
 -- CreateTable
 CREATE TABLE "TradingPair" (
     "id" SERIAL NOT NULL,
-    "baseCurrencyCode" VARCHAR(5) NOT NULL,
-    "quoteCurrencyCode" VARCHAR(5) NOT NULL,
+    "baseCurrencyCode" VARCHAR(20) NOT NULL,
+    "quoteCurrencyCode" VARCHAR(20) NOT NULL,
 
     CONSTRAINT "TradingPair_pkey" PRIMARY KEY ("id")
 );
@@ -220,6 +220,18 @@ CREATE TABLE "StrategyType" (
 );
 
 -- CreateTable
+CREATE TABLE "CryptoPrice" (
+    "id" SERIAL NOT NULL,
+    "symbol" TEXT NOT NULL,
+    "price" DOUBLE PRECISION NOT NULL,
+    "volume" DOUBLE PRECISION,
+    "timestamp" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CryptoPrice_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Alert" (
     "id" SERIAL NOT NULL,
     "symbol" TEXT NOT NULL,
@@ -273,6 +285,9 @@ CREATE INDEX "TradingStrategy_typeId_idx" ON "TradingStrategy"("typeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "StrategyType_name_key" ON "StrategyType"("name");
+
+-- CreateIndex
+CREATE INDEX "CryptoPrice_symbol_timestamp_idx" ON "CryptoPrice"("symbol", "timestamp");
 
 -- CreateIndex
 CREATE INDEX "Alert_symbol_timestamp_idx" ON "Alert"("symbol", "timestamp");

@@ -64,12 +64,7 @@ async function seedMasterData() {
     },
   });
 
-  const crossMarginType = await prisma.bankAccountType.create({
-    data: {
-      typeName: 'MarginCross',
-      description: 'Cross margin account',
-    },
-  });
+ 
 
   const profileA = await prisma.profile.create({
     data: {
@@ -81,15 +76,7 @@ async function seedMasterData() {
     },
   });
 
-  const profileB = await prisma.profile.create({
-    data: {
-      firstName: 'Kaizen',
-      lastName: 'Bot',
-      phone: '+580000000000',
-      birthDate: new Date('2020-01-01'),
-      address: 'Cloud',
-    },
-  });
+
 
   const userA = await prisma.user.create({
     data: {
@@ -102,17 +89,28 @@ async function seedMasterData() {
     },
   });
 
+  const profileB = await prisma.profile.create({
+    data: {
+      firstName: 'Operador',
+      lastName: 'Secundario',
+      phone: '+580000000000',
+      birthDate: new Date('2000-01-01'),
+      address: 'Venezuela',
+    },
+  });
+
   const userB = await prisma.user.create({
     data: {
-      email: 'bot.operator@kaizen.local',
-      username: 'kaizen_operator',
-      password: hashPassword('Operator123!'),
+      email: 'ops.enyelberthrc22.z@gmail.com',
+      username: 'opsbot',
+      password: hashPassword('Ops123!'),
       key: 'key_demo_ops',
       secretKey: 'secret_demo_ops',
       profileId: profileB.id,
     },
   });
 
+ 
   await prisma.session.createMany({
     data: [
       {
@@ -121,14 +119,7 @@ async function seedMasterData() {
         expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
         userAgent: 'seed-script',
         ipAddress: '127.0.0.1',
-      },
-      {
-        userId: userB.id,
-        token: randomUUID(),
-        expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
-        userAgent: 'seed-script',
-        ipAddress: '127.0.0.1',
-      },
+      }
     ],
   });
 
@@ -145,13 +136,8 @@ async function seedMasterData() {
         title: 'Bot activo',
         message: 'Se inicio una estrategia de prueba.',
         read: true,
-      },
-      {
-        userId: userB.id,
-        title: 'Operacion pendiente',
-        message: 'Revisa las ordenes abiertas.',
-        read: false,
-      },
+      }
+     
     ],
   });
 
@@ -166,37 +152,24 @@ async function seedMasterData() {
     },
   });
 
-  const accountA2 = await prisma.account.create({
+  await prisma.account.create({
     data: {
       userId: userA.id,
-      parentAccountId: accountA1.id,
-      bankAccountTypeId: crossMarginType.id,
-      key: 'acc_key_002',
-      secretKey: 'acc_secret_002',
-      email: 'margin.enyelberthrc22.z@gmail.com',
-      password: hashPassword('Margin123!'),
+      bankAccountTypeId: spotType.id,
+      key: 'binance_sync_offset',
+      secretKey: 'binance_sync_offset_secret',
+      email: 'binance.sync.offset@local',
+      password: hashPassword('BinanceSyncOffset123!'),
     },
   });
 
-  const accountB1 = await prisma.account.create({
-    data: {
-      userId: userB.id,
-      bankAccountTypeId: spotType.id,
-      key: 'acc_key_003',
-      secretKey: 'acc_secret_003',
-      email: 'spot.B1.enyelberthrc22.z@gmail.com',
-      password: hashPassword('Ops123!'),
-    },
-  });
+
+
 
   const desiredBalances = [
     { accountId: accountA1.id, currencyCode: 'USDT', balance: '10000.00' },
     { accountId: accountA1.id, currencyCode: 'FDUSD', balance: '500.00' },
-    { accountId: accountA1.id, currencyCode: 'BTC', balance: '0.12000000' },
-    { accountId: accountA2.id, currencyCode: 'USDT', balance: '3500.00' },
-    { accountId: accountA2.id, currencyCode: 'ETH', balance: '3.25000000' },
-    { accountId: accountB1.id, currencyCode: 'USDT', balance: '5000.00' },
-    { accountId: accountB1.id, currencyCode: 'XRP', balance: '1200.00' },
+    { accountId: accountA1.id, currencyCode: 'BTC', balance: '0.12000000' }
   ];
 
   for (const row of desiredBalances) {
@@ -285,21 +258,6 @@ async function seedMasterData() {
     },
   });
 
-  const orderB = await prisma.tradingOrder.create({
-    data: {
-      accountId: accountA2.id,
-      symbol: 'XRPUSDT',
-      orderId: 900002,
-      client_order_id: 'client-xrp-900002',
-      side: 'SELL',
-      price: '0.6200',
-      quantity: '400.00000000',
-      quantityExecuted: '150.00000000',
-      status: 'PARTIALLY_FILLED',
-      type: 'LIMIT',
-      isWorking: true,
-    },
-  });
 
   await prisma.tradingExecution.createMany({
     data: [
@@ -307,17 +265,7 @@ async function seedMasterData() {
         orderId: orderA.id,
         tradePrice: '62000.00',
         tradeQuantity: '0.05000000',
-      },
-      {
-        orderId: orderB.id,
-        tradePrice: '0.6200',
-        tradeQuantity: '100.00000000',
-      },
-      {
-        orderId: orderB.id,
-        tradePrice: '0.6210',
-        tradeQuantity: '50.00000000',
-      },
+      }
     ],
   });
 
@@ -349,26 +297,8 @@ async function seedMasterData() {
     ],
   });
 
-  const transferEntry = await prisma.journalEntry.create({
-    data: {
-      entryDate: new Date(),
-      description: 'Internal transfer to margin',
-      createdBy: 'seed-script',
-      statusId: 4,
-    },
-  });
-
-  await prisma.transfer.create({
-    data: {
-      fromAccountId: accountA1.id,
-      toAccountId: accountA2.id,
-      currencyCode: 'USDT',
-      amount: '500.00',
-      journalEntryId: transferEntry.id,
-      description: 'Spot to Cross Margin',
-      statusId: 4,
-    },
-  });
+  
+  
 
   const now = new Date();
   await prisma.cryptoPrice.createMany({
