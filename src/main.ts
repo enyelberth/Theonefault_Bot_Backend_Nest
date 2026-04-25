@@ -3,12 +3,18 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { applyRuntimeEnvMode } from './utils/runtime-env';
 import { validateRuntimeEnv } from './utils/env-validation';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
   applyRuntimeEnvMode();
   validateRuntimeEnv();
 
   const app = await NestFactory.create(AppModule);
+  app.useGlobalFilters(
+    new GlobalExceptionFilter(),
+    new PrismaExceptionFilter(),
+  );
 
   // Configurar CORS para aceptar solicitudes desde cualquier origen
   app.enableCors({

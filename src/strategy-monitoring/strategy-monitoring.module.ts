@@ -1,9 +1,11 @@
 import { Global, Module } from '@nestjs/common';
 import { StrategyRuntimeContextService } from './strategy-runtime-context.service';
 import { StrategyOpsService } from './strategy-ops.service';
+import { PnlLedgerModule } from '../pnl-ledger/pnl-ledger.module';
 
 @Global()
 @Module({
+  imports: [PnlLedgerModule],
   providers: [StrategyRuntimeContextService, StrategyOpsService],
   exports: [StrategyRuntimeContextService, StrategyOpsService],
 })

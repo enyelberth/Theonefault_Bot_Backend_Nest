@@ -26,6 +26,12 @@ DROP INDEX "idx_strategy_event_log_symbol_time";
 DROP INDEX "idx_strategy_event_log_type_time";
 
 -- AlterTable
+ALTER TABLE "TradingExecution" ALTER COLUMN "commissionAsset" SET DATA TYPE TEXT;
+
+-- AlterTable
+ALTER TABLE "TradingOrder" ALTER COLUMN "commissionAsset" SET DATA TYPE TEXT;
+
+-- AlterTable
 ALTER TABLE "strategy_event_log" ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3);
 
 -- CreateIndex

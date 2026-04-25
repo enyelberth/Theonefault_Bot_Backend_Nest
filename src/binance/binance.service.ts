@@ -15,6 +15,7 @@ export class BinanceService {
   private readonly httpsAgent: https.Agent;
   private readonly isProduction: boolean;
   private readonly enableMarginInDev: boolean;
+  private timeOffset = 0; // Desfase de timestamp con el servidor Binance
 
   constructor(
     private readonly strategyOpsService: StrategyOpsService,
@@ -195,7 +196,14 @@ export class BinanceService {
   async getServerTime(): Promise<number> {
     const url = `${process.env.BASE_URL}/api/v3/time`;
     const response = await axios.get(url, { httpsAgent: this.httpsAgent });
-    return response.data.serverTime;
+    const serverTime = response.data.serverTime;
+
+    // Calcula el desfase una sola vez y lo guarda para futuras llamadas
+    if (this.timeOffset === 0) {
+      this.timeOffset = serverTime - Date.now();
+    }
+
+    return serverTime;
   }
 
   async postSigned(endpoint: string, params: Record<string, string | number>) {

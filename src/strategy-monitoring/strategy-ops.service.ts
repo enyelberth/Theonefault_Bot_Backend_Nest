@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { OrderSide, OrderStatus, OrderType, Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { StrategyRuntimeContext } from './strategy-runtime-context.service';
+import { PnlLedgerService } from 'src/pnl-ledger/pnl-ledger.service';
 
 type MarketScope = 'spot' | 'margin';
 
@@ -73,13 +74,43 @@ export class StrategyOpsService implements OnModuleInit {
   private readonly riskCache = new Map<string, RiskSettings>();
   private readonly pendingLiquidations = new Map<string, PendingLiquidation>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pnlLedger: PnlLedgerService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     try {
       await this.ensureEventLogTable();
+      await this.seedStatsFromDb();
     } catch (error) {
-      this.logger.warn(`No se pudo inicializar strategy_event_log: ${(error as Error).message}`);
+      this.logger.warn(`No se pudo inicializar strategy_ops: ${(error as Error).message}`);
+    }
+  }
+
+  private async seedStatsFromDb(): Promise<void> {
+    try {
+      const stats = await (this.prisma as any).strategyStatSnapshot?.findMany?.() || [];
+      for (const stat of stats) {
+        this.stats.set(stat.strategyId, {
+          strategyId: stat.strategyId,
+          strategyType: '',
+          symbol: '',
+          totalOrders: stat.totalOrders,
+          filledOrders: stat.filledOrders,
+          cancelledOrders: stat.cancelledOrders,
+          rejectedOrders: 0,
+          openLots: 0,
+          realizedPnl: typeof stat.realizedPnl === 'number' ? stat.realizedPnl : stat.realizedPnl.toNumber?.() || 0,
+          winningTrades: stat.winningTrades,
+          losingTrades: stat.losingTrades,
+          winRate: typeof stat.winRate === 'number' ? stat.winRate : stat.winRate.toNumber?.() || 0,
+          updatedAt: stat.updatedAt?.toISOString?.() || new Date().toISOString(),
+        });
+      }
+      this.logger.log(`Seeded ${stats.length} strategy stats from DB`);
+    } catch (error) {
+      this.logger.warn(`Could not seed stats from DB: ${(error as Error).message}`);
     }
   }
 
@@ -409,7 +440,15 @@ export class StrategyOpsService implements OnModuleInit {
 
     const lots = this.lotBook.get(placement.strategyId) ?? [];
 
+    let realizedPnl = 0;
     if (placement.side === 'BUY') {
+      await this.pnlLedger.recordOpenLot(
+        placement.strategyId,
+        placement.symbol,
+        placement.orderId,
+        new Prisma.Decimal(executedQty),
+        new Prisma.Decimal(avgPrice),
+      );
       lots.push({
         qty: executedQty,
         price: avgPrice,
@@ -418,13 +457,22 @@ export class StrategyOpsService implements OnModuleInit {
       this.lotBook.set(placement.strategyId, lots);
     }
 
-    let realizedPnl = 0;
     if (placement.side === 'SELL' && executedQty > 0) {
+      const matchResult = await this.pnlLedger.matchAndCloseLot(
+        placement.strategyId,
+        placement.symbol,
+        placement.orderId,
+        new Prisma.Decimal(avgPrice),
+        new Prisma.Decimal(executedQty),
+        new Prisma.Decimal(0),
+      );
+
+      realizedPnl = matchResult.realizedPnl.toNumber();
+
       let remaining = executedQty;
       while (remaining > 0 && lots.length > 0) {
         const head = lots[0];
         const matched = Math.min(head.qty, remaining);
-        realizedPnl += (avgPrice - head.price) * matched;
         head.qty -= matched;
         remaining -= matched;
         if (head.qty <= 0) {
@@ -485,6 +533,16 @@ export class StrategyOpsService implements OnModuleInit {
     stats.winRate = totalClosed > 0 ? Number(((stats.winningTrades / totalClosed) * 100).toFixed(2)) : 0;
     stats.updatedAt = new Date().toISOString();
     this.stats.set(placement.strategyId, stats);
+
+    await this.pnlLedger.persistStrategyStats(placement.strategyId, {
+      totalOrders: stats.totalOrders,
+      filledOrders: stats.filledOrders,
+      cancelledOrders: stats.cancelledOrders,
+      realizedPnl: new Prisma.Decimal(stats.realizedPnl),
+      winningTrades: stats.winningTrades,
+      losingTrades: stats.losingTrades,
+      winRate: new Prisma.Decimal(stats.winRate / 100),
+    });
 
     this.pushLog({
       event: 'ORDER_FILLED',

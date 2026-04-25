@@ -1,15 +1,19 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards, Param, ParseIntPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AuthGuard } from 'src/authA/auth.guard';
 import { AnalyticsService } from 'src/analytics/analytics.service';
+import { PnlLedgerService } from 'src/pnl-ledger/pnl-ledger.service';
 
 @ApiBearerAuth('BearerAuth')
 @UseGuards(AuthGuard)
 @ApiTags('analytics')
 @Controller('analytics')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly pnlLedgerService: PnlLedgerService,
+  ) {}
 
   @Get('summary')
   @ApiOperation({ summary: 'Resumen global de trading y contabilidad' })
@@ -217,5 +221,62 @@ export class AnalyticsController {
     @Query('symbol') symbol?: string,
   ) {
     return this.analyticsService.getDrilldown(accountId ? Number(accountId) : undefined, symbol);
+  }
+
+  @Get('trades/summary')
+  @ApiOperation({ summary: 'Trade summary with P&L statistics' })
+  @ApiQuery({ name: 'period', required: false, enum: ['today', 'week', 'month', 'all'] })
+  @ApiQuery({ name: 'strategyId', required: false, type: String })
+  @ApiQuery({ name: 'symbol', required: false, type: String })
+  async getTradesSummary(
+    @Query('period') period?: 'today' | 'week' | 'month' | 'all',
+    @Query('strategyId') strategyId?: string,
+    @Query('symbol') symbol?: string,
+  ) {
+    const filters: any = { strategyId, symbol };
+
+    if (period === 'today') {
+      const now = new Date();
+      filters.startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filters.endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    } else if (period === 'week') {
+      const now = new Date();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      filters.startDate = startOfWeek;
+      filters.endDate = now;
+    } else if (period === 'month') {
+      const now = new Date();
+      filters.startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      filters.endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    }
+
+    return this.pnlLedgerService.getTradeSummary(filters);
+  }
+
+  @Get('trades/history')
+  @ApiOperation({ summary: 'Get detailed trade history' })
+  @ApiQuery({ name: 'strategyId', required: false, type: String })
+  @ApiQuery({ name: 'symbol', required: false, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'skip', required: false, type: Number })
+  async getTradesHistory(
+    @Query('strategyId') strategyId?: string,
+    @Query('symbol') symbol?: string,
+    @Query('limit') limit?: string,
+    @Query('skip') skip?: string,
+  ) {
+    return this.pnlLedgerService.getAllTradeHistory({
+      strategyId,
+      symbol,
+      limit: limit ? parseInt(limit) : 100,
+      skip: skip ? parseInt(skip) : 0,
+    });
+  }
+
+  @Get('strategy/:strategyId/stats')
+  @ApiOperation({ summary: 'Get statistics for a specific strategy' })
+  async getStrategyStats(@Param('strategyId') strategyId: string) {
+    return this.pnlLedgerService.getStrategyStats(strategyId);
   }
 }

@@ -216,6 +216,8 @@ model TradingOrder {
   isWorking        Boolean     @default(true)
   profit_loss      Decimal?
   closed_time      DateTime?
+  commissionAsset  String?
+  commissionAmount Decimal?    @db.Decimal(18, 8)
 
   closingOrderId Int?
   closingOrder   TradingOrder? @relation("OrderClosing", fields: [closingOrderId], references: [id])
@@ -255,11 +257,13 @@ enum OrderStatus {
 
 // Ejecuciones de órdenes de trading
 model TradingExecution {
-  id             Int      @id @default(autoincrement())
-  orderId        Int
-  tradePrice     Decimal
-  tradeQuantity  Decimal
-  tradeTimestamp DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  orderId          Int
+  tradePrice       Decimal
+  tradeQuantity    Decimal
+  tradeTimestamp   DateTime @default(now())
+  commission       Decimal? @db.Decimal(18, 8)
+  commissionAsset  String?
 
   tradingOrder TradingOrder @relation(fields: [orderId], references: [id])
 
@@ -278,6 +282,58 @@ model StrategyEventLog {
   @@index([symbol, createdAt], map: "idx_strategy_event_log_symbol_time")
   @@index([eventType, createdAt], map: "idx_strategy_event_log_type_time")
   @@map("strategy_event_log")
+}
+
+// Persiste el lotBook FIFO para sobrevivir reinicios
+model OpenLotPosition {
+  id              Int      @id @default(autoincrement())
+  strategyId      String
+  symbol          String
+  entryOrderId    Int      @unique
+  remainingQty    Decimal  @db.Decimal(18, 8)
+  avgEntryPrice   Decimal  @db.Decimal(18, 8)
+  createdAt       DateTime @default(now())
+
+  @@index([strategyId, symbol])
+  @@map("open_lot_position")
+}
+
+// Stats persistentes por estrategia (reemplaza in-memory StrategyStats)
+model StrategyStatSnapshot {
+  id              Int      @id @default(autoincrement())
+  strategyId      String   @unique
+  totalOrders     Int      @default(0)
+  filledOrders    Int      @default(0)
+  cancelledOrders Int      @default(0)
+  realizedPnl     Decimal  @default(0) @db.Decimal(18, 8)
+  winningTrades   Int      @default(0)
+  losingTrades    Int      @default(0)
+  winRate         Decimal  @default(0) @db.Decimal(5, 4)
+  updatedAt       DateTime @updatedAt
+
+  @@map("strategy_stat_snapshot")
+}
+
+// Registro contable detallado por trade cerrado
+model TradePnlRecord {
+  id              BigInt   @id @default(autoincrement())
+  strategyId      String
+  symbol          String
+  entryOrderId    Int
+  exitOrderId     Int      @unique
+  entryAvgPrice   Decimal  @db.Decimal(18, 8)
+  exitAvgPrice    Decimal  @db.Decimal(18, 8)
+  quantity        Decimal  @db.Decimal(18, 8)
+  realizedPnl     Decimal  @db.Decimal(18, 8)
+  commissionEst   Decimal  @default(0) @db.Decimal(18, 8)
+  netPnl          Decimal  @db.Decimal(18, 8)
+  closedAt        DateTime
+  createdAt       DateTime @default(now())
+
+  @@index([strategyId])
+  @@index([symbol])
+  @@index([closedAt])
+  @@map("trade_pnl_record")
 }
 
 model AccountingPeriod {

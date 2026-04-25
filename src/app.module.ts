@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ProfileController } from './profile/profile.controller';
@@ -11,6 +12,10 @@ import { AccountModule } from './account/account.module';
 import { CryptoPairModule } from './crypto-pair/crypto-pair.module';
 import { CryptoPriceModule } from './crypto-price/crypto-price.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import appConfig from './config/app.config';
+import binanceConfig from './config/binance.config';
+import telegramConfig from './config/telegram.config';
+import jwtConfig from './config/jwt.config';
 import { PruebaService } from './prueba/prueba.service';
 import { PruebaModule } from './prueba/prueba.module';
 import { TransactionModule } from './transaction/transaction.module';
@@ -41,10 +46,16 @@ import { StrategyMonitoringModule } from './strategy-monitoring/strategy-monitor
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { StructuredLoggingInterceptor } from './observability/structured-logging.interceptor';
 import { CorrelationIdMiddleware } from './observability/correlation-id.middleware';
+import { PnlLedgerModule } from './pnl-ledger/pnl-ledger.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [appConfig, binanceConfig, telegramConfig, jwtConfig],
+    }),
     StrategyMonitoringModule,
+    PnlLedgerModule,
     ObservabilityModule,
     AuthModule,
     PrismaModule,

@@ -4,13 +4,16 @@ import { PrismaClient } from '@prisma/client';
 
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+
 @Injectable()
 export class CryptoPriceService {
-    private readonly logger = new Logger(CryptoPriceService.name);
-  private readonly apiUrl = 'https://api.binance.com/api/v3';
-    private readonly symbols = ['BTCFDUSD', 'BNBFDUSD','ETHFDUSD','LINKFDUSD', 'XRPFDUSD','DOGEFDUSD','SOLFDUSD',];
-  constructor(private readonly prisma: PrismaClient) {
-  }
+  private readonly logger = new Logger(CryptoPriceService.name);
+  private readonly apiUrl = process.env.BASE_URL?.includes('testnet')
+    ? 'https://testnet.binance.vision/api/v3'
+    : 'https://api.binance.com/api/v3';
+  private readonly symbols = ['BTCFDUSD', 'BNBFDUSD', 'ETHFDUSD', 'LINKFDUSD', 'XRPFDUSD', 'DOGEFDUSD', 'SOLFDUSD'];
+
+  constructor(private readonly prisma: PrismaClient) {}
   create(createCryptoPriceDto: CreateCryptoPriceDto) {
     /*
     console.log("hola");

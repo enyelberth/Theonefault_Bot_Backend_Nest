@@ -7,9 +7,10 @@ import { AlertModule } from 'src/alert/alert.module';
 import { TradingModule } from 'src/trading/trading.module';
 import { AccountModule } from 'src/account/account.module';
 import { BinanceModule } from 'src/binance/binance.module';
+import { PnlLedgerModule } from 'src/pnl-ledger/pnl-ledger.module';
 
 @Module({
-  imports: [CryptoPriceModule, BotModule, AlertModule, TradingModule, AccountModule, BinanceModule],
+  imports: [CryptoPriceModule, BotModule, AlertModule, TradingModule, AccountModule, BinanceModule, PnlLedgerModule],
   controllers: [BotTelegramController],
   providers: [BotTelegramService],
   exports: [BotTelegramService],

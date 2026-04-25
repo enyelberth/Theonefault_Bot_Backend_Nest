@@ -7,6 +7,7 @@ import { BinanceService } from 'src/binance/binance.service';
 import { BotService } from 'src/bot/bot.service';
 import { AlertService } from 'src/alert/alert.service';
 import { StrategyOpsService } from 'src/strategy-monitoring/strategy-ops.service';
+import { PnlLedgerService } from 'src/pnl-ledger/pnl-ledger.service';
 
 interface ChatState {
   waitingForSymbol?: boolean;
@@ -52,6 +53,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     private botService: BotService,
     private alertService: AlertService,
     private strategyOpsService: StrategyOpsService,
+    private pnlLedgerService: PnlLedgerService,
   ) { }
 
   private readNumberList(rawValue: string | undefined, defaults: number[]): number[] {
@@ -330,6 +332,22 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
           const newBalance = Number(args[2]);
           await this.handleUpdateBalance(chatId, accountId, currencyCode, newBalance);
         }
+        break;
+
+      case '/pnl':
+        await this.handlePnlCommand(chatId, args);
+        break;
+
+      case '/stats':
+        await this.handleStatsCommand(chatId, args);
+        break;
+
+      case '/trades':
+        await this.handleTradesCommand(chatId, args);
+        break;
+
+      case '/drawdown':
+        await this.handleDrawdownCommand(chatId);
         break;
 
       default:
@@ -824,6 +842,172 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       for (const chatId of this.notifyChats) {
         await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
       }
+    }
+  }
+
+  private async handlePnlCommand(chatId: number, args: string[]) {
+    try {
+      const period = args[0] || 'today';
+      const strategyId = args[1];
+
+      const summary = await this.pnlLedgerService.getTradeSummary({
+        strategyId,
+        startDate: this.getStartDateByPeriod(period),
+        endDate: new Date(),
+      });
+
+      const totalPnlNum = typeof summary.totalPnl === 'number'
+        ? summary.totalPnl
+        : summary.totalPnl.toNumber?.() || 0;
+      const pnlSign = totalPnlNum >= 0 ? '✅' : '❌';
+      const winSign = totalPnlNum >= 0 ? '🎯' : '⚠️';
+
+      const toFixedStr = (val: any) => {
+        if (typeof val === 'number') return val.toFixed(2);
+        if (typeof val?.toFixed === 'function') return val.toFixed(2);
+        return '0.00';
+      };
+
+      const totalPnlStr = toFixedStr(summary.totalPnl);
+      const totalNetPnlStr = toFixedStr(summary.totalNetPnl);
+      const avgPnlStr = toFixedStr(summary.avgPnl);
+      const maxPnlStr = toFixedStr(summary.maxPnl);
+      const minPnlStr = toFixedStr(summary.minPnl);
+
+      const message = [
+        `<b>📊 P&L - ${period.toUpperCase()}</b>`,
+        `${pnlSign} <b>Total:</b> $${totalPnlStr}`,
+        `<b>Net:</b> $${totalNetPnlStr}`,
+        `<b>Trades:</b> ${summary.totalTrades} (${summary.winningTrades}W / ${summary.losingTrades}L)`,
+        `${winSign} <b>Win Rate:</b> ${(summary.winRate * 100).toFixed(1)}%`,
+        `<b>Avg P&L:</b> $${avgPnlStr}`,
+        `<b>Best:</b> $${maxPnlStr} | <b>Worst:</b> $${minPnlStr}`,
+      ].join('\n');
+
+      await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error obteniendo P&L: ${(error as Error).message}`);
+    }
+  }
+
+  private async handleStatsCommand(chatId: number, args: string[]) {
+    try {
+      const strategyId = args[0];
+
+      if (!strategyId) {
+        await this.sendMessage(chatId, 'Uso: /stats [strategyId]');
+        return;
+      }
+
+      const stats = await this.pnlLedgerService.getStrategyStats(strategyId);
+
+      if (!stats) {
+        await this.sendMessage(chatId, `No hay estadísticas para la estrategia: ${strategyId}`);
+        return;
+      }
+
+      const message = [
+        `<b>📈 Estadísticas - ${strategyId}</b>`,
+        `<b>Órdenes Totales:</b> ${stats.totalOrders}`,
+        `<b>Llenadas:</b> ${stats.filledOrders}`,
+        `<b>Canceladas:</b> ${stats.cancelledOrders}`,
+        `<b>P&L Realizado:</b> $${stats.realizedPnl.toFixed(2)}`,
+        `<b>Trades Ganadores:</b> ${stats.winningTrades}`,
+        `<b>Trades Perdedores:</b> ${stats.losingTrades}`,
+        `<b>Win Rate:</b> ${(stats.winRate * 100).toFixed(1)}%`,
+        `<b>Actualizado:</b> ${stats.updatedAt.toLocaleString()}`,
+      ].join('\n');
+
+      await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error obteniendo stats: ${(error as Error).message}`);
+    }
+  }
+
+  private async handleTradesCommand(chatId: number, args: string[]) {
+    try {
+      const symbol = args[0];
+      const limit = args[1] ? parseInt(args[1]) : 5;
+
+      const trades = await this.pnlLedgerService.getAllTradeHistory({
+        symbol,
+        limit: Math.min(limit, 10),
+      });
+
+      if (trades.length === 0) {
+        await this.sendMessage(chatId, `Sin trades${symbol ? ` para ${symbol}` : ''}`);
+        return;
+      }
+
+      let message = `<b>🔄 Últimos ${trades.length} Trades${symbol ? ` - ${symbol}` : ''}</b>\n`;
+
+      for (const trade of trades) {
+        const pnlSign = trade.realizedPnl >= 0 ? '✅' : '❌';
+        message += `\n${pnlSign} <b>${trade.symbol}</b> • P&L: $${trade.realizedPnl.toFixed(2)}\n`;
+        message += `  Entrada: $${trade.entryAvgPrice.toFixed(2)} • Salida: $${trade.exitAvgPrice.toFixed(2)}\n`;
+        message += `  Qty: ${trade.quantity} • Cerrado: ${new Date(trade.closedAt).toLocaleDateString()}\n`;
+      }
+
+      await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error obteniendo trades: ${(error as Error).message}`);
+    }
+  }
+
+  private async handleDrawdownCommand(chatId: number) {
+    try {
+      const today = new Date();
+      const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const summary = await this.pnlLedgerService.getTradeSummary({
+        startDate: sevenDaysAgo,
+        endDate: today,
+      });
+
+      const toNum = (val: any): number => {
+        if (typeof val === 'number') return val;
+        if (typeof val?.toNumber === 'function') return val.toNumber();
+        return 0;
+      };
+
+      const minPnlNum = toNum(summary.minPnl);
+      const totalPnlNum = toNum(summary.totalPnl);
+
+      const toFixedStr2 = (val: any) => {
+        if (typeof val === 'number') return val.toFixed(2);
+        if (typeof val?.toFixed === 'function') return val.toFixed(2);
+        return '0.00';
+      };
+
+      const minPnlStr = toFixedStr2(summary.minPnl);
+      const totalPnlStr = toFixedStr2(summary.totalPnl);
+
+      const message = [
+        '<b>📉 Drawdown Metrics</b>',
+        `<b>Max Drawdown (7d):</b> ${minPnlStr}`,
+        `<b>Current P&L (7d):</b> ${totalPnlStr}`,
+        `<b>Recovery Needed:</b> ${Math.abs(minPnlNum).toFixed(2)}`,
+        totalPnlNum < 0 ? '⚠️ <b>En pérdida</b>' : '✅ <b>En ganancia</b>',
+      ].join('\n');
+
+      await this.sendMessage(chatId, message, { parse_mode: 'HTML' });
+    } catch (error) {
+      await this.sendMessage(chatId, `Error obteniendo drawdown: ${(error as Error).message}`);
+    }
+  }
+
+  private getStartDateByPeriod(period: string): Date {
+    const now = new Date();
+    switch (period.toLowerCase()) {
+      case 'week':
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        return startOfWeek;
+      case 'month':
+        return new Date(now.getFullYear(), now.getMonth(), 1);
+      case 'today':
+      default:
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
   }
 
