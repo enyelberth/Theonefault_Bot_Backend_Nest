@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
 import { BinanceService } from './binance.service';
+import { BinanceAuthService } from './binance-auth.service';
+import { BinanceAccountService } from './binance-account.service';
+import { BinanceSpotService } from './binance-spot.service';
+import { BinanceMarginService } from './binance-margin.service';
 import { BinanceController } from './binance.controller';
-import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
-import { CryptoPriceModule } from 'src/crypto-price/crypto-price.module';
+import { StrategyMonitoringModule } from 'src/strategy-monitoring/strategy-monitoring.module';
 
 @Module({
-
-  exports: [BinanceService],
+  imports: [StrategyMonitoringModule],
+  exports: [BinanceService, BinanceAuthService, BinanceAccountService, BinanceSpotService, BinanceMarginService],
   controllers: [BinanceController],
-  providers: [BinanceService],
+  providers: [BinanceAuthService, BinanceAccountService, BinanceSpotService, BinanceMarginService, BinanceService],
 })
 export class BinanceModule {}

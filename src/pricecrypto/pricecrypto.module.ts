@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { PricecryptoService } from './pricecrypto.service';
-import { BinanceService } from 'src/binance/binance.service';
+import { BinanceModule } from 'src/binance/binance.module';
 
 @Module({
-    providers: [PricecryptoService,BinanceService],
+    imports: [BinanceModule],
+    providers: [PricecryptoService],
     exports: [PricecryptoService],
 })
 export class PricecryptoModule {}

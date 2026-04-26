@@ -296,5 +296,54 @@ async getCrossMarginLiqui() {
   async repayCrossMargin(@Body() dto: RepayCrossMarginDto) {
     return this.binanceService.repayCrossMargin(dto.asset, dto.amount);
   }
-  
+
+  @Get('balance/consolidated')
+  @ApiOperation({ summary: 'Obtener balance consolidado de todos los activos (Spot + Margin + Futures)' })
+  @ApiResponse({ status: 200, description: 'Balance consolidado obtenido correctamente.' })
+  async getConsolidatedBalance() {
+    return this.binanceService.getConsolidatedBalance();
+  }
+
+  @Get('balance/available-to-trade')
+  @ApiOperation({ summary: 'Obtener capital disponible para operar (sin margen, con margen, poder de endeudamiento)' })
+  @ApiResponse({ status: 200, description: 'Capital disponible obtenido correctamente.' })
+  async getAvailableToTrade() {
+    return this.binanceService.getAvailableToTrade();
+  }
+
+  @Get('balance/estimated-total-value')
+  @ApiOperation({ summary: 'Obtener valor estimado total del portafolio en USDT' })
+  @ApiResponse({ status: 200, description: 'Valor total del portafolio obtenido correctamente.' })
+  async getEstimatedTotalValue() {
+    return this.binanceService.getEstimatedTotalValue();
+  }
+
+  @Get('margin-cross/utilization')
+  @ApiOperation({ summary: 'Obtener utilización de margen cruzado con alertas de riesgo en tiempo real' })
+  @ApiResponse({ status: 200, description: 'Utilización de margen obtenida correctamente.' })
+  async getMarginUtilization() {
+    return this.binanceService.getMarginUtilization();
+  }
+
+  @Get('wallet/funds-summary')
+  @ApiOperation({ summary: 'Dashboard completo de fondos en billetera: total, desglose, disponible, bloqueado, poder de compra, etc' })
+  @ApiResponse({ status: 200, description: 'Dashboard de fondos obtenido correctamente.' })
+  async getWalletFundsSummary() {
+    return this.binanceService.getWalletFundsSummary();
+  }
+
+  @Get('analysis/asset-performance')
+  @ApiOperation({ summary: 'Análisis de rentabilidad y performance de cada activo en el portafolio' })
+  @ApiResponse({ status: 200, description: 'Análisis de performance obtenido correctamente.' })
+  async getAssetPerformanceAnalysis() {
+    return this.binanceService.getAssetPerformanceAnalysis();
+  }
+
+  @Get('analysis/risk-metrics')
+  @ApiOperation({ summary: 'Métricas avanzadas de riesgo: Sharpe ratio, Sortino ratio, Max drawdown, VaR, Beta, etc' })
+  @ApiResponse({ status: 200, description: 'Métricas de riesgo obtenidas correctamente.' })
+  async getAdvancedRiskMetrics() {
+    return this.binanceService.getAdvancedRiskMetrics();
+  }
+
 }

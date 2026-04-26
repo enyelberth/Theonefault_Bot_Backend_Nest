@@ -1,0 +1,535 @@
+{
+  "api": {
+    "version": "1.0",
+    "baseURL": "http://localhost:3000/binance",
+    "authentication": "Bearer Token (JWT)",
+    "lastUpdated": "2026-04-26"
+  },
+  "headers": {
+    "Authorization": "Bearer YOUR_JWT_TOKEN",
+    "Content-Type": "application/json"
+  },
+  "endpoints": {
+    "wallet": [
+      {
+        "name": "Dashboard Completo de Fondos",
+        "path": "/wallet/funds-summary",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene dashboard con total de fondos, desglose por cuenta, poder de compra y recomendaciones",
+        "parameters": [],
+        "response": {
+          "timestamp": "2026-04-26T02:30:00.000Z",
+          "walletStatus": "EXCELENTE",
+          "totalFunds": {
+            "totalUSDT": "50000.00",
+            "totalAvailableUSDT": "35000.00",
+            "totalLockedUSDT": "15000.00"
+          }
+        }
+      }
+    ],
+    "balance": [
+      {
+        "name": "Balance Consolidado",
+        "path": "/balance/consolidated",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene balance consolidado de Spot + Margin + Futures",
+        "parameters": [],
+        "response": {
+          "timestamp": "2026-04-26T02:30:00.000Z",
+          "byAsset": [
+            {
+              "asset": "USDT",
+              "spot": 25000,
+              "margin": 5000,
+              "futures": 0,
+              "total": 30000
+            }
+          ],
+          "summary": {
+            "totalSpot": 25000,
+            "totalMargin": 5000,
+            "totalFutures": 0
+          }
+        }
+      },
+      {
+        "name": "Capital Disponible para Operar",
+        "path": "/balance/available-to-trade",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene capital disponible, poder de endeudamiento y recomendaciones",
+        "parameters": [],
+        "response": {
+          "spot": {
+            "available": "25000.00",
+            "locked": "5000.00"
+          },
+          "margin": {
+            "available": "8000.00",
+            "borrowingPower": "500.00"
+          },
+          "totalAvailable": "35000.00"
+        }
+      },
+      {
+        "name": "Valor Total del Portafolio",
+        "path": "/balance/estimated-total-value",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene el valor estimado total del portafolio en USDT",
+        "parameters": [],
+        "response": {
+          "timestamp": "2026-04-26T02:30:00.000Z",
+          "totalValueUSDT": "50000.00",
+          "valuations": [
+            {
+              "asset": "BTC",
+              "quantity": "0.6",
+              "priceUSDT": "45000.00",
+              "valueUSDT": "27000.00"
+            }
+          ]
+        }
+      }
+    ],
+    "analysis": [
+      {
+        "name": "Análisis de Performance por Activo",
+        "path": "/analysis/asset-performance",
+        "method": "GET",
+        "auth": true,
+        "description": "Análisis detallado de rentabilidad y performance de cada activo",
+        "parameters": [],
+        "response": {
+          "timestamp": "2026-04-26T02:30:00.000Z",
+          "totalAssets": 5,
+          "topAssets": [],
+          "diversification": {
+            "numberOfAssets": 5,
+            "concentrationLevel": "MEDIA"
+          }
+        }
+      },
+      {
+        "name": "Métricas Avanzadas de Riesgo",
+        "path": "/analysis/risk-metrics",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene Sharpe ratio, Sortino ratio, Max drawdown, VaR, Beta, etc",
+        "parameters": [],
+        "response": {
+          "timestamp": "2026-04-26T02:30:00.000Z",
+          "volatilityMetrics": {
+            "annualVolatility": "18.50%",
+            "interpretation": "MEDIA"
+          },
+          "profitabilityMetrics": {
+            "sharpeRatio": "1.2345",
+            "interpretation": "MUY BUENA"
+          },
+          "riskLevel": "BAJO"
+        }
+      },
+      {
+        "name": "Utilización de Margen",
+        "path": "/margin-cross/utilization",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene el nivel de utilización de margen con alertas de riesgo",
+        "parameters": [],
+        "response": {
+          "marginEnabled": true,
+          "marginLevel": "2.5000",
+          "riskLevel": "BAJO",
+          "alerts": {
+            "isWarningLevel": false,
+            "isLiquidationRisk": false
+          }
+        }
+      }
+    ],
+    "orders_spot": [
+      {
+        "name": "Crear Orden Limit (Spot)",
+        "path": "/order/limit",
+        "method": "POST",
+        "auth": true,
+        "description": "Crea una orden limit en el mercado spot",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "description": "Par a tradear (ej: BTCUSDT, ETHUSDT)"
+          },
+          {
+            "name": "side",
+            "type": "string",
+            "required": true,
+            "enum": ["BUY", "SELL"],
+            "description": "Lado de la orden"
+          },
+          {
+            "name": "quantity",
+            "type": "string",
+            "required": true,
+            "description": "Cantidad a comprar/vender"
+          },
+          {
+            "name": "price",
+            "type": "string",
+            "required": true,
+            "description": "Precio límite"
+          },
+          {
+            "name": "timeInForce",
+            "type": "string",
+            "required": false,
+            "enum": ["GTC", "IOC", "FOK"],
+            "default": "GTC",
+            "description": "Good Till Cancel, Immediate Or Cancel, Fill Or Kill"
+          }
+        ],
+        "body": {
+          "symbol": "BTCUSDT",
+          "side": "BUY",
+          "quantity": "0.5",
+          "price": "45000",
+          "timeInForce": "GTC"
+        },
+        "response": {
+          "symbol": "BTCUSDT",
+          "orderId": 123456789,
+          "status": "NEW",
+          "type": "LIMIT",
+          "side": "BUY"
+        }
+      },
+      {
+        "name": "Crear Orden Market (Spot)",
+        "path": "/order/market",
+        "method": "POST",
+        "auth": true,
+        "description": "Crea una orden market en el mercado spot",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "description": "Par a tradear"
+          },
+          {
+            "name": "side",
+            "type": "string",
+            "required": true,
+            "enum": ["BUY", "SELL"]
+          },
+          {
+            "name": "quantity",
+            "type": "string",
+            "required": true,
+            "description": "Cantidad a comprar/vender"
+          }
+        ],
+        "body": {
+          "symbol": "BTCUSDT",
+          "side": "BUY",
+          "quantity": "0.5"
+        }
+      },
+      {
+        "name": "Crear Orden OCO",
+        "path": "/order/oco",
+        "method": "POST",
+        "auth": true,
+        "description": "Crea una orden One-Cancels-Other",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "side",
+            "type": "string",
+            "required": true,
+            "enum": ["BUY", "SELL"]
+          },
+          {
+            "name": "quantity",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "price",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "stopPrice",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "stopLimitPrice",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "Verificar Estado de Orden",
+        "path": "/order/:symbol/:orderId",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene el estado actual de una orden específica",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "location": "path",
+            "description": "Par (ej: BTCUSDT)"
+          },
+          {
+            "name": "orderId",
+            "type": "number",
+            "required": true,
+            "location": "path",
+            "description": "ID de la orden"
+          }
+        ]
+      },
+      {
+        "name": "Cancelar Orden",
+        "path": "/orders/cancel-all/:symbol",
+        "method": "POST",
+        "auth": true,
+        "description": "Cancela todas las órdenes abiertas de un símbolo",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "location": "path"
+          }
+        ]
+      },
+      {
+        "name": "Obtener Todas las Órdenes",
+        "path": "/orders/:symbol",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene el historial de órdenes de un símbolo",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "location": "path"
+          },
+          {
+            "name": "limit",
+            "type": "number",
+            "required": false,
+            "location": "query",
+            "default": 500
+          },
+          {
+            "name": "fromId",
+            "type": "number",
+            "required": false,
+            "location": "query"
+          }
+        ]
+      },
+      {
+        "name": "Obtener Velas/Candlestick",
+        "path": "/candles",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene datos OHLCV de velas para análisis técnico",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "location": "query"
+          },
+          {
+            "name": "interval",
+            "type": "string",
+            "required": true,
+            "location": "query",
+            "enum": ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]
+          },
+          {
+            "name": "limit",
+            "type": "number",
+            "required": true,
+            "location": "query"
+          }
+        ]
+      }
+    ],
+    "orders_margin": [
+      {
+        "name": "Crear Orden Limit Margin Cruzado",
+        "path": "/order/limit/cross",
+        "method": "POST",
+        "auth": true,
+        "description": "Crea una orden limit con margen cruzado",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "side",
+            "type": "string",
+            "required": true,
+            "enum": ["BUY", "SELL"]
+          },
+          {
+            "name": "quantity",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "price",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "Crear Orden Market Margin Cruzado",
+        "path": "/order/market/cross",
+        "method": "POST",
+        "auth": true,
+        "description": "Crea una orden market con margen cruzado",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "side",
+            "type": "string",
+            "required": true,
+            "enum": ["BUY", "SELL"]
+          },
+          {
+            "name": "quantity",
+            "type": "string",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "Cancelar Orden Margin",
+        "path": "/margin-cross/order/cancel/:symbol/:orderId",
+        "method": "POST",
+        "auth": true,
+        "description": "Cancela una orden específica de margin cruzado",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "location": "path"
+          },
+          {
+            "name": "orderId",
+            "type": "number",
+            "required": true,
+            "location": "path"
+          }
+        ]
+      },
+      {
+        "name": "Obtener Posiciones Margin",
+        "path": "/margin-cross/positions",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene todas las posiciones abiertas en margin cruzado"
+      },
+      {
+        "name": "Obtener Posición Específica",
+        "path": "/margin-cross/position/:symbol",
+        "method": "GET",
+        "auth": true,
+        "description": "Obtiene una posición específica de margin cruzado",
+        "parameters": [
+          {
+            "name": "symbol",
+            "type": "string",
+            "required": true,
+            "location": "path"
+          }
+        ]
+      },
+      {
+        "name": "Repagar Préstamo Margin",
+        "path": "/margin-cross/repay",
+        "method": "POST",
+        "auth": true,
+        "description": "Repaga un préstamo en margin cruzado",
+        "parameters": [
+          {
+            "name": "asset",
+            "type": "string",
+            "required": true,
+            "description": "Activo a repagar (ej: USDT, BTC)"
+          },
+          {
+            "name": "amount",
+            "type": "string",
+            "required": true,
+            "description": "Cantidad a repagar"
+          }
+        ],
+        "body": {
+          "asset": "USDT",
+          "amount": "1000"
+        }
+      }
+    ]
+  },
+  "errors": {
+    "400": {
+      "description": "Bad Request - Parámetros inválidos",
+      "action": "Verifica los parámetros enviados"
+    },
+    "401": {
+      "description": "Unauthorized - Token inválido",
+      "action": "Vuelve a autenticar"
+    },
+    "404": {
+      "description": "Not Found - Recurso no existe",
+      "action": "Verifica los parámetros (symbol, orderId, etc)"
+    },
+    "500": {
+      "description": "Internal Server Error",
+      "action": "Intenta de nuevo, contacta a soporte"
+    }
+  },
+  "httpStatusCodes": {
+    "200": "OK - Solicitud exitosa",
+    "201": "Created - Recurso creado",
+    "400": "Bad Request",
+    "401": "Unauthorized",
+    "404": "Not Found",
+    "500": "Internal Server Error"
+  },
+  "exampleUsage": {
+    "nodejs": "const axios = require('axios');\nconst client = axios.create({\n  baseURL: 'http://localhost:3000/binance',\n  headers: { 'Authorization': 'Bearer YOUR_TOKEN' }\n});\nawait client.get('/wallet/funds-summary');",
+    "curl": "curl -X GET http://localhost:3000/binance/wallet/funds-summary \\\n  -H 'Authorization: Bearer YOUR_TOKEN'",
+    "typescript": "const response = await fetch('http://localhost:3000/binance/wallet/funds-summary', {\n  headers: { 'Authorization': 'Bearer YOUR_TOKEN' }\n});\nconst data = await response.json();"
+  }
+}
