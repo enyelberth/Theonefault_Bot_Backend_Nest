@@ -13,7 +13,7 @@ export class BinanceService {
     private readonly margin: BinanceMarginService,
   ) {}
 
-  // Auth methods
+  // Auth methods (delegated to BinanceAuthService)
   canUseMargin(): boolean {
     return this.auth.canUseMargin();
   }
@@ -42,7 +42,7 @@ export class BinanceService {
     return this.auth.getSignedRequest(endpoint, params);
   }
 
-  // Account methods
+  // Account methods (delegated to BinanceAccountService)
   async getAccountInfo() {
     return this.account.getAccountInfo();
   }
@@ -123,7 +123,35 @@ export class BinanceService {
     return this.account.transferBetweenSpotAndCrossMargin(asset, amount, type);
   }
 
-  // Spot methods
+  async getConsolidatedBalance() {
+    return this.account.getConsolidatedBalance();
+  }
+
+  async getAvailableToTrade() {
+    return this.account.getAvailableToTrade();
+  }
+
+  async getEstimatedTotalValue() {
+    return this.account.getEstimatedTotalValue();
+  }
+
+  async getMarginUtilization() {
+    return this.account.getMarginUtilization();
+  }
+
+  async getWalletFundsSummary() {
+    return this.account.getWalletFundsSummary();
+  }
+
+  async getAssetPerformanceAnalysis() {
+    return this.account.getAssetPerformanceAnalysis();
+  }
+
+  async getAdvancedRiskMetrics() {
+    return this.account.getAdvancedRiskMetrics();
+  }
+
+  // Spot methods (delegated to BinanceSpotService)
   async createLimitOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
     return this.spot.createLimitOrder(symbol, side, quantity, price, timeInForce);
   }
@@ -182,7 +210,7 @@ export class BinanceService {
     return this.spot.getDecimalsForSymbol(symbol);
   }
 
-  // Margin methods
+  // Margin methods (delegated to BinanceMarginService)
   async createCrossMarginLimitOrder(
     symbol: string,
     side: 'BUY' | 'SELL',
@@ -284,35 +312,6 @@ export class BinanceService {
     market: 'spot' | 'margin';
   }): Promise<void> {
     return this.margin.panicLiquidateSymbol(payload);
-  }
-
-  // New balance and capital management methods
-  async getConsolidatedBalance() {
-    return this.account.getConsolidatedBalance();
-  }
-
-  async getAvailableToTrade() {
-    return this.account.getAvailableToTrade();
-  }
-
-  async getEstimatedTotalValue() {
-    return this.account.getEstimatedTotalValue();
-  }
-
-  async getMarginUtilization() {
-    return this.account.getMarginUtilization();
-  }
-
-  async getWalletFundsSummary() {
-    return this.account.getWalletFundsSummary();
-  }
-
-  async getAssetPerformanceAnalysis() {
-    return this.account.getAssetPerformanceAnalysis();
-  }
-
-  async getAdvancedRiskMetrics() {
-    return this.account.getAdvancedRiskMetrics();
   }
 
   async firmar() {
