@@ -10,12 +10,18 @@ import {
 } from 'class-validator';
 
 export class UpdateTransactionDto {
-  @ApiPropertyOptional({ description: 'Identificador único de la transacción', example: 'tx_123abc' })
+  @ApiPropertyOptional({
+    description: 'Identificador único de la transacción',
+    example: 'tx_123abc',
+  })
   @IsOptional()
   @IsString()
   idTransaction?: string;
 
-  @ApiPropertyOptional({ description: 'ID de la cuenta relacionada', example: 1 })
+  @ApiPropertyOptional({
+    description: 'ID de la cuenta relacionada',
+    example: 1,
+  })
   @IsOptional()
   @IsInt()
   accountId?: number;
@@ -30,12 +36,18 @@ export class UpdateTransactionDto {
   @IsIn(['limit', 'market', 'stop-limit'])
   typeOrder?: string;
 
-  @ApiPropertyOptional({ description: 'Cantidad de criptomoneda', example: 0.5 })
+  @ApiPropertyOptional({
+    description: 'Cantidad de criptomoneda',
+    example: 0.5,
+  })
   @IsOptional()
   @IsNumber()
   amount?: number;
 
-  @ApiPropertyOptional({ description: 'Divisa (fiat o cripto)', example: 'USDT' })
+  @ApiPropertyOptional({
+    description: 'Divisa (fiat o cripto)',
+    example: 'USDT',
+  })
   @IsOptional()
   @IsString()
   currency?: string;
@@ -96,7 +108,10 @@ export class UpdateTransactionDto {
   @IsNumber()
   profitLoss?: number;
 
-  @ApiPropertyOptional({ description: 'Indica si la transacción está cerrada', example: false })
+  @ApiPropertyOptional({
+    description: 'Indica si la transacción está cerrada',
+    example: false,
+  })
   @IsOptional()
   @IsBoolean()
   isClosed?: boolean;

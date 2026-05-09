@@ -11,7 +11,15 @@ export class CryptoPriceService {
   private readonly apiUrl = process.env.BASE_URL?.includes('testnet')
     ? 'https://testnet.binance.vision/api/v3'
     : 'https://api.binance.com/api/v3';
-  private readonly symbols = ['BTCFDUSD', 'BNBFDUSD', 'ETHFDUSD', 'LINKFDUSD', 'XRPFDUSD', 'DOGEFDUSD', 'SOLFDUSD'];
+  private readonly symbols = [
+    'BTCFDUSD',
+    'BNBFDUSD',
+    'ETHFDUSD',
+    'LINKFDUSD',
+    'XRPFDUSD',
+    'DOGEFDUSD',
+    'SOLFDUSD',
+  ];
 
   constructor(private readonly prisma: PrismaClient) {}
   create(createCryptoPriceDto: CreateCryptoPriceDto) {
@@ -23,8 +31,8 @@ export class CryptoPriceService {
     });
     */
   }
-   async createPrueba(price: number, pairId: number){
-  /*
+  async createPrueba(price: number, pairId: number) {
+    /*
     console.log("hola");
     return this.prisma.cryptoPrice.create({
       data: {
@@ -33,26 +41,28 @@ export class CryptoPriceService {
       },
     });*/
   }
-  
 
   async findAll(): Promise<{ symbol: string; price: number }[]> {
     try {
       // Convierte los símbolos a un array JSON como string
-      const symbolsParam = JSON.stringify(this.symbols.map(s => s.toUpperCase()));
+      const symbolsParam = JSON.stringify(
+        this.symbols.map((s) => s.toUpperCase()),
+      );
 
       const response = await axios.get(`${this.apiUrl}/ticker/price`, {
         params: { symbols: symbolsParam },
       });
 
       // Binance responde con un array con objetos {symbol, price}
-      const prices = response.data.map(item => ({
+      const prices = response.data.map((item) => ({
         symbol: item.symbol,
         price: parseFloat(item.price),
       }));
 
-      this.logger.log(`Precios obtenidos para símbolos: ${this.symbols.join(', ')}`);
+      this.logger.log(
+        `Precios obtenidos para símbolos: ${this.symbols.join(', ')}`,
+      );
       return prices;
-
     } catch (error) {
       this.logger.error('Error obteniendo precios múltiple de crypto', error);
       return [];
@@ -67,7 +77,10 @@ export class CryptoPriceService {
       this.logger.log(`Precio de ${symbol}: $${price}`);
       return price;
     } catch (error) {
-      this.logger.error(`Error obteniendo precio para simbolo ${symbol}`, error);
+      this.logger.error(
+        `Error obteniendo precio para simbolo ${symbol}`,
+        error,
+      );
       return null;
     }
   }
@@ -88,5 +101,4 @@ export class CryptoPriceService {
     });
     */
   }
-    
 }

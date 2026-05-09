@@ -6,31 +6,37 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class ProfileService {
-	constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-	async create(createProfileDto: CreateProfileDto): Promise<Profile> {
-		return this.prisma.profile.create({ data: createProfileDto });
-	}
+  async create(createProfileDto: CreateProfileDto): Promise<Profile> {
+    return this.prisma.profile.create({ data: createProfileDto });
+  }
 
-	async findAll(): Promise<Profile[]> {
-		return this.prisma.profile.findMany({ orderBy: { id: 'desc' } });
-	}
+  async findAll(): Promise<Profile[]> {
+    return this.prisma.profile.findMany({ orderBy: { id: 'desc' } });
+  }
 
-	async findOne(id: number): Promise<Profile> {
-		const profile = await this.prisma.profile.findUnique({ where: { id } });
-		if (!profile) {
-			throw new NotFoundException(`Profile with id ${id} not found`);
-		}
-		return profile;
-	}
+  async findOne(id: number): Promise<Profile> {
+    const profile = await this.prisma.profile.findUnique({ where: { id } });
+    if (!profile) {
+      throw new NotFoundException(`Profile with id ${id} not found`);
+    }
+    return profile;
+  }
 
-	async update(id: number, updateProfileDto: UpdateProfileDto): Promise<Profile> {
-		await this.findOne(id);
-		return this.prisma.profile.update({ where: { id }, data: updateProfileDto });
-	}
+  async update(
+    id: number,
+    updateProfileDto: UpdateProfileDto,
+  ): Promise<Profile> {
+    await this.findOne(id);
+    return this.prisma.profile.update({
+      where: { id },
+      data: updateProfileDto,
+    });
+  }
 
-	async remove(id: number): Promise<Profile> {
-		await this.findOne(id);
-		return this.prisma.profile.delete({ where: { id } });
-	}
+  async remove(id: number): Promise<Profile> {
+    await this.findOne(id);
+    return this.prisma.profile.delete({ where: { id } });
+  }
 }

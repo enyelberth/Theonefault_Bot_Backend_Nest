@@ -56,7 +56,12 @@ describe('BinanceSpotService', () => {
 
       mockAuthService.postSigned.mockResolvedValueOnce(mockResponse);
 
-      const result = await service.createLimitOrder('BTCUSDT', 'BUY', '0.1', '45000');
+      const result = await service.createLimitOrder(
+        'BTCUSDT',
+        'BUY',
+        '0.1',
+        '45000',
+      );
 
       expect(result).toEqual(mockResponse);
       expect(mockAuthService.postSigned).toHaveBeenCalledWith(
@@ -68,7 +73,7 @@ describe('BinanceSpotService', () => {
           quantity: '0.1',
           price: '45000',
           timeInForce: 'GTC',
-        })
+        }),
       );
     });
 
@@ -88,12 +93,12 @@ describe('BinanceSpotService', () => {
         context,
         'BUY',
         0.1,
-        45000
+        45000,
       );
       expect(mockStrategyOps.buildClientOrderId).toHaveBeenCalledWith(
         context,
         'BUY',
-        'spot'
+        'spot',
       );
       expect(mockStrategyOps.recordOrderPlacement).toHaveBeenCalled();
     });
@@ -107,7 +112,7 @@ describe('BinanceSpotService', () => {
         '/api/v3/order',
         expect.objectContaining({
           timeInForce: 'IOC',
-        })
+        }),
       );
     });
   });
@@ -132,7 +137,7 @@ describe('BinanceSpotService', () => {
           side: 'SELL',
           type: 'MARKET',
           quantity: '0.1',
-        })
+        }),
       );
     });
   });
@@ -156,7 +161,7 @@ describe('BinanceSpotService', () => {
         expect.objectContaining({
           symbol: 'BTCUSDT',
           orderId: 12345,
-        })
+        }),
       );
     });
   });
@@ -179,7 +184,7 @@ describe('BinanceSpotService', () => {
         expect.objectContaining({
           symbol: 'BTCUSDT',
           limit: 500,
-        })
+        }),
       );
     });
 
@@ -195,7 +200,7 @@ describe('BinanceSpotService', () => {
           symbol: 'BTCUSDT',
           limit: 100,
           fromId: 5000,
-        })
+        }),
       );
     });
   });
@@ -242,7 +247,7 @@ describe('BinanceSpotService', () => {
       mockAuthService.getSigned.mockResolvedValueOnce(mockExchangeInfo);
 
       await expect(service.obtenerFiltrosSimbolo('XYZUSDT')).rejects.toThrow(
-        'Símbolo XYZUSDT no encontrado'
+        'Símbolo XYZUSDT no encontrado',
       );
     });
   });

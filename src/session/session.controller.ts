@@ -1,5 +1,21 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Session } from '@prisma/client';
 import { AuthGuard } from 'src/authA/auth.guard';
 import { CreateSessionDto } from './dto/create-session.dto';
@@ -44,7 +60,10 @@ export class SessionController {
   @ApiOperation({ summary: 'Actualizar sesión por id' })
   @ApiBody({ type: UpdateSessionDto })
   @ApiParam({ name: 'id', type: Number })
-  async update(@Param('id') id: string, @Body() updateSessionDto: UpdateSessionDto): Promise<Session> {
+  async update(
+    @Param('id') id: string,
+    @Body() updateSessionDto: UpdateSessionDto,
+  ): Promise<Session> {
     return this.sessionService.update(+id, updateSessionDto);
   }
 

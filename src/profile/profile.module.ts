@@ -4,9 +4,9 @@ import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 
 @Module({
-	imports: [PrismaModule],
-	controllers: [ProfileController],
-	providers: [ProfileService],
-	exports: [ProfileService],
+  imports: [PrismaModule],
+  controllers: [ProfileController],
+  providers: [ProfileService],
+  exports: [ProfileService],
 })
 export class ProfileModule {}

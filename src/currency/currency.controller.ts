@@ -1,5 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Currency } from '@prisma/client';
 import { AuthGuard } from 'src/authA/auth.guard';
 import { CurrencyService } from './currency.service';
@@ -16,7 +31,9 @@ export class CurrencyController {
   @Post()
   @ApiOperation({ summary: 'Crear una moneda' })
   @ApiBody({ type: CreateCurrencyDto })
-  async create(@Body() createCurrencyDto: CreateCurrencyDto): Promise<Currency> {
+  async create(
+    @Body() createCurrencyDto: CreateCurrencyDto,
+  ): Promise<Currency> {
     return this.currencyService.create(createCurrencyDto);
   }
 
@@ -36,7 +53,10 @@ export class CurrencyController {
   @Patch(':code')
   @ApiOperation({ summary: 'Actualizar una moneda por código' })
   @ApiBody({ type: UpdateCurrencyDto })
-  async update(@Param('code') code: string, @Body() updateCurrencyDto: UpdateCurrencyDto): Promise<Currency> {
+  async update(
+    @Param('code') code: string,
+    @Body() updateCurrencyDto: UpdateCurrencyDto,
+  ): Promise<Currency> {
     return this.currencyService.update(code.toUpperCase(), updateCurrencyDto);
   }
 

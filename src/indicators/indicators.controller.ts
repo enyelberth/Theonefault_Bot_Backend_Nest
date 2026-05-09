@@ -49,18 +49,24 @@ export class IndicatorsController {
     description: 'Símbolo de la criptomoneda, ej. BTC',
   })
   @ApiResponse({ status: 200, description: 'Lista de precios históricos' })
-  async findPricesBySymbol(@Param('symbol') symbol: string): Promise<CryptoPrice[]> {
+  async findPricesBySymbol(
+    @Param('symbol') symbol: string,
+  ): Promise<CryptoPrice[]> {
     return this.indicatorsService.findPricesBySymbol(symbol);
   }
 
   @Get('crypto-price/latest/:symbol')
-  @ApiOperation({ summary: 'Obtener el último precio registrado de una criptomoneda' })
+  @ApiOperation({
+    summary: 'Obtener el último precio registrado de una criptomoneda',
+  })
   @ApiParam({
     name: 'symbol',
     description: 'Símbolo de la criptomoneda, ej. BTC',
   })
   @ApiResponse({ status: 200, description: 'Último precio registrado' })
-  async findLatestPrice(@Param('symbol') symbol: string): Promise<CryptoPrice | null> {
+  async findLatestPrice(
+    @Param('symbol') symbol: string,
+  ): Promise<CryptoPrice | null> {
     return this.indicatorsService.findLatestPrice(symbol);
   }
 
@@ -97,6 +103,10 @@ export class IndicatorsController {
   ): Promise<number | null> {
     const rsiPeriod = period ?? 14;
     const rsiInterval = intervalMinutes ?? 1;
-    return this.indicatorsService.calculateRSIWithInterval(symbol, rsiPeriod, rsiInterval);
+    return this.indicatorsService.calculateRSIWithInterval(
+      symbol,
+      rsiPeriod,
+      rsiInterval,
+    );
   }
 }

@@ -59,26 +59,49 @@ export class JournalEntryController {
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las entradas del diario' })
-  @ApiResponse({ status: 200, description: 'Lista de entradas del diario obtenida correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de entradas del diario obtenida correctamente.',
+  })
   async findAll() {
     return this.journalEntryService.findAllJournalEntries();
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una entrada del diario por ID' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la entrada del diario a obtener' })
-  @ApiResponse({ status: 200, description: 'Entrada del diario encontrada correctamente.' })
-  @ApiNotFoundResponse({ description: 'Entrada del diario no encontrada con el ID proporcionado.' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la entrada del diario a obtener',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Entrada del diario encontrada correctamente.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Entrada del diario no encontrada con el ID proporcionado.',
+  })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.journalEntryService.findOneJournalEntry(id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar una entrada del diario por ID' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la entrada del diario a actualizar' })
-  @ApiResponse({ status: 200, description: 'Entrada del diario actualizada correctamente.' })
-  @ApiBadRequestResponse({ description: 'Datos inválidos para la actualización.' })
-  @ApiNotFoundResponse({ description: 'Entrada del diario no encontrada con el ID proporcionado.' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la entrada del diario a actualizar',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Entrada del diario actualizada correctamente.',
+  })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos para la actualización.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Entrada del diario no encontrada con el ID proporcionado.',
+  })
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -89,23 +112,43 @@ export class JournalEntryController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar una entrada del diario por ID' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la entrada del diario a eliminar' })
-  @ApiResponse({ status: 200, description: 'Entrada del diario eliminada correctamente.' })
-  @ApiNotFoundResponse({ description: 'Entrada del diario no encontrada con el ID proporcionado.' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la entrada del diario a eliminar',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Entrada del diario eliminada correctamente.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Entrada del diario no encontrada con el ID proporcionado.',
+  })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.journalEntryService.remove(id);
   }
 
   @Get('accounting/summary')
-  @ApiOperation({ summary: 'Obtener resumen contable de ingresos, egresos, balances y trading' })
-  @ApiResponse({ status: 200, description: 'Resumen contable obtenido correctamente.' })
+  @ApiOperation({
+    summary:
+      'Obtener resumen contable de ingresos, egresos, balances y trading',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen contable obtenido correctamente.',
+  })
   async getAccountingSummary() {
     return this.journalEntryService.getAccountingSummary();
   }
 
   @Post('accounting/rebuild-balances')
-  @ApiOperation({ summary: 'Recalcular todos los balances locales desde JournalEntryLine' })
-  @ApiResponse({ status: 200, description: 'Balances recalculados correctamente.' })
+  @ApiOperation({
+    summary: 'Recalcular todos los balances locales desde JournalEntryLine',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Balances recalculados correctamente.',
+  })
   @Roles('ADMIN', 'OPERATOR')
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 10, windowMs: 60_000 })
@@ -114,9 +157,16 @@ export class JournalEntryController {
   }
 
   @Post('accounting/sync-binance')
-  @ApiOperation({ summary: 'Sincronizar saldos de Binance a local generando un journal entry de reflejo' })
-  @ApiCreatedResponse({ description: 'Sincronización Binance aplicada correctamente.' })
-  @ApiBadRequestResponse({ description: 'Parámetros inválidos para la sincronización.' })
+  @ApiOperation({
+    summary:
+      'Sincronizar saldos de Binance a local generando un journal entry de reflejo',
+  })
+  @ApiCreatedResponse({
+    description: 'Sincronización Binance aplicada correctamente.',
+  })
+  @ApiBadRequestResponse({
+    description: 'Parámetros inválidos para la sincronización.',
+  })
   @Roles('ADMIN', 'OPERATOR')
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 20, windowMs: 60_000 })
@@ -134,21 +184,27 @@ export class JournalEntryController {
   }
 
   @Post('accounting/periods/:id/close')
-  @ApiOperation({ summary: 'Cerrar período contable y bloquear cambios históricos' })
+  @ApiOperation({
+    summary: 'Cerrar período contable y bloquear cambios históricos',
+  })
   @Roles('ADMIN')
   async closeAccountingPeriod(@Param('id', ParseIntPipe) id: number) {
     return this.journalEntryService.closeAccountingPeriod(id, 'ADMIN');
   }
 
   @Post('accounting/periods/:id/reopen')
-  @ApiOperation({ summary: 'Reabrir período contable solo para administración controlada' })
+  @ApiOperation({
+    summary: 'Reabrir período contable solo para administración controlada',
+  })
   @Roles('ADMIN')
   async reopenAccountingPeriod(@Param('id', ParseIntPipe) id: number) {
     return this.journalEntryService.reopenAccountingPeriod(id, 'ADMIN');
   }
 
   @Post(':id/reverse')
-  @ApiOperation({ summary: 'Revertir asiento contable generando asiento inverso' })
+  @ApiOperation({
+    summary: 'Revertir asiento contable generando asiento inverso',
+  })
   @Roles('ADMIN', 'OPERATOR')
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async reverseEntry(
@@ -186,7 +242,11 @@ export class JournalEntryController {
 
   @Post(':entryId/lines')
   @ApiOperation({ summary: 'Agregar línea a una entrada del diario' })
-  @ApiParam({ name: 'entryId', type: Number, description: 'ID de la entrada del diario' })
+  @ApiParam({
+    name: 'entryId',
+    type: Number,
+    description: 'ID de la entrada del diario',
+  })
   @ApiCreatedResponse({ description: 'Línea agregada exitosamente.' })
   @ApiBadRequestResponse({ description: 'Datos inválidos para la línea.' })
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
@@ -198,8 +258,14 @@ export class JournalEntryController {
   }
 
   @Get(':entryId/lines')
-  @ApiOperation({ summary: 'Obtener todas las líneas de una entrada del diario' })
-  @ApiParam({ name: 'entryId', type: Number, description: 'ID de la entrada del diario' })
+  @ApiOperation({
+    summary: 'Obtener todas las líneas de una entrada del diario',
+  })
+  @ApiParam({
+    name: 'entryId',
+    type: Number,
+    description: 'ID de la entrada del diario',
+  })
   @ApiResponse({ status: 200, description: 'Líneas obtenidas correctamente.' })
   async findLines(@Param('entryId', ParseIntPipe) entryId: number) {
     return this.journalEntryService.findAllLines(entryId);
@@ -209,7 +275,9 @@ export class JournalEntryController {
   @ApiOperation({ summary: 'Obtener una línea por ID' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la línea' })
   @ApiResponse({ status: 200, description: 'Línea encontrada correctamente.' })
-  @ApiNotFoundResponse({ description: 'Línea no encontrada con el ID proporcionado.' })
+  @ApiNotFoundResponse({
+    description: 'Línea no encontrada con el ID proporcionado.',
+  })
   async findOneLine(@Param('id', ParseIntPipe) id: number) {
     return this.journalEntryService.findOneLine(id);
   }
@@ -218,8 +286,12 @@ export class JournalEntryController {
   @ApiOperation({ summary: 'Actualizar una línea por ID' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la línea' })
   @ApiResponse({ status: 200, description: 'Línea actualizada correctamente.' })
-  @ApiBadRequestResponse({ description: 'Datos inválidos para la actualización.' })
-  @ApiNotFoundResponse({ description: 'Línea no encontrada con el ID proporcionado.' })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos para la actualización.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Línea no encontrada con el ID proporcionado.',
+  })
   @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   async updateLine(
     @Param('id', ParseIntPipe) id: number,
@@ -232,7 +304,9 @@ export class JournalEntryController {
   @ApiOperation({ summary: 'Eliminar una línea por ID' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la línea' })
   @ApiResponse({ status: 200, description: 'Línea eliminada correctamente.' })
-  @ApiNotFoundResponse({ description: 'Línea no encontrada con el ID proporcionado.' })
+  @ApiNotFoundResponse({
+    description: 'Línea no encontrada con el ID proporcionado.',
+  })
   async removeLine(@Param('id', ParseIntPipe) id: number) {
     return this.journalEntryService.removeLine(id);
   }

@@ -1,4 +1,11 @@
-import { IsInt, IsOptional, IsString, IsNotEmpty, IsEmail, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  IsNotEmpty,
+  IsEmail,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAccountDto {

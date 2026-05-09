@@ -32,14 +32,18 @@ export function validateRuntimeEnv(): void {
   if (missing.length > 0) {
     throw new Error(
       `Faltan variables de entorno requeridas: ${missing.join(', ')}. ` +
-      'Revisa tu archivo .env y la selección PROD/DEV.',
+        'Revisa tu archivo .env y la selección PROD/DEV.',
     );
   }
 
-  if (!isProduction && !enableMarginInDev && process.env.BASE_URL?.includes('api.binance.com')) {
+  if (
+    !isProduction &&
+    !enableMarginInDev &&
+    process.env.BASE_URL?.includes('api.binance.com')
+  ) {
     console.warn(
       '[ENV] Estás en desarrollo con BASE_URL de producción. ' +
-      'Si quieres testnet usa BASE_URL_DEV=https://testnet.binance.vision.',
+        'Si quieres testnet usa BASE_URL_DEV=https://testnet.binance.vision.',
     );
   }
 }

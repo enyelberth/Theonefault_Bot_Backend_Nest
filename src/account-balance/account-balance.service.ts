@@ -8,7 +8,9 @@ import { PrismaService } from 'prisma/prisma.service';
 export class AccountBalanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createAccountBalanceDto: CreateAccountBalanceDto): Promise<AccountBalance> {
+  async create(
+    createAccountBalanceDto: CreateAccountBalanceDto,
+  ): Promise<AccountBalance> {
     return this.prisma.accountBalance.create({ data: createAccountBalanceDto });
   }
 
@@ -19,7 +21,9 @@ export class AccountBalanceService {
   }
 
   async findOne(id: number): Promise<AccountBalance> {
-    const accountBalance = await this.prisma.accountBalance.findUnique({ where: { id } });
+    const accountBalance = await this.prisma.accountBalance.findUnique({
+      where: { id },
+    });
     if (!accountBalance) {
       throw new NotFoundException(`AccountBalance with id ${id} not found`);
     }
@@ -34,7 +38,10 @@ export class AccountBalanceService {
     });
   }
 
-  async update(id: number, updateAccountBalanceDto: UpdateAccountBalanceDto): Promise<AccountBalance> {
+  async update(
+    id: number,
+    updateAccountBalanceDto: UpdateAccountBalanceDto,
+  ): Promise<AccountBalance> {
     await this.findOne(id);
     return this.prisma.accountBalance.update({
       where: { id },

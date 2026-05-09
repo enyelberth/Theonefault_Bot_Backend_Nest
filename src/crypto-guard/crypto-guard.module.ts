@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { CryptoGuardService } from './crypto-guard.service';
 import { CryptoGuardGateway } from './crypto-guard.gateway';
-import { AccountModule } from 'src/account/account.module';
-import { BotModule } from 'src/bot/bot.module';
-import { BinanceModule } from 'src/binance/binance.module';
+import { RiskAlertGateway } from './risk-alert.gateway';
+import { AccountModule } from '../account/account.module';
+import { BotModule } from '../bot/bot.module';
+import { BinanceModule } from '../binance/binance.module';
+import { StrategyMonitoringModule } from '../strategy-monitoring/strategy-monitoring.module';
 
 @Module({
-  imports: [AccountModule, BotModule, BinanceModule],
-  providers: [CryptoGuardGateway, CryptoGuardService],
+  imports: [AccountModule, BotModule, BinanceModule, StrategyMonitoringModule],
+  providers: [CryptoGuardGateway, RiskAlertGateway, CryptoGuardService],
 })
 export class CryptoGuardModule {}

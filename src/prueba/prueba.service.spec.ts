@@ -24,7 +24,7 @@ describe('PruebaService', () => {
 
   it('debería retornar el saludo correctamente (Greed)', () => {
     const res = service.Greed();
-    
+
     console.log('Resultado del saludo:', res);
 
     // Verificamos que el resultado contenga el nombre que pasamos

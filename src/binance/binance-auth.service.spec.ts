@@ -103,7 +103,7 @@ describe('BinanceAuthService', () => {
       expect(result).toBe(mockTime);
       expect(mockedAxios.get).toHaveBeenCalledWith(
         `${process.env.BASE_URL}/api/v3/time`,
-        expect.objectContaining({ httpsAgent: expect.anything() })
+        expect.objectContaining({ httpsAgent: expect.anything() }),
       );
     });
 
@@ -146,7 +146,7 @@ describe('BinanceAuthService', () => {
         null,
         expect.objectContaining({
           headers: { 'X-MBX-APIKEY': 'test-api-key' },
-        })
+        }),
       );
     });
 
@@ -195,7 +195,7 @@ describe('BinanceAuthService', () => {
         expect.stringContaining(endpoint),
         expect.objectContaining({
           headers: { 'X-MBX-APIKEY': 'test-api-key' },
-        })
+        }),
       );
     });
 

@@ -39,17 +39,19 @@ describe('TradingService', () => {
     const currentHour = new Date().getUTCHours();
     const blockedHour = currentHour === 23 ? 22 : currentHour + 1;
 
-    await expect(service.createTradingOrder({
-      accountId: 1,
-      symbol: 'BTCUSDT',
-      orderId: 1,
-      client_order_id: 'abc',
-      side: 'BUY',
-      quantity: 1,
-      quantityExecuted: 0,
-      type: 'MARKET',
-      allowedFromHourUtc: blockedHour,
-      allowedToHourUtc: blockedHour,
-    } as any)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.createTradingOrder({
+        accountId: 1,
+        symbol: 'BTCUSDT',
+        orderId: 1,
+        client_order_id: 'abc',
+        side: 'BUY',
+        quantity: 1,
+        quantityExecuted: 0,
+        type: 'MARKET',
+        allowedFromHourUtc: blockedHour,
+        allowedToHourUtc: blockedHour,
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

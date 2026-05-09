@@ -5,7 +5,6 @@ import { IsInt, IsJSON, IsString } from 'class-validator';
 export class TradingStrategy {
   @ApiProperty()
   @IsInt()
-
   id: number;
 
   @ApiProperty()

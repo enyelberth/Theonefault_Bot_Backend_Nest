@@ -8,8 +8,12 @@ import { PrismaService } from 'prisma/prisma.service';
 export class TradingExecutionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createTradingExecutionDto: CreateTradingExecutionDto): Promise<TradingExecution> {
-    return this.prisma.tradingExecution.create({ data: createTradingExecutionDto });
+  async create(
+    createTradingExecutionDto: CreateTradingExecutionDto,
+  ): Promise<TradingExecution> {
+    return this.prisma.tradingExecution.create({
+      data: createTradingExecutionDto,
+    });
   }
 
   async findAll(): Promise<TradingExecution[]> {
@@ -19,7 +23,9 @@ export class TradingExecutionService {
   }
 
   async findOne(id: number): Promise<TradingExecution> {
-    const execution = await this.prisma.tradingExecution.findUnique({ where: { id } });
+    const execution = await this.prisma.tradingExecution.findUnique({
+      where: { id },
+    });
     if (!execution) {
       throw new NotFoundException(`TradingExecution with id ${id} not found`);
     }
@@ -34,7 +40,10 @@ export class TradingExecutionService {
     });
   }
 
-  async update(id: number, updateTradingExecutionDto: UpdateTradingExecutionDto): Promise<TradingExecution> {
+  async update(
+    id: number,
+    updateTradingExecutionDto: UpdateTradingExecutionDto,
+  ): Promise<TradingExecution> {
     await this.findOne(id);
     return this.prisma.tradingExecution.update({
       where: { id },

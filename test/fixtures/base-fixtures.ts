@@ -120,7 +120,10 @@ export async function createBaseFixtures(
   };
 }
 
-export async function cleanupBaseFixtures(prisma: PrismaClient, fixtureTag: string): Promise<void> {
+export async function cleanupBaseFixtures(
+  prisma: PrismaClient,
+  fixtureTag: string,
+): Promise<void> {
   const user = await prisma.user.findUnique({
     where: { email: `${fixtureTag}@test.local` },
     select: { id: true },
@@ -135,9 +138,9 @@ export async function cleanupBaseFixtures(prisma: PrismaClient, fixtureTag: stri
     select: { id: true },
   });
 
-  const accountIds = accounts.map(account => account.id);
+  const accountIds = accounts.map((account) => account.id);
 
-  await prisma.$transaction(async tx => {
+  await prisma.$transaction(async (tx) => {
     const txAny = tx as any;
     if (accountIds.length > 0) {
       await tx.tradingExecution.deleteMany({
@@ -198,9 +201,15 @@ export async function cleanupBaseFixtures(prisma: PrismaClient, fixtureTag: stri
       await tx.account.deleteMany({ where: { id: { in: accountIds } } });
     }
 
-    await tx.transactionStatus.deleteMany({ where: { statusName: `OPEN-${fixtureTag}` } });
-    await tx.bankAccountType.deleteMany({ where: { typeName: `SPOT-${fixtureTag}` } });
-    await tx.strategyType.deleteMany({ where: { name: `fixture-strategy-${fixtureTag}` } });
+    await tx.transactionStatus.deleteMany({
+      where: { statusName: `OPEN-${fixtureTag}` },
+    });
+    await tx.bankAccountType.deleteMany({
+      where: { typeName: `SPOT-${fixtureTag}` },
+    });
+    await tx.strategyType.deleteMany({
+      where: { name: `fixture-strategy-${fixtureTag}` },
+    });
     await tx.user.delete({ where: { id: user.id } });
   });
 }
@@ -229,7 +238,10 @@ export async function createTradingOrderFixture(
       quantityExecuted: new Prisma.Decimal(0.1),
       status: params.status ?? 'CLOSED',
       type: 'MARKET',
-      profit_loss: params.profitLoss !== undefined ? new Prisma.Decimal(params.profitLoss) : new Prisma.Decimal(10),
+      profit_loss:
+        params.profitLoss !== undefined
+          ? new Prisma.Decimal(params.profitLoss)
+          : new Prisma.Decimal(10),
       closed_time: new Date(),
     },
   });

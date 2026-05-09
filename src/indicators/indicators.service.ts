@@ -32,7 +32,11 @@ export class IndicatorsService {
   }
 
   // Calcular RSI con intervalo configurable (1 min, 16 min, 60 min, etc.)
-  async calculateRSIWithInterval(symbol: string, period = 14, intervalMinutes = 1): Promise<number | null> {
+  async calculateRSIWithInterval(
+    symbol: string,
+    period = 14,
+    intervalMinutes = 1,
+  ): Promise<number | null> {
     try {
       // Traer precios ordenados ascendentemente (por timestamp)
       const prices = await this.prisma.cryptoPrice.findMany({
@@ -47,7 +51,9 @@ export class IndicatorsService {
       const aggregatedPrices: number[] = [];
       for (let i = 0; i < prices.length; i += intervalMinutes) {
         // Usamos el precio del último minuto del intervalo como representativo
-        aggregatedPrices.push(prices[Math.min(i + intervalMinutes - 1, prices.length - 1)].price);
+        aggregatedPrices.push(
+          prices[Math.min(i + intervalMinutes - 1, prices.length - 1)].price,
+        );
       }
 
       if (aggregatedPrices.length < period + 1) return null;

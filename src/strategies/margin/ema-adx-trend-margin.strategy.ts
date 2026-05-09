@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ADX, ATR, EMA } from 'technicalindicators';
 import { BinanceService } from '../../binance/binance.service';
-import { EmaAdxTrendStrategyConfig, TradingStrategy } from '../trading-strategy.interface';
+import {
+  EmaAdxTrendStrategyConfig,
+  TradingStrategy,
+} from '../trading-strategy.interface';
 import { StrategyRuntimeUtils } from '../shared/strategy-runtime.utils';
 
 @Injectable()
-export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStrategyConfig> {
+export class EmaAdxTrendMarginStrategy
+  implements TradingStrategy<EmaAdxTrendStrategyConfig>
+{
   id: string;
   symbol: string;
   config: EmaAdxTrendStrategyConfig;
@@ -22,7 +27,9 @@ export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStr
     this.validateConfig();
     this.logger.log(`Starting EMA+ADX margin strategy on ${this.symbol}`);
 
-    const { lotSizeFilter } = await this.binanceService.obtenerFiltrosSimbolo(this.symbol);
+    const { lotSizeFilter } = await this.binanceService.obtenerFiltrosSimbolo(
+      this.symbol,
+    );
     if (!lotSizeFilter?.stepSize) {
       throw new Error(`Lot size filter not found for ${this.symbol}`);
     }
@@ -36,30 +43,53 @@ export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStr
           continue;
         }
 
-        const { currentPrice, atr, emaFast, emaSlow, adx, plusDI, minusDI } = analysis;
+        const { currentPrice, atr, emaFast, emaSlow, adx, plusDI, minusDI } =
+          analysis;
 
-        const quantity = this.roundToStep(this.config.tradeQuantity, lotSizeFilter.stepSize);
+        const quantity = this.roundToStep(
+          this.config.tradeQuantity,
+          lotSizeFilter.stepSize,
+        );
         if (quantity <= 0) {
           throw new Error('tradeQuantity ajustado por lotSize queda en 0');
         }
 
-        const bullishTrend = emaFast > emaSlow && adx >= this.getAdxThreshold() && plusDI > minusDI;
-        const bearishTrend = emaFast < emaSlow && adx >= this.getAdxThreshold() && minusDI > plusDI;
+        const bullishTrend =
+          emaFast > emaSlow &&
+          adx >= this.getAdxThreshold() &&
+          plusDI > minusDI;
+        const bearishTrend =
+          emaFast < emaSlow &&
+          adx >= this.getAdxThreshold() &&
+          minusDI > plusDI;
 
         if (!this.inPosition && bullishTrend) {
-          await this.binanceService.createCrossMarginMarketOrder(this.symbol, 'BUY', quantity.toString());
+          await this.binanceService.createCrossMarginMarketOrder(
+            this.symbol,
+            'BUY',
+            quantity.toString(),
+          );
           this.inPosition = true;
-          this.stopLossPrice = currentPrice - atr * this.getStopLossAtrMultiplier();
-          this.takeProfitPrice = currentPrice + atr * this.getTakeProfitAtrMultiplier();
+          this.stopLossPrice =
+            currentPrice - atr * this.getStopLossAtrMultiplier();
+          this.takeProfitPrice =
+            currentPrice + atr * this.getTakeProfitAtrMultiplier();
           this.logger.log(
             `MARGIN BUY executed at ${currentPrice}. EMAf=${emaFast.toFixed(6)} EMAs=${emaSlow.toFixed(6)} ADX=${adx.toFixed(2)}`,
           );
         } else if (this.inPosition) {
-          const hitStop = this.stopLossPrice !== null && currentPrice <= this.stopLossPrice;
-          const hitTakeProfit = this.takeProfitPrice !== null && currentPrice >= this.takeProfitPrice;
+          const hitStop =
+            this.stopLossPrice !== null && currentPrice <= this.stopLossPrice;
+          const hitTakeProfit =
+            this.takeProfitPrice !== null &&
+            currentPrice >= this.takeProfitPrice;
 
           if (hitStop || hitTakeProfit || bearishTrend) {
-            await this.binanceService.createCrossMarginMarketOrder(this.symbol, 'SELL', quantity.toString());
+            await this.binanceService.createCrossMarginMarketOrder(
+              this.symbol,
+              'SELL',
+              quantity.toString(),
+            );
             this.logger.log(
               `MARGIN SELL executed at ${currentPrice}. reason=${hitStop ? 'stop' : hitTakeProfit ? 'take_profit' : 'trend_reversal'}`,
             );
@@ -67,7 +97,10 @@ export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStr
           }
         }
       } catch (error) {
-        this.logger.error('Error in EMA+ADX margin loop', error instanceof Error ? error.stack : String(error));
+        this.logger.error(
+          'Error in EMA+ADX margin loop',
+          error instanceof Error ? error.stack : String(error),
+        );
         await StrategyRuntimeUtils.exponentialBackoff(
           5000,
           3,
@@ -102,7 +135,11 @@ export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStr
       80,
     );
 
-    const candles = await this.binanceService.getCandles(this.symbol, interval, limit);
+    const candles = await this.binanceService.getCandles(
+      this.symbol,
+      interval,
+      limit,
+    );
     if (!candles || candles.length < 30) {
       this.logger.warn(`Not enough candles for ${this.symbol}`);
       return null;
@@ -112,8 +149,14 @@ export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStr
     const lows = candles.map((c) => parseFloat(c.low));
     const closes = candles.map((c) => parseFloat(c.close));
 
-    const emaFastSeries = EMA.calculate({ period: this.getEmaFastPeriod(), values: closes });
-    const emaSlowSeries = EMA.calculate({ period: this.getEmaSlowPeriod(), values: closes });
+    const emaFastSeries = EMA.calculate({
+      period: this.getEmaFastPeriod(),
+      values: closes,
+    });
+    const emaSlowSeries = EMA.calculate({
+      period: this.getEmaSlowPeriod(),
+      values: closes,
+    });
     const adxSeries = ADX.calculate({
       period: this.getAdxPeriod(),
       high: highs,
@@ -127,12 +170,19 @@ export class EmaAdxTrendMarginStrategy implements TradingStrategy<EmaAdxTrendStr
       close: closes,
     });
 
-    if (!emaFastSeries.length || !emaSlowSeries.length || !adxSeries.length || !atrSeries.length) {
+    if (
+      !emaFastSeries.length ||
+      !emaSlowSeries.length ||
+      !adxSeries.length ||
+      !atrSeries.length
+    ) {
       return null;
     }
 
     const lastAdx = adxSeries[adxSeries.length - 1];
-    const currentPriceResp = await this.binanceService.getSymbolPrice(this.symbol);
+    const currentPriceResp = await this.binanceService.getSymbolPrice(
+      this.symbol,
+    );
     const currentPrice = parseFloat(currentPriceResp.price);
 
     return {

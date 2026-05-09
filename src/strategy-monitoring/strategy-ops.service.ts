@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { OrderSide, OrderStatus, OrderType, Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { StrategyRuntimeContext } from './strategy-runtime-context.service';
@@ -84,13 +89,16 @@ export class StrategyOpsService implements OnModuleInit {
       await this.ensureEventLogTable();
       await this.seedStatsFromDb();
     } catch (error) {
-      this.logger.warn(`No se pudo inicializar strategy_ops: ${(error as Error).message}`);
+      this.logger.warn(
+        `No se pudo inicializar strategy_ops: ${(error as Error).message}`,
+      );
     }
   }
 
   private async seedStatsFromDb(): Promise<void> {
     try {
-      const stats = await (this.prisma as any).strategyStatSnapshot?.findMany?.() || [];
+      const stats =
+        (await (this.prisma as any).strategyStatSnapshot?.findMany?.()) || [];
       for (const stat of stats) {
         this.stats.set(stat.strategyId, {
           strategyId: stat.strategyId,
@@ -101,16 +109,25 @@ export class StrategyOpsService implements OnModuleInit {
           cancelledOrders: stat.cancelledOrders,
           rejectedOrders: 0,
           openLots: 0,
-          realizedPnl: typeof stat.realizedPnl === 'number' ? stat.realizedPnl : stat.realizedPnl.toNumber?.() || 0,
+          realizedPnl:
+            typeof stat.realizedPnl === 'number'
+              ? stat.realizedPnl
+              : stat.realizedPnl.toNumber?.() || 0,
           winningTrades: stat.winningTrades,
           losingTrades: stat.losingTrades,
-          winRate: typeof stat.winRate === 'number' ? stat.winRate : stat.winRate.toNumber?.() || 0,
-          updatedAt: stat.updatedAt?.toISOString?.() || new Date().toISOString(),
+          winRate:
+            typeof stat.winRate === 'number'
+              ? stat.winRate
+              : stat.winRate.toNumber?.() || 0,
+          updatedAt:
+            stat.updatedAt?.toISOString?.() || new Date().toISOString(),
         });
       }
       this.logger.log(`Seeded ${stats.length} strategy stats from DB`);
     } catch (error) {
-      this.logger.warn(`Could not seed stats from DB: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not seed stats from DB: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -148,12 +165,14 @@ export class StrategyOpsService implements OnModuleInit {
         VALUES (${strategyId}, ${symbol}, ${eventType}, ${event}::jsonb)
       `;
     } catch (error) {
-      this.logger.warn(`No se pudo persistir evento ${eventType}: ${(error as Error).message}`);
+      this.logger.warn(
+        `No se pudo persistir evento ${eventType}: ${(error as Error).message}`,
+      );
     }
   }
 
   private getRiskSettings(context: StrategyRuntimeContext): RiskSettings {
-    const raw = ((context.config as Record<string, unknown> | undefined)?.risk ?? {}) as Record<string, unknown>;
+    const raw = (context.config?.risk ?? {}) as Record<string, unknown>;
 
     return {
       maxOpenPositions: Number(raw.maxOpenPositions ?? 3),
@@ -190,7 +209,10 @@ export class StrategyOpsService implements OnModuleInit {
   }
 
   private pushLog(event: Record<string, unknown>) {
-    this.executionLog.unshift({ ...event, timestamp: new Date().toISOString() });
+    this.executionLog.unshift({
+      ...event,
+      timestamp: new Date().toISOString(),
+    });
     if (this.executionLog.length > 2000) {
       this.executionLog.pop();
     }
@@ -198,8 +220,11 @@ export class StrategyOpsService implements OnModuleInit {
     void this.persistEvent(event);
   }
 
-  private getContextConfigNumber(context: StrategyRuntimeContext, key: string): number | undefined {
-    const value = (context.config as Record<string, unknown> | undefined)?.[key];
+  private getContextConfigNumber(
+    context: StrategyRuntimeContext,
+    key: string,
+  ): number | undefined {
+    const value = context.config?.[key];
     if (value === undefined || value === null) {
       return undefined;
     }
@@ -208,14 +233,27 @@ export class StrategyOpsService implements OnModuleInit {
     return Number.isFinite(num) ? num : undefined;
   }
 
-  buildClientOrderId(context: StrategyRuntimeContext, side: 'BUY' | 'SELL', market: MarketScope): string {
-    const compactId = context.strategyId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'strat';
+  buildClientOrderId(
+    context: StrategyRuntimeContext,
+    side: 'BUY' | 'SELL',
+    market: MarketScope,
+  ): string {
+    const compactId =
+      context.strategyId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'strat';
     const sideShort = side === 'BUY' ? 'b' : 's';
     const marketShort = market === 'margin' ? 'm' : 's';
-    return `${marketShort}_${compactId}_${sideShort}_${Date.now().toString(36)}`.slice(0, 35);
+    return `${marketShort}_${compactId}_${sideShort}_${Date.now().toString(36)}`.slice(
+      0,
+      35,
+    );
   }
 
-  assertRisk(context: StrategyRuntimeContext, side: 'BUY' | 'SELL', quantity: number, price?: number): void {
+  assertRisk(
+    context: StrategyRuntimeContext,
+    side: 'BUY' | 'SELL',
+    quantity: number,
+    price?: number,
+  ): void {
     const settings = this.getRiskSettings(context);
     this.riskCache.set(context.strategyId, settings);
     const stats = this.ensureStrategyStats(context);
@@ -253,8 +291,12 @@ export class StrategyOpsService implements OnModuleInit {
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const daySnapshot = this.dailyPnl.get(context.strategyId) ?? { day: today, value: 0 };
-    const normalized = daySnapshot.day === today ? daySnapshot : { day: today, value: 0 };
+    const daySnapshot = this.dailyPnl.get(context.strategyId) ?? {
+      day: today,
+      value: 0,
+    };
+    const normalized =
+      daySnapshot.day === today ? daySnapshot : { day: today, value: 0 };
     this.dailyPnl.set(context.strategyId, normalized);
 
     if (normalized.value <= -Math.abs(settings.maxDailyLoss)) {
@@ -273,7 +315,11 @@ export class StrategyOpsService implements OnModuleInit {
     }
 
     const lastLoss = this.lastLossAt.get(context.strategyId);
-    if (lastLoss && Date.now() - lastLoss < settings.cooldownMsAfterLoss && side === 'BUY') {
+    if (
+      lastLoss &&
+      Date.now() - lastLoss < settings.cooldownMsAfterLoss &&
+      side === 'BUY'
+    ) {
       this.pushLog({
         event: 'RISK_BLOCKED',
         strategyId: context.strategyId,
@@ -282,7 +328,9 @@ export class StrategyOpsService implements OnModuleInit {
         reason: 'cooldownMsAfterLoss',
         cooldownMsAfterLoss: settings.cooldownMsAfterLoss,
       });
-      throw new BadRequestException(`RiskManager: cooldown activo para ${context.strategyId}`);
+      throw new BadRequestException(
+        `RiskManager: cooldown activo para ${context.strategyId}`,
+      );
     }
 
     stats.openLots = openLots.length;
@@ -305,7 +353,11 @@ export class StrategyOpsService implements OnModuleInit {
       return;
     }
 
-    const clientOrderId = String(placement.response.clientOrderId ?? placement.response.clientOrder_id ?? '');
+    const clientOrderId = String(
+      placement.response.clientOrderId ??
+        placement.response.clientOrder_id ??
+        '',
+    );
     const accountId = this.getContextConfigNumber(context, 'accountId');
 
     const meta: OrderPlacementMeta = {
@@ -365,7 +417,10 @@ export class StrategyOpsService implements OnModuleInit {
         strategyType: context.strategyType,
         symbol,
         side,
-        type: String(payload.type ?? 'LIMIT').toUpperCase() === 'MARKET' ? 'MARKET' : 'LIMIT',
+        type:
+          String(payload.type ?? 'LIMIT').toUpperCase() === 'MARKET'
+            ? 'MARKET'
+            : 'LIMIT',
         market,
         quantity: Number(payload.origQty ?? payload.executedQty ?? 0),
         requestedPrice: Number(payload.price ?? 0) || undefined,
@@ -388,7 +443,11 @@ export class StrategyOpsService implements OnModuleInit {
       liquidationTrigger = await this.handleFilledOrder(placement, payload);
     }
 
-    if (status === 'CANCELED' || status === 'REJECTED' || status === 'EXPIRED') {
+    if (
+      status === 'CANCELED' ||
+      status === 'REJECTED' ||
+      status === 'EXPIRED'
+    ) {
       const stats = this.stats.get(placement.strategyId);
       if (stats) {
         if (status === 'CANCELED' || status === 'EXPIRED') {
@@ -436,7 +495,9 @@ export class StrategyOpsService implements OnModuleInit {
     };
 
     const executedQty = Number(payload.executedQty ?? placement.quantity ?? 0);
-    const avgPrice = Number(payload.avgPrice ?? payload.price ?? placement.requestedPrice ?? 0);
+    const avgPrice = Number(
+      payload.avgPrice ?? payload.price ?? placement.requestedPrice ?? 0,
+    );
 
     const lots = this.lotBook.get(placement.strategyId) ?? [];
 
@@ -490,8 +551,12 @@ export class StrategyOpsService implements OnModuleInit {
       }
 
       const day = new Date().toISOString().slice(0, 10);
-      const daySnapshot = this.dailyPnl.get(placement.strategyId) ?? { day, value: 0 };
-      const normalized = daySnapshot.day === day ? daySnapshot : { day, value: 0 };
+      const daySnapshot = this.dailyPnl.get(placement.strategyId) ?? {
+        day,
+        value: 0,
+      };
+      const normalized =
+        daySnapshot.day === day ? daySnapshot : { day, value: 0 };
       normalized.value += realizedPnl;
       this.dailyPnl.set(placement.strategyId, normalized);
 
@@ -502,7 +567,10 @@ export class StrategyOpsService implements OnModuleInit {
         cooldownMsAfterLoss: 30000,
       };
 
-      if (normalized.value <= -Math.abs(settings.maxDailyLoss) && !this.pendingLiquidations.has(placement.strategyId)) {
+      if (
+        normalized.value <= -Math.abs(settings.maxDailyLoss) &&
+        !this.pendingLiquidations.has(placement.strategyId)
+      ) {
         const trigger: PendingLiquidation = {
           strategyId: placement.strategyId,
           strategyType: placement.strategyType,
@@ -530,7 +598,10 @@ export class StrategyOpsService implements OnModuleInit {
     stats.filledOrders += 1;
     stats.openLots = lots.length;
     const totalClosed = stats.winningTrades + stats.losingTrades;
-    stats.winRate = totalClosed > 0 ? Number(((stats.winningTrades / totalClosed) * 100).toFixed(2)) : 0;
+    stats.winRate =
+      totalClosed > 0
+        ? Number(((stats.winningTrades / totalClosed) * 100).toFixed(2))
+        : 0;
     stats.updatedAt = new Date().toISOString();
     this.stats.set(placement.strategyId, stats);
 
@@ -588,7 +659,11 @@ export class StrategyOpsService implements OnModuleInit {
     }
   }
 
-  private async persistOrder(meta: OrderPlacementMeta, payload: Record<string, unknown>, status: OrderStatus): Promise<void> {
+  private async persistOrder(
+    meta: OrderPlacementMeta,
+    payload: Record<string, unknown>,
+    status: OrderStatus,
+  ): Promise<void> {
     if (!meta.accountId || meta.accountId <= 0) {
       return;
     }
@@ -611,7 +686,8 @@ export class StrategyOpsService implements OnModuleInit {
           accountId: meta.accountId,
           symbol: meta.symbol,
           orderId: meta.orderId,
-          client_order_id: meta.clientOrderId || `${meta.strategyId}-${meta.orderId}`,
+          client_order_id:
+            meta.clientOrderId || `${meta.strategyId}-${meta.orderId}`,
           side: meta.side === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
           type: meta.type === 'MARKET' ? OrderType.MARKET : OrderType.LIMIT,
           status,
@@ -621,11 +697,18 @@ export class StrategyOpsService implements OnModuleInit {
         },
       });
     } catch (error) {
-      this.logger.warn(`No se pudo persistir orden ${meta.orderId}: ${(error as Error).message}`);
+      this.logger.warn(
+        `No se pudo persistir orden ${meta.orderId}: ${(error as Error).message}`,
+      );
     }
   }
 
-  private async persistExecution(meta: OrderPlacementMeta, avgPrice: number, qty: number, realizedPnl: number): Promise<void> {
+  private async persistExecution(
+    meta: OrderPlacementMeta,
+    avgPrice: number,
+    qty: number,
+    realizedPnl: number,
+  ): Promise<void> {
     if (!meta.accountId || meta.accountId <= 0) {
       return;
     }
@@ -651,7 +734,9 @@ export class StrategyOpsService implements OnModuleInit {
         });
       }
     } catch (error) {
-      this.logger.warn(`No se pudo persistir ejecución de orden ${meta.orderId}: ${(error as Error).message}`);
+      this.logger.warn(
+        `No se pudo persistir ejecución de orden ${meta.orderId}: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -675,7 +760,11 @@ export class StrategyOpsService implements OnModuleInit {
     return values.find((item) => item.strategyId === strategyId) ?? null;
   }
 
-  async getStrategyPerformanceHistory(strategyId?: string, from?: string, to?: string) {
+  async getStrategyPerformanceHistory(
+    strategyId?: string,
+    from?: string,
+    to?: string,
+  ) {
     const clauses: Prisma.Sql[] = [];
 
     if (strategyId) {
@@ -692,7 +781,10 @@ export class StrategyOpsService implements OnModuleInit {
       clauses.push(Prisma.sql`created_at <= ${toDate}`);
     }
 
-    const whereSql = clauses.length > 0 ? Prisma.sql`WHERE ${Prisma.join(clauses, ' AND ')}` : Prisma.empty;
+    const whereSql =
+      clauses.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(clauses, ' AND ')}`
+        : Prisma.empty;
 
     type EventRow = {
       strategy_id: string | null;
@@ -709,11 +801,26 @@ export class StrategyOpsService implements OnModuleInit {
       LIMIT 10000
     `);
 
-    const timelineMap = new Map<string, { orders: number; fills: number; wins: number; losses: number; dailyPnl: number }>();
+    const timelineMap = new Map<
+      string,
+      {
+        orders: number;
+        fills: number;
+        wins: number;
+        losses: number;
+        dailyPnl: number;
+      }
+    >();
 
     for (const row of rows) {
       const day = row.created_at.toISOString().slice(0, 10);
-      const bucket = timelineMap.get(day) ?? { orders: 0, fills: 0, wins: 0, losses: 0, dailyPnl: 0 };
+      const bucket = timelineMap.get(day) ?? {
+        orders: 0,
+        fills: 0,
+        wins: 0,
+        losses: 0,
+        dailyPnl: 0,
+      };
 
       if (row.event_type === 'ORDER_PLACED') {
         bucket.orders += 1;
@@ -786,7 +893,9 @@ export class StrategyOpsService implements OnModuleInit {
       ORDER BY strategy_id ASC
     `);
 
-    const runtimeByStrategy = new Map(Array.from(this.stats.values()).map((item) => [item.strategyId, item]));
+    const runtimeByStrategy = new Map(
+      Array.from(this.stats.values()).map((item) => [item.strategyId, item]),
+    );
 
     const strategies = rows.map((row) => {
       const id = row.strategy_id ?? 'unknown';

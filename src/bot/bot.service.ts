@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   isMutableOrderLevelsStrategy,
   isProfitMarginUpdatableStrategy,
@@ -35,7 +40,13 @@ export class BotService {
     private readonly strategyRuntimeContext: StrategyRuntimeContextService,
   ) {}
 
-  private recordDecision(symbol: string, strategyId: string, event: string, reason?: string, result?: string) {
+  private recordDecision(
+    symbol: string,
+    strategyId: string,
+    event: string,
+    reason?: string,
+    result?: string,
+  ) {
     this.decisionLog.unshift({
       symbol,
       strategyId,
@@ -54,11 +65,19 @@ export class BotService {
     return `${symbol}-${id}`;
   }
 
-  async startStrategy(symbol: string, typeId: number, strategyType: string, config: BotConfigDto, id: string) {
+  async startStrategy(
+    symbol: string,
+    typeId: number,
+    strategyType: string,
+    config: BotConfigDto,
+    id: string,
+  ) {
     const key = this.getKey(symbol, id);
 
     if (this.activeStrategies.has(key)) {
-      throw new BadRequestException(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
+      throw new BadRequestException(
+        `Estrategia ya activa con este símbolo ${symbol} y el id ${id}`,
+      );
     }
 
     const strategy: TradingStrategy = StrategyFactory.createStrategy(
@@ -78,7 +97,13 @@ export class BotService {
     };
 
     await this.ensureStrategyMetadata(createTradingStrategyDto);
-    this.recordDecision(symbol, id, 'START_REQUESTED', 'manual_start', 'pending');
+    this.recordDecision(
+      symbol,
+      id,
+      'START_REQUESTED',
+      'manual_start',
+      'pending',
+    );
 
     this.activeStrategies.set(key, strategy);
 
@@ -93,11 +118,26 @@ export class BotService {
         () => strategy.run(),
       )
       .then(() => {
-        this.recordDecision(symbol, id, 'STOPPED', 'strategy_run_completed', 'ok');
+        this.recordDecision(
+          symbol,
+          id,
+          'STOPPED',
+          'strategy_run_completed',
+          'ok',
+        );
       })
       .catch((error) => {
-        this.recordDecision(symbol, id, 'START_FAILED', error instanceof Error ? error.message : 'unknown', 'error');
-        this.logger.error(`Error en estrategia ${id} para ${symbol}`, error instanceof Error ? error.stack : undefined);
+        this.recordDecision(
+          symbol,
+          id,
+          'START_FAILED',
+          error instanceof Error ? error.message : 'unknown',
+          'error',
+        );
+        this.logger.error(
+          `Error en estrategia ${id} para ${symbol}`,
+          error instanceof Error ? error.stack : undefined,
+        );
       })
       .finally(() => {
         this.activeStrategies.delete(key);
@@ -107,12 +147,14 @@ export class BotService {
     this.strategyTasks.set(key, runTask);
     this.recordDecision(symbol, id, 'STARTED', 'strategy_run_background', 'ok');
   }
-  
+
   async stopStrategy(symbol: string, id: string) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new NotFoundException(`Estrategia con símbolo ${symbol} e id ${id} no encontrada`);
+      throw new NotFoundException(
+        `Estrategia con símbolo ${symbol} e id ${id} no encontrada`,
+      );
     }
 
     await strategy.stop();
@@ -155,7 +197,7 @@ export class BotService {
   }
 
   getDecisionLog(symbol?: string, strategyId?: string) {
-    return this.decisionLog.filter(item => {
+    return this.decisionLog.filter((item) => {
       if (symbol && item.symbol !== symbol) {
         return false;
       }
@@ -175,26 +217,36 @@ export class BotService {
   }
 
   async getPerformanceHistory(strategyId?: string, from?: string, to?: string) {
-    return this.strategyOpsService.getStrategyPerformanceHistory(strategyId, from, to);
+    return this.strategyOpsService.getStrategyPerformanceHistory(
+      strategyId,
+      from,
+      to,
+    );
   }
 
   async getDashboard(strategyId?: string) {
     return this.strategyOpsService.getStrategyDashboard(strategyId);
   }
 
-  async updateRiskControls(strategyId: string, payload: {
-    maxOpenPositions?: number;
-    maxDailyLoss?: number;
-    maxNotionalPerOrder?: number;
-    cooldownMsAfterLoss?: number;
-  }) {
-    const strategy = await this.strategiesTradingService.getStrategyById(strategyId);
-    const currentConfig = strategy.config && typeof strategy.config === 'object'
-      ? (strategy.config as Record<string, unknown>)
-      : {};
-    const currentRisk = currentConfig.risk && typeof currentConfig.risk === 'object'
-      ? (currentConfig.risk as Record<string, unknown>)
-      : {};
+  async updateRiskControls(
+    strategyId: string,
+    payload: {
+      maxOpenPositions?: number;
+      maxDailyLoss?: number;
+      maxNotionalPerOrder?: number;
+      cooldownMsAfterLoss?: number;
+    },
+  ) {
+    const strategy =
+      await this.strategiesTradingService.getStrategyById(strategyId);
+    const currentConfig =
+      strategy.config && typeof strategy.config === 'object'
+        ? (strategy.config as Record<string, unknown>)
+        : {};
+    const currentRisk =
+      currentConfig.risk && typeof currentConfig.risk === 'object'
+        ? (currentConfig.risk as Record<string, unknown>)
+        : {};
 
     return this.strategiesTradingService.updateStrategy(strategyId, {
       config: {
@@ -219,12 +271,16 @@ export class BotService {
     let selectedMarket = options?.market;
     let selectedType = options?.strategyType;
 
-    const activeEntry = Array.from(this.activeStrategies.values()).find((strategy) => strategy.id === strategyId);
+    const activeEntry = Array.from(this.activeStrategies.values()).find(
+      (strategy) => strategy.id === strategyId,
+    );
 
     if (activeEntry) {
       selectedSymbol = activeEntry.symbol;
       selectedType = activeEntry.constructor.name;
-      selectedMarket = /margin/i.test(activeEntry.constructor.name) ? 'margin' : 'spot';
+      selectedMarket = /margin/i.test(activeEntry.constructor.name)
+        ? 'margin'
+        : 'spot';
 
       await this.stopStrategy(activeEntry.symbol, strategyId);
     }
@@ -235,7 +291,9 @@ export class BotService {
       );
     }
 
-    const market = selectedMarket ?? (selectedType && /margin/i.test(selectedType) ? 'margin' : 'spot');
+    const market =
+      selectedMarket ??
+      (selectedType && /margin/i.test(selectedType) ? 'margin' : 'spot');
 
     await this.binanceService.panicLiquidateSymbol({
       strategyId,
@@ -244,18 +302,28 @@ export class BotService {
       market,
     });
 
-    this.recordDecision(selectedSymbol, strategyId, 'PANIC_STOP', 'manual_panic_stop', 'ok');
+    this.recordDecision(
+      selectedSymbol,
+      strategyId,
+      'PANIC_STOP',
+      'manual_panic_stop',
+      'ok',
+    );
     return {
       strategyId,
       symbol: selectedSymbol,
       market,
-      message: 'Panic stop ejecutado: estrategia detenida y liquidación de emergencia solicitada',
+      message:
+        'Panic stop ejecutado: estrategia detenida y liquidación de emergencia solicitada',
     };
   }
 
-  
-
-  async updateOrderLevelPrice(id: string, symbol: string, levelIndex: number, newPrice: number) {
+  async updateOrderLevelPrice(
+    id: string,
+    symbol: string,
+    levelIndex: number,
+    newPrice: number,
+  ) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
@@ -265,7 +333,9 @@ export class BotService {
       await strategy.updateOrderLevelPrice(levelIndex, newPrice);
       return true;
     }
-    throw new BadRequestException(`La estrategia con id ${id} no soporta actualizar precio de nivel`);
+    throw new BadRequestException(
+      `La estrategia con id ${id} no soporta actualizar precio de nivel`,
+    );
   }
 
   async removeOrderLevel(id: string, symbol: string, levelIndex: number) {
@@ -278,7 +348,9 @@ export class BotService {
       await strategy.removeOrderLevel(levelIndex);
       return true;
     }
-    throw new BadRequestException(`La estrategia con id ${id} no soporta eliminar niveles de orden`);
+    throw new BadRequestException(
+      `La estrategia con id ${id} no soporta eliminar niveles de orden`,
+    );
   }
 
   addOrderLevel(id: string, symbol: string, orderLevel: OrderLevelDto) {
@@ -291,34 +363,53 @@ export class BotService {
       void (strategy as MutableOrderLevelsStrategy).addOrderLevel(orderLevel);
       return true;
     }
-    throw new BadRequestException(`La estrategia con id ${id} no soporta agregar niveles de orden`);
+    throw new BadRequestException(
+      `La estrategia con id ${id} no soporta agregar niveles de orden`,
+    );
   }
 
-  async updateProfitMargin(id: string, symbol: string, newProfitMargin: number) {
+  async updateProfitMargin(
+    id: string,
+    symbol: string,
+    newProfitMargin: number,
+  ) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
       throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (isProfitMarginUpdatableStrategy(strategy)) {
-      await (strategy as ProfitMarginUpdatableStrategy).updateProfitMargin(newProfitMargin);
+      await (strategy as ProfitMarginUpdatableStrategy).updateProfitMargin(
+        newProfitMargin,
+      );
       return true;
     }
-    throw new BadRequestException(`La estrategia con id ${id} no soporta actualización de profit margin`);
+    throw new BadRequestException(
+      `La estrategia con id ${id} no soporta actualización de profit margin`,
+    );
   }
 
-  private async ensureStrategyMetadata(createTradingStrategyDto: CreateTradingStrategyDto) {
+  private async ensureStrategyMetadata(
+    createTradingStrategyDto: CreateTradingStrategyDto,
+  ) {
     try {
-      await this.strategiesTradingService.getStrategyById(createTradingStrategyDto.id);
-      await this.strategiesTradingService.updateStrategy(createTradingStrategyDto.id, {
-        symbol: createTradingStrategyDto.symbol,
-        typeId: createTradingStrategyDto.typeId,
-        config: createTradingStrategyDto.config,
-        strategyType: createTradingStrategyDto.strategyType,
-      });
+      await this.strategiesTradingService.getStrategyById(
+        createTradingStrategyDto.id,
+      );
+      await this.strategiesTradingService.updateStrategy(
+        createTradingStrategyDto.id,
+        {
+          symbol: createTradingStrategyDto.symbol,
+          typeId: createTradingStrategyDto.typeId,
+          config: createTradingStrategyDto.config,
+          strategyType: createTradingStrategyDto.strategyType,
+        },
+      );
     } catch (error) {
       if (error instanceof NotFoundException) {
-        await this.strategiesTradingService.createStrategies(createTradingStrategyDto);
+        await this.strategiesTradingService.createStrategies(
+          createTradingStrategyDto,
+        );
         return;
       }
 

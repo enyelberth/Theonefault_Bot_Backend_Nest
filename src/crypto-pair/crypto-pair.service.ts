@@ -24,7 +24,9 @@ export class CryptoPairService {
   }
 
   async findOne(id: number): Promise<TradingPair> {
-    const tradingPair = await this.prisma.tradingPair.findUnique({ where: { id } });
+    const tradingPair = await this.prisma.tradingPair.findUnique({
+      where: { id },
+    });
     if (!tradingPair) {
       throw new NotFoundException(`Crypto pair with id ${id} not found`);
     }
@@ -32,16 +34,25 @@ export class CryptoPairService {
     return tradingPair;
   }
 
-  async update(id: number, updateCryptoPairDto: UpdateCryptoPairDto): Promise<TradingPair> {
+  async update(
+    id: number,
+    updateCryptoPairDto: UpdateCryptoPairDto,
+  ): Promise<TradingPair> {
     await this.findOne(id);
     return this.prisma.tradingPair.update({
       where: { id },
       data: {
         ...(updateCryptoPairDto.baseCurrencyCode
-          ? { baseCurrencyCode: updateCryptoPairDto.baseCurrencyCode.toUpperCase() }
+          ? {
+              baseCurrencyCode:
+                updateCryptoPairDto.baseCurrencyCode.toUpperCase(),
+            }
           : {}),
         ...(updateCryptoPairDto.quoteCurrencyCode
-          ? { quoteCurrencyCode: updateCryptoPairDto.quoteCurrencyCode.toUpperCase() }
+          ? {
+              quoteCurrencyCode:
+                updateCryptoPairDto.quoteCurrencyCode.toUpperCase(),
+            }
           : {}),
       },
     });

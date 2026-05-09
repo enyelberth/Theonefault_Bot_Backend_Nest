@@ -1,5 +1,23 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, ParseIntPipe, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  BadRequestException,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -38,7 +56,10 @@ export class UserController {
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateUserDto })
   @ApiResponse({ status: 200, description: 'User updated' })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
     return this.userService.update(id, updateUserDto);
   }
 
@@ -58,7 +79,6 @@ export class UserController {
     return { exists };
   }
   @Public()
-
   @Get('exists/username/:username')
   @ApiOperation({ summary: 'Check if username exists' })
   @ApiParam({ name: 'username', type: String })
@@ -69,7 +89,9 @@ export class UserController {
 
   @Post('login')
   @ApiOperation({ summary: 'User login' })
-  @ApiBody({ schema: { example: { email: 'user@example.com', password: 'mypassword' }}})
+  @ApiBody({
+    schema: { example: { email: 'user@example.com', password: 'mypassword' } },
+  })
   async login(@Body() body: { email: string; password: string }) {
     const { email, password } = body;
     if (!email || !password) {

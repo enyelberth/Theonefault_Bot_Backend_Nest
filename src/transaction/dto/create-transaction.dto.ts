@@ -11,7 +11,10 @@ import {
 } from 'class-validator';
 
 export class CreateTransactionDto {
-  @ApiProperty({ description: 'Identificador único de la transacción', example: 'tx_123abc' })
+  @ApiProperty({
+    description: 'Identificador único de la transacción',
+    example: 'tx_123abc',
+  })
   @IsString()
   @IsNotEmpty()
   idTransaction: string;
@@ -92,7 +95,10 @@ export class CreateTransactionDto {
   @IsNumber()
   profitLoss?: number;
 
-  @ApiPropertyOptional({ description: 'Indica si la transacción está cerrada', example: false })
+  @ApiPropertyOptional({
+    description: 'Indica si la transacción está cerrada',
+    example: false,
+  })
   @IsOptional()
   @IsBoolean()
   isClosed?: boolean;

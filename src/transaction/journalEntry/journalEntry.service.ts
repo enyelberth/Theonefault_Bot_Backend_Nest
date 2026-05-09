@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, BadRequestException as NestBadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+  BadRequestException as NestBadRequestException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { BinanceService } from 'src/binance/binance.service';
@@ -21,8 +28,18 @@ import { createHash } from 'crypto';
 @Injectable()
 export class JournalEntryService {
   private readonly logger = new Logger(JournalEntryService.name);
-  private readonly ingresoAliases = new Set(['INGRESO', 'DEBIT', 'DEBITO', 'DÉBITO']);
-  private readonly egresoAliases = new Set(['EGRESO', 'CREDIT', 'CREDITO', 'CRÉDITO']);
+  private readonly ingresoAliases = new Set([
+    'INGRESO',
+    'DEBIT',
+    'DEBITO',
+    'DÉBITO',
+  ]);
+  private readonly egresoAliases = new Set([
+    'EGRESO',
+    'CREDIT',
+    'CREDITO',
+    'CRÉDITO',
+  ]);
   private readonly maxCurrencyCodeLength = 20;
   private readonly binanceSyncOffsetKey = 'binance_sync_offset';
   private readonly binanceSyncOffsetEmail = 'binance.sync.offset@local';
@@ -66,7 +83,7 @@ export class JournalEntryService {
     const errors = await validate(object, { forbidUnknownValues: false });
     if (errors.length > 0) {
       const messages = errors
-        .map(err => (err.constraints ? Object.values(err.constraints) : []))
+        .map((err) => (err.constraints ? Object.values(err.constraints) : []))
         .flat();
       throw new NestBadRequestException(messages);
     }
@@ -78,18 +95,26 @@ export class JournalEntryService {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       switch (error.code) {
         case 'P2002':
-          throw new BadRequestException('Violación de restricción única: registro duplicado.');
+          throw new BadRequestException(
+            'Violación de restricción única: registro duplicado.',
+          );
         case 'P2025':
-          throw new NotFoundException('Registro no encontrado para la operación solicitada.');
+          throw new NotFoundException(
+            'Registro no encontrado para la operación solicitada.',
+          );
         default:
-          throw new InternalServerErrorException(`${contextMessage}. Código Prisma: ${error.code}`);
+          throw new InternalServerErrorException(
+            `${contextMessage}. Código Prisma: ${error.code}`,
+          );
       }
     } else {
       throw new InternalServerErrorException(contextMessage);
     }
   }
 
-  private mapCreateLineDtoToPrisma(createDto: CreateJournalEntryLineDto & { entryId: number }) {
+  private mapCreateLineDtoToPrisma(
+    createDto: CreateJournalEntryLineDto & { entryId: number },
+  ) {
     return {
       accountId: createDto.accountId,
       currencyCode: createDto.currencyCode,
@@ -124,7 +149,10 @@ export class JournalEntryService {
     return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   }
 
-  private async assertAccountingPeriodOpenByDate(entryDate: Date, tx: Prisma.TransactionClient | PrismaService = this.prisma) {
+  private async assertAccountingPeriodOpenByDate(
+    entryDate: Date,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const prismaAny = tx as any;
     const closedPeriod = await prismaAny.accountingPeriod?.findFirst?.({
       where: {
@@ -135,25 +163,36 @@ export class JournalEntryService {
     });
 
     if (closedPeriod) {
-      throw new BadRequestException(`El período ${closedPeriod.name} está cerrado para cambios contables.`);
+      throw new BadRequestException(
+        `El período ${closedPeriod.name} está cerrado para cambios contables.`,
+      );
     }
   }
 
-  private async assertEntryIsEditable(entryId: number, tx: Prisma.TransactionClient) {
+  private async assertEntryIsEditable(
+    entryId: number,
+    tx: Prisma.TransactionClient,
+  ) {
     const entry = await tx.journalEntry.findUnique({ where: { id: entryId } });
     if (!entry) {
-      throw new NotFoundException(`Entrada del diario con id ${entryId} no encontrada.`);
+      throw new NotFoundException(
+        `Entrada del diario con id ${entryId} no encontrada.`,
+      );
     }
 
     if ((entry as any).postingStatus === 'REVERSED') {
-      throw new BadRequestException('La entrada está revertida y no puede modificarse.');
+      throw new BadRequestException(
+        'La entrada está revertida y no puede modificarse.',
+      );
     }
 
     await this.assertAccountingPeriodOpenByDate(entry.entryDate, tx);
     return entry;
   }
 
-  private async rebuildBalancesFallback(tx: Prisma.TransactionClient | PrismaService) {
+  private async rebuildBalancesFallback(
+    tx: Prisma.TransactionClient | PrismaService,
+  ) {
     const groupedLines = await tx.journalEntryLine.groupBy({
       by: ['accountId', 'currencyCode'],
       _sum: { amount: true },
@@ -171,9 +210,10 @@ export class JournalEntryService {
     const balanceMap = new Map<string, Prisma.Decimal>();
     for (const line of lines) {
       const key = `${line.accountId}:${line.currencyCode}`;
-      const signedAmount = this.normalizeEntryType(line.entryType) === EntryType.INGRESO
-        ? this.toDecimal(line.amount)
-        : this.toDecimal(line.amount).mul(-1);
+      const signedAmount =
+        this.normalizeEntryType(line.entryType) === EntryType.INGRESO
+          ? this.toDecimal(line.amount)
+          : this.toDecimal(line.amount).mul(-1);
 
       const current = balanceMap.get(key) ?? new Prisma.Decimal(0);
       balanceMap.set(key, current.plus(signedAmount));
@@ -214,11 +254,17 @@ export class JournalEntryService {
     }
   }
 
-  private async executeBalanceProcedure(executor: Prisma.TransactionClient | PrismaService, procedure = 'recalculate_all_account_balances') {
+  private async executeBalanceProcedure(
+    executor: Prisma.TransactionClient | PrismaService,
+    procedure = 'recalculate_all_account_balances',
+  ) {
     try {
       await executor.$queryRawUnsafe(`SELECT ${procedure}()`);
     } catch (error) {
-      this.logger.error(`Error ejecutando procedimiento ${procedure}`, error as Error);
+      this.logger.error(
+        `Error ejecutando procedimiento ${procedure}`,
+        error as Error,
+      );
 
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -226,7 +272,9 @@ export class JournalEntryService {
         typeof error.meta?.message === 'string' &&
         error.meta.message.includes(`function ${procedure}() does not exist`)
       ) {
-        this.logger.warn(`El proceso ${procedure} no existe en la base actual. Se aplicará recálculo local.`);
+        this.logger.warn(
+          `El proceso ${procedure} no existe en la base actual. Se aplicará recálculo local.`,
+        );
         await this.rebuildBalancesFallback(executor);
         return;
       }
@@ -237,10 +285,17 @@ export class JournalEntryService {
     }
   }
 
-  private async ensureAccountsExist(tx: Prisma.TransactionClient, accountIds: number[]) {
-    const uniqueIds = [...new Set(accountIds.filter(id => Number.isInteger(id) && id > 0))];
+  private async ensureAccountsExist(
+    tx: Prisma.TransactionClient,
+    accountIds: number[],
+  ) {
+    const uniqueIds = [
+      ...new Set(accountIds.filter((id) => Number.isInteger(id) && id > 0)),
+    ];
     if (uniqueIds.length === 0) {
-      throw new BadRequestException('Debe indicar al menos una cuenta válida para el asiento contable.');
+      throw new BadRequestException(
+        'Debe indicar al menos una cuenta válida para el asiento contable.',
+      );
     }
 
     const accounts = await tx.account.findMany({
@@ -248,8 +303,8 @@ export class JournalEntryService {
       select: { id: true },
     });
 
-    const existingIds = new Set(accounts.map(account => account.id));
-    const missingIds = uniqueIds.filter(id => !existingIds.has(id));
+    const existingIds = new Set(accounts.map((account) => account.id));
+    const missingIds = uniqueIds.filter((id) => !existingIds.has(id));
     if (missingIds.length > 0) {
       throw new NotFoundException({
         message: 'Hay cuentas contables que no existen.',
@@ -258,28 +313,34 @@ export class JournalEntryService {
     }
   }
 
-  private async ensureCurrenciesExist(tx: Prisma.TransactionClient, currencyCodes: string[]) {
-    const uniqueCodes = [...new Set(
-      currencyCodes
-        .map(code => code.trim().toUpperCase())
-        .filter(Boolean),
-    )];
+  private async ensureCurrenciesExist(
+    tx: Prisma.TransactionClient,
+    currencyCodes: string[],
+  ) {
+    const uniqueCodes = [
+      ...new Set(
+        currencyCodes.map((code) => code.trim().toUpperCase()).filter(Boolean),
+      ),
+    ];
 
     if (uniqueCodes.length === 0) {
       return;
     }
 
-    const unsupportedCodes = uniqueCodes.filter(code => code.length > this.maxCurrencyCodeLength);
+    const unsupportedCodes = uniqueCodes.filter(
+      (code) => code.length > this.maxCurrencyCodeLength,
+    );
     if (unsupportedCodes.length > 0) {
       throw new BadRequestException({
-        message: 'Hay códigos de moneda demasiado largos para el esquema actual.',
+        message:
+          'Hay códigos de moneda demasiado largos para el esquema actual.',
         unsupportedCodes,
         maxLength: this.maxCurrencyCodeLength,
       });
     }
 
     await tx.currency.createMany({
-      data: uniqueCodes.map(code => ({
+      data: uniqueCodes.map((code) => ({
         code,
         description: `Auto-created from Binance sync for ${code}`,
       })),
@@ -287,12 +348,23 @@ export class JournalEntryService {
     });
   }
 
-  private validateBalancedLines(lines: Array<{ currencyCode: string; amount: Prisma.Decimal | string | number; entryType: string }>) {
+  private validateBalancedLines(
+    lines: Array<{
+      currencyCode: string;
+      amount: Prisma.Decimal | string | number;
+      entryType: string;
+    }>,
+  ) {
     if (lines.length < 2) {
-      throw new BadRequestException('Un journal entry balanceado debe tener al menos dos líneas.');
+      throw new BadRequestException(
+        'Un journal entry balanceado debe tener al menos dos líneas.',
+      );
     }
 
-    const totals = new Map<string, { ingreso: Prisma.Decimal; egreso: Prisma.Decimal }>();
+    const totals = new Map<
+      string,
+      { ingreso: Prisma.Decimal; egreso: Prisma.Decimal }
+    >();
 
     for (const line of lines) {
       const currencyCode = line.currencyCode.trim().toUpperCase();
@@ -300,7 +372,9 @@ export class JournalEntryService {
       const entryType = this.normalizeEntryType(line.entryType);
 
       if (amount.lte(0)) {
-        throw new BadRequestException('Cada línea contable debe tener un monto mayor que cero.');
+        throw new BadRequestException(
+          'Cada línea contable debe tener un monto mayor que cero.',
+        );
       }
 
       const current = totals.get(currencyCode) ?? {
@@ -333,7 +407,10 @@ export class JournalEntryService {
     }
   }
 
-  private async getEntryLinesOrFail(entryId: number, tx: Prisma.TransactionClient | PrismaService = this.prisma) {
+  private async getEntryLinesOrFail(
+    entryId: number,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const lines = await tx.journalEntryLine.findMany({ where: { entryId } });
     if (lines.length === 0) {
       throw new BadRequestException('La entrada no tiene líneas contables.');
@@ -345,7 +422,9 @@ export class JournalEntryService {
     try {
       await this.executeBalanceProcedure(this.prisma);
       this.observability.incrementCounter('accounting.rebuild.success');
-      return { message: 'Balances recalculados correctamente desde JournalEntryLine.' };
+      return {
+        message: 'Balances recalculados correctamente desde JournalEntryLine.',
+      };
     } catch (error) {
       this.observability.incrementCounter('accounting.rebuild.error');
       await this.notifyAdminsOnCriticalFailure(
@@ -363,7 +442,9 @@ export class JournalEntryService {
     const endsAt = new Date(dto.endsAt);
 
     if (startsAt >= endsAt) {
-      throw new BadRequestException('El rango del período contable es inválido.');
+      throw new BadRequestException(
+        'El rango del período contable es inválido.',
+      );
     }
 
     const overlap = await prismaAny.accountingPeriod.findFirst({
@@ -374,7 +455,9 @@ export class JournalEntryService {
     });
 
     if (overlap) {
-      throw new BadRequestException(`El período se superpone con ${overlap.name}.`);
+      throw new BadRequestException(
+        `El período se superpone con ${overlap.name}.`,
+      );
     }
 
     return prismaAny.accountingPeriod.create({
@@ -388,7 +471,9 @@ export class JournalEntryService {
 
   async closeAccountingPeriod(id: number, closedBy?: string) {
     const prismaAny = this.prisma as any;
-    const period = await prismaAny.accountingPeriod.findUnique({ where: { id } });
+    const period = await prismaAny.accountingPeriod.findUnique({
+      where: { id },
+    });
     if (!period) {
       throw new NotFoundException(`Período contable ${id} no encontrado.`);
     }
@@ -409,7 +494,9 @@ export class JournalEntryService {
 
   async reopenAccountingPeriod(id: number, reopenedBy?: string) {
     const prismaAny = this.prisma as any;
-    const period = await prismaAny.accountingPeriod.findUnique({ where: { id } });
+    const period = await prismaAny.accountingPeriod.findUnique({
+      where: { id },
+    });
     if (!period) {
       throw new NotFoundException(`Período contable ${id} no encontrado.`);
     }
@@ -466,10 +553,11 @@ export class JournalEntryService {
     });
 
     let runningBalance = new Prisma.Decimal(0);
-    const movements = lines.map(line => {
-      const signed = this.normalizeEntryType(line.entryType) === EntryType.INGRESO
-        ? this.toDecimal(line.amount)
-        : this.toDecimal(line.amount).mul(-1);
+    const movements = lines.map((line) => {
+      const signed =
+        this.normalizeEntryType(line.entryType) === EntryType.INGRESO
+          ? this.toDecimal(line.amount)
+          : this.toDecimal(line.amount).mul(-1);
       runningBalance = runningBalance.plus(signed);
 
       return {
@@ -507,14 +595,17 @@ export class JournalEntryService {
       },
     });
 
-    const balances = new Map<string, {
-      accountId: number;
-      accountEmail: string;
-      currencyCode: string;
-      debit: Prisma.Decimal;
-      credit: Prisma.Decimal;
-      net: Prisma.Decimal;
-    }>();
+    const balances = new Map<
+      string,
+      {
+        accountId: number;
+        accountEmail: string;
+        currencyCode: string;
+        debit: Prisma.Decimal;
+        credit: Prisma.Decimal;
+        net: Prisma.Decimal;
+      }
+    >();
 
     for (const line of lines) {
       const key = `${line.accountId}:${line.currencyCode}`;
@@ -541,7 +632,7 @@ export class JournalEntryService {
     return {
       from,
       to,
-      rows: [...balances.values()].map(item => ({
+      rows: [...balances.values()].map((item) => ({
         accountId: item.accountId,
         accountEmail: item.accountEmail,
         currencyCode: item.currencyCode,
@@ -611,7 +702,9 @@ export class JournalEntryService {
       });
 
       if (!original) {
-        throw new NotFoundException(`Entrada del diario con id ${id} no encontrada.`);
+        throw new NotFoundException(
+          `Entrada del diario con id ${id} no encontrada.`,
+        );
       }
 
       if ((original as any).postingStatus === 'REVERSED') {
@@ -620,13 +713,14 @@ export class JournalEntryService {
 
       await this.assertAccountingPeriodOpenByDate(original.entryDate, tx);
 
-      const reversalLines = original.lines.map(line => ({
+      const reversalLines = original.lines.map((line) => ({
         accountId: line.accountId,
         currencyCode: line.currencyCode,
         amount: line.amount.toString(),
-        entryType: this.normalizeEntryType(line.entryType) === EntryType.INGRESO
-          ? EntryType.EGRESO
-          : EntryType.INGRESO,
+        entryType:
+          this.normalizeEntryType(line.entryType) === EntryType.INGRESO
+            ? EntryType.EGRESO
+            : EntryType.INGRESO,
       }));
 
       const reversed = await tx.journalEntry.create({
@@ -665,9 +759,10 @@ export class JournalEntryService {
       throw new NotFoundException(`Cuenta con id ${accountId} no encontrada.`);
     }
 
-    const typeName = account.bankAccountType?.typeName?.trim().toLowerCase() ?? '';
+    const typeName =
+      account.bankAccountType?.typeName?.trim().toLowerCase() ?? '';
     const localBalances = new Map(
-      account.accountBalances.map(balance => [
+      account.accountBalances.map((balance) => [
         balance.currencyCode.toUpperCase(),
         this.toDecimal(balance.balance),
       ]),
@@ -687,12 +782,13 @@ export class JournalEntryService {
       scope = 'MARGIN_CROSS';
       const balances = await this.binanceService.getCrossMarginBalances();
       for (const asset of balances) {
-        const amount = asset.netAsset !== undefined
-          ? this.toDecimal(asset.netAsset)
-          : this.toDecimal(asset.free ?? 0)
-              .plus(asset.locked ?? 0)
-              .minus(asset.borrowed ?? 0)
-              .minus(asset.interest ?? 0);
+        const amount =
+          asset.netAsset !== undefined
+            ? this.toDecimal(asset.netAsset)
+            : this.toDecimal(asset.free ?? 0)
+                .plus(asset.locked ?? 0)
+                .minus(asset.borrowed ?? 0)
+                .minus(asset.interest ?? 0);
         remoteBalances.set(String(asset.asset).toUpperCase(), amount);
       }
     } else if (typeName.includes('aislado') || typeName.includes('isolated')) {
@@ -704,15 +800,17 @@ export class JournalEntryService {
             continue;
           }
 
-          const amount = asset.netAsset !== undefined
-            ? this.toDecimal(asset.netAsset)
-            : this.toDecimal(asset.free ?? 0)
-                .plus(asset.locked ?? 0)
-                .minus(asset.borrowed ?? 0)
-                .minus(asset.interest ?? 0);
+          const amount =
+            asset.netAsset !== undefined
+              ? this.toDecimal(asset.netAsset)
+              : this.toDecimal(asset.free ?? 0)
+                  .plus(asset.locked ?? 0)
+                  .minus(asset.borrowed ?? 0)
+                  .minus(asset.interest ?? 0);
 
           const currencyCode = String(asset.asset).toUpperCase();
-          const existing = remoteBalances.get(currencyCode) ?? new Prisma.Decimal(0);
+          const existing =
+            remoteBalances.get(currencyCode) ?? new Prisma.Decimal(0);
           remoteBalances.set(currencyCode, existing.plus(amount));
         }
       }
@@ -730,19 +828,26 @@ export class JournalEntryService {
     };
   }
 
-  private async resolveOffsetAccount(sourceAccountId: number, requestedOffsetAccountId?: number) {
+  private async resolveOffsetAccount(
+    sourceAccountId: number,
+    requestedOffsetAccountId?: number,
+  ) {
     const sourceAccount = await this.prisma.account.findUnique({
       where: { id: sourceAccountId },
       include: { bankAccountType: true, accountBalances: true },
     });
 
     if (!sourceAccount) {
-      throw new NotFoundException(`Cuenta origen ${sourceAccountId} no encontrada.`);
+      throw new NotFoundException(
+        `Cuenta origen ${sourceAccountId} no encontrada.`,
+      );
     }
 
     if (requestedOffsetAccountId) {
       if (requestedOffsetAccountId === sourceAccountId) {
-        throw new BadRequestException('La cuenta origen y la cuenta contrapartida no deben ser la misma.');
+        throw new BadRequestException(
+          'La cuenta origen y la cuenta contrapartida no deben ser la misma.',
+        );
       }
 
       const explicitOffsetAccount = await this.prisma.account.findUnique({
@@ -775,7 +880,9 @@ export class JournalEntryService {
     }
 
     if (automaticOffsetAccount.id === sourceAccount.id) {
-      throw new BadRequestException('La cuenta técnica de ajuste no puede ser la misma cuenta sincronizada.');
+      throw new BadRequestException(
+        'La cuenta técnica de ajuste no puede ser la misma cuenta sincronizada.',
+      );
     }
 
     return { sourceAccount, offsetAccount: automaticOffsetAccount };
@@ -787,12 +894,23 @@ export class JournalEntryService {
 
     try {
       if (createJournalEntryDto.lines.length === 0) {
-        throw new BadRequestException('Debe proporcionar al menos una línea para la entrada');
+        throw new BadRequestException(
+          'Debe proporcionar al menos una línea para la entrada',
+        );
       }
       const createdEntry = await this.prisma.$transaction(async (tx) => {
-        await this.assertAccountingPeriodOpenByDate(new Date(createJournalEntryDto.entryDate), tx);
-        await this.ensureAccountsExist(tx, createJournalEntryDto.lines.map(line => line.accountId));
-        await this.ensureCurrenciesExist(tx, createJournalEntryDto.lines.map(line => line.currencyCode));
+        await this.assertAccountingPeriodOpenByDate(
+          new Date(createJournalEntryDto.entryDate),
+          tx,
+        );
+        await this.ensureAccountsExist(
+          tx,
+          createJournalEntryDto.lines.map((line) => line.accountId),
+        );
+        await this.ensureCurrenciesExist(
+          tx,
+          createJournalEntryDto.lines.map((line) => line.currencyCode),
+        );
 
         return await tx.journalEntry.create({
           data: {
@@ -800,9 +918,11 @@ export class JournalEntryService {
             description: createJournalEntryDto.description,
             createdBy: createJournalEntryDto.createdBy,
             statusId: createJournalEntryDto.statusId ?? 1,
-            postingStatus: createJournalEntryDto.postingStatus ?? JournalPostingStatusDto.POSTED,
+            postingStatus:
+              createJournalEntryDto.postingStatus ??
+              JournalPostingStatusDto.POSTED,
             lines: {
-              create: createJournalEntryDto.lines.map(line => ({
+              create: createJournalEntryDto.lines.map((line) => ({
                 accountId: line.accountId,
                 currencyCode: line.currencyCode.trim().toUpperCase(),
                 amount: line.amount,
@@ -841,10 +961,16 @@ export class JournalEntryService {
         where: { id },
         include: { lines: true, status: true, transfer: true },
       });
-      if (!journalEntry) throw new NotFoundException(`Entrada del diario con id ${id} no encontrada.`);
+      if (!journalEntry)
+        throw new NotFoundException(
+          `Entrada del diario con id ${id} no encontrada.`,
+        );
       return journalEntry;
     } catch (error) {
-      this.handlePrismaError(error, `Error buscando la entrada del diario con id ${id}`);
+      this.handlePrismaError(
+        error,
+        `Error buscando la entrada del diario con id ${id}`,
+      );
     }
   }
 
@@ -863,17 +989,30 @@ export class JournalEntryService {
         });
 
         if (!existingEntry) {
-          throw new NotFoundException(`Entrada del diario con id ${id} no encontrada.`);
+          throw new NotFoundException(
+            `Entrada del diario con id ${id} no encontrada.`,
+          );
         }
 
-        await this.assertAccountingPeriodOpenByDate(existingEntry.entryDate, tx);
+        await this.assertAccountingPeriodOpenByDate(
+          existingEntry.entryDate,
+          tx,
+        );
         if ((existingEntry as any).postingStatus === 'REVERSED') {
-          throw new BadRequestException('No puedes actualizar una entrada revertida.');
+          throw new BadRequestException(
+            'No puedes actualizar una entrada revertida.',
+          );
         }
 
         if (updateJournalEntryDto.lines) {
-          await this.ensureAccountsExist(tx, updateJournalEntryDto.lines.map(line => line.accountId));
-          await this.ensureCurrenciesExist(tx, updateJournalEntryDto.lines.map(line => line.currencyCode));
+          await this.ensureAccountsExist(
+            tx,
+            updateJournalEntryDto.lines.map((line) => line.accountId),
+          );
+          await this.ensureCurrenciesExist(
+            tx,
+            updateJournalEntryDto.lines.map((line) => line.currencyCode),
+          );
         }
 
         return await tx.journalEntry.update({
@@ -884,15 +1023,15 @@ export class JournalEntryService {
             lines: updateJournalEntryDto.lines
               ? {
                   deleteMany: {},
-                  create: updateJournalEntryDto.lines.map(line => ({
+                  create: updateJournalEntryDto.lines.map((line) => ({
                     accountId: line.accountId,
                     currencyCode: line.currencyCode.trim().toUpperCase(),
                     amount: line.amount,
                     entryType: this.normalizeEntryType(line.entryType),
                   })),
                 }
-                : undefined,
-              } as any,
+              : undefined,
+          } as any,
           include: { lines: true },
         });
       });
@@ -900,7 +1039,10 @@ export class JournalEntryService {
       await this.executeBalanceProcedure(this.prisma);
       return updatedEntry;
     } catch (error) {
-      this.handlePrismaError(error, `Error actualizando entrada del diario con id ${id}`);
+      this.handlePrismaError(
+        error,
+        `Error actualizando entrada del diario con id ${id}`,
+      );
     }
   }
 
@@ -912,7 +1054,9 @@ export class JournalEntryService {
     });
   }
 
-  async createLine(createLineDto: CreateJournalEntryLineDto & { entryId: number }) {
+  async createLine(
+    createLineDto: CreateJournalEntryLineDto & { entryId: number },
+  ) {
     try {
       const createdLine = await this.prisma.$transaction(async (tx) => {
         const existingEntry = await tx.journalEntry.findUnique({
@@ -921,17 +1065,22 @@ export class JournalEntryService {
         });
 
         if (!existingEntry) {
-          throw new NotFoundException(`Entrada del diario con id ${createLineDto.entryId} no encontrada.`);
+          throw new NotFoundException(
+            `Entrada del diario con id ${createLineDto.entryId} no encontrada.`,
+          );
         }
 
         await this.assertEntryIsEditable(createLineDto.entryId, tx);
 
-        const nextLines = [...existingEntry.lines, {
-          accountId: createLineDto.accountId,
-          currencyCode: createLineDto.currencyCode,
-          amount: createLineDto.amount,
-          entryType: createLineDto.entryType,
-        }];
+        const nextLines = [
+          ...existingEntry.lines,
+          {
+            accountId: createLineDto.accountId,
+            currencyCode: createLineDto.currencyCode,
+            amount: createLineDto.amount,
+            entryType: createLineDto.entryType,
+          },
+        ];
 
         this.validateBalancedLines(nextLines);
         await this.ensureAccountsExist(tx, [createLineDto.accountId]);
@@ -954,14 +1103,22 @@ export class JournalEntryService {
       const where = entryId ? { entryId } : {};
       return await this.prisma.journalEntryLine.findMany({ where });
     } catch (error) {
-      this.handlePrismaError(error, 'Error obteniendo líneas del asiento contable');
+      this.handlePrismaError(
+        error,
+        'Error obteniendo líneas del asiento contable',
+      );
     }
   }
 
   async findOneLine(id: number) {
     try {
-      const line = await this.prisma.journalEntryLine.findUnique({ where: { id } });
-      if (!line) throw new NotFoundException(`Línea del asiento con id ${id} no encontrada.`);
+      const line = await this.prisma.journalEntryLine.findUnique({
+        where: { id },
+      });
+      if (!line)
+        throw new NotFoundException(
+          `Línea del asiento con id ${id} no encontrada.`,
+        );
       return line;
     } catch (error) {
       this.handlePrismaError(error, `Error buscando línea con id ${id}`);
@@ -971,16 +1128,23 @@ export class JournalEntryService {
   async updateLine(id: number, updateLineDto: any) {
     try {
       const updatedLine = await this.prisma.$transaction(async (tx) => {
-        const currentLine = await tx.journalEntryLine.findUnique({ where: { id } });
+        const currentLine = await tx.journalEntryLine.findUnique({
+          where: { id },
+        });
         if (!currentLine) {
-          throw new NotFoundException(`Línea del asiento con id ${id} no encontrada.`);
+          throw new NotFoundException(
+            `Línea del asiento con id ${id} no encontrada.`,
+          );
         }
 
         await this.assertEntryIsEditable(currentLine.entryId, tx);
 
         const data = this.mapUpdateLineDtoToPrisma(updateLineDto);
-        const entryLines = await this.getEntryLinesOrFail(currentLine.entryId, tx);
-        const nextLines = entryLines.map(line =>
+        const entryLines = await this.getEntryLinesOrFail(
+          currentLine.entryId,
+          tx,
+        );
+        const nextLines = entryLines.map((line) =>
           line.id === id
             ? {
                 ...line,
@@ -1013,15 +1177,22 @@ export class JournalEntryService {
   async removeLine(id: number) {
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        const currentLine = await tx.journalEntryLine.findUnique({ where: { id } });
+        const currentLine = await tx.journalEntryLine.findUnique({
+          where: { id },
+        });
         if (!currentLine) {
-          throw new NotFoundException(`Línea del asiento con id ${id} no encontrada.`);
+          throw new NotFoundException(
+            `Línea del asiento con id ${id} no encontrada.`,
+          );
         }
 
         await this.assertEntryIsEditable(currentLine.entryId, tx);
 
-        const entryLines = await this.getEntryLinesOrFail(currentLine.entryId, tx);
-        const remainingLines = entryLines.filter(line => line.id !== id);
+        const entryLines = await this.getEntryLinesOrFail(
+          currentLine.entryId,
+          tx,
+        );
+        const remainingLines = entryLines.filter((line) => line.id !== id);
         this.validateBalancedLines(remainingLines);
 
         const deleted = await tx.journalEntryLine.delete({ where: { id } });
@@ -1037,33 +1208,37 @@ export class JournalEntryService {
 
   async getAccountingSummary() {
     try {
-      const [entries, balances, tradingStatusSummary, tradingProfit] = await Promise.all([
-        this.prisma.journalEntry.findMany({
-          include: { lines: true, status: true },
-          orderBy: { entryDate: 'desc' },
-        }),
-        this.prisma.accountBalance.findMany({
-          include: {
-            account: { include: { bankAccountType: true } },
-            currency: true,
-          },
-          orderBy: [{ accountId: 'asc' }, { currencyCode: 'asc' }],
-        }),
-        this.prisma.tradingOrder.groupBy({
-          by: ['status'],
-          _count: { id: true },
-          _sum: { profit_loss: true },
-        }),
-        this.prisma.tradingOrder.aggregate({
-          _sum: { profit_loss: true },
-          where: {
-            profit_loss: { not: null },
-            status: 'CLOSED',
-          },
-        }),
-      ]);
+      const [entries, balances, tradingStatusSummary, tradingProfit] =
+        await Promise.all([
+          this.prisma.journalEntry.findMany({
+            include: { lines: true, status: true },
+            orderBy: { entryDate: 'desc' },
+          }),
+          this.prisma.accountBalance.findMany({
+            include: {
+              account: { include: { bankAccountType: true } },
+              currency: true,
+            },
+            orderBy: [{ accountId: 'asc' }, { currencyCode: 'asc' }],
+          }),
+          this.prisma.tradingOrder.groupBy({
+            by: ['status'],
+            _count: { id: true },
+            _sum: { profit_loss: true },
+          }),
+          this.prisma.tradingOrder.aggregate({
+            _sum: { profit_loss: true },
+            where: {
+              profit_loss: { not: null },
+              status: 'CLOSED',
+            },
+          }),
+        ]);
 
-      const byCurrency = new Map<string, { ingresos: Prisma.Decimal; egresos: Prisma.Decimal }>();
+      const byCurrency = new Map<
+        string,
+        { ingresos: Prisma.Decimal; egresos: Prisma.Decimal }
+      >();
 
       for (const entry of entries) {
         for (const line of entry.lines) {
@@ -1085,31 +1260,37 @@ export class JournalEntryService {
 
       let binanceMarginSummary: unknown = null;
       try {
-        binanceMarginSummary = await this.binanceService.getCrossMarginPNLSummary();
+        binanceMarginSummary =
+          await this.binanceService.getCrossMarginPNLSummary();
       } catch (error) {
-        this.logger.warn('No se pudo obtener el resumen de PNL de margin cruzado desde Binance.');
+        this.logger.warn(
+          'No se pudo obtener el resumen de PNL de margin cruzado desde Binance.',
+        );
       }
 
       return {
         journalEntries: {
           total: entries.length,
-          byCurrency: [...byCurrency.entries()].map(([currencyCode, totals]) => ({
-            currencyCode,
-            ingresos: totals.ingresos.toString(),
-            egresos: totals.egresos.toString(),
-            neto: totals.ingresos.minus(totals.egresos).toString(),
-          })),
+          byCurrency: [...byCurrency.entries()].map(
+            ([currencyCode, totals]) => ({
+              currencyCode,
+              ingresos: totals.ingresos.toString(),
+              egresos: totals.egresos.toString(),
+              neto: totals.ingresos.minus(totals.egresos).toString(),
+            }),
+          ),
           latestEntries: entries.slice(0, 10),
         },
-        balances: balances.map(balance => ({
+        balances: balances.map((balance) => ({
           accountId: balance.accountId,
           accountType: balance.account.bankAccountType.typeName,
           currencyCode: balance.currencyCode,
           balance: balance.balance.toString(),
         })),
         trading: {
-          realizedClosedProfitLoss: tradingProfit._sum.profit_loss?.toString() ?? '0',
-          byStatus: tradingStatusSummary.map(item => ({
+          realizedClosedProfitLoss:
+            tradingProfit._sum.profit_loss?.toString() ?? '0',
+          byStatus: tradingStatusSummary.map((item) => ({
             status: item.status,
             count: item._count.id,
             profitLoss: item._sum.profit_loss?.toString() ?? '0',
@@ -1131,12 +1312,8 @@ export class JournalEntryService {
         syncDto.offsetAccountId,
       );
 
-      const {
-        account,
-        scope,
-        localBalances,
-        remoteBalances,
-      } = await this.buildRemoteBalancesForAccountType(syncDto.accountId);
+      const { account, scope, localBalances, remoteBalances } =
+        await this.buildRemoteBalancesForAccountType(syncDto.accountId);
 
       const includeZeroBalances = syncDto.includeZeroBalances ?? true;
       const currencies = new Set<string>(remoteBalances.keys());
@@ -1156,8 +1333,10 @@ export class JournalEntryService {
       }> = [];
 
       for (const currencyCode of currencies) {
-        const localBalance = localBalances.get(currencyCode) ?? new Prisma.Decimal(0);
-        const remoteBalance = remoteBalances.get(currencyCode) ?? new Prisma.Decimal(0);
+        const localBalance =
+          localBalances.get(currencyCode) ?? new Prisma.Decimal(0);
+        const remoteBalance =
+          remoteBalances.get(currencyCode) ?? new Prisma.Decimal(0);
         const difference = remoteBalance.minus(localBalance);
 
         if (difference.equals(0)) {
@@ -1165,8 +1344,12 @@ export class JournalEntryService {
         }
 
         const amount = difference.abs().toString();
-        const primaryEntryType = difference.gt(0) ? EntryType.INGRESO : EntryType.EGRESO;
-        const offsetEntryType = difference.gt(0) ? EntryType.EGRESO : EntryType.INGRESO;
+        const primaryEntryType = difference.gt(0)
+          ? EntryType.INGRESO
+          : EntryType.EGRESO;
+        const offsetEntryType = difference.gt(0)
+          ? EntryType.EGRESO
+          : EntryType.INGRESO;
 
         lines.push({
           accountId: syncDto.accountId,
@@ -1200,11 +1383,15 @@ export class JournalEntryService {
         };
       }
 
-      const windowMinutes = syncDto.idempotencyWindowMinutes ?? this.defaultSyncIdempotencyWindowMinutes;
+      const windowMinutes =
+        syncDto.idempotencyWindowMinutes ??
+        this.defaultSyncIdempotencyWindowMinutes;
       const normalizedWindow = Math.max(1, windowMinutes);
       const windowMs = normalizedWindow * 60 * 1000;
       const now = new Date();
-      const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
+      const windowStart = new Date(
+        Math.floor(now.getTime() / windowMs) * windowMs,
+      );
       const windowEnd = new Date(windowStart.getTime() + windowMs);
       const syncHash = this.createSyncHash({
         accountId: syncDto.accountId,
@@ -1215,11 +1402,14 @@ export class JournalEntryService {
       });
 
       const prismaAny = this.prisma as any;
-      const existingSync = await prismaAny.binanceSyncLog.findUnique({ where: { syncHash } });
+      const existingSync = await prismaAny.binanceSyncLog.findUnique({
+        where: { syncHash },
+      });
       if (existingSync) {
         this.observability.incrementCounter('binance.sync.idempotent_skip');
         return {
-          message: 'Sync omitido por idempotencia: ya existe para esta ventana.',
+          message:
+            'Sync omitido por idempotencia: ya existe para esta ventana.',
           scope,
           accountId: syncDto.accountId,
           offsetAccountId: offsetAccount.id,
@@ -1257,10 +1447,14 @@ export class JournalEntryService {
       });
 
       this.observability.incrementCounter('binance.sync.success');
-      this.observability.setGauge('binance.sync.last_adjustments', adjustments.length);
+      this.observability.setGauge(
+        'binance.sync.last_adjustments',
+        adjustments.length,
+      );
 
       return {
-        message: 'Saldos de Binance sincronizados a local y registrados en journal entry.',
+        message:
+          'Saldos de Binance sincronizados a local y registrados en journal entry.',
         scope,
         accountId: syncDto.accountId,
         offsetAccountId: offsetAccount.id,
@@ -1283,10 +1477,12 @@ export class JournalEntryService {
       entryDate: createDto.entryDate,
       description: createDto.description,
       createdBy: createDto.createdBy,
-      status: createDto.statusId ? { connect: { id: createDto.statusId } } : undefined,
+      status: createDto.statusId
+        ? { connect: { id: createDto.statusId } }
+        : undefined,
       postingStatus: createDto.postingStatus,
       lines: {
-        create: createDto.lines.map(line => ({
+        create: createDto.lines.map((line) => ({
           accountId: line.accountId,
           currencyCode: line.currencyCode,
           amount: line.amount,
@@ -1301,7 +1497,9 @@ export class JournalEntryService {
       entryDate: updateDto.entryDate,
       description: updateDto.description,
       createdBy: updateDto.createdBy,
-      status: updateDto.statusId ? { connect: { id: updateDto.statusId } } : undefined,
+      status: updateDto.statusId
+        ? { connect: { id: updateDto.statusId } }
+        : undefined,
       postingStatus: updateDto.postingStatus,
     };
   }
@@ -1311,7 +1509,9 @@ export class JournalEntryService {
       accountId: updateDto.accountId,
       currencyCode: updateDto.currencyCode?.trim().toUpperCase(),
       amount: updateDto.amount,
-      entryType: updateDto.entryType ? this.normalizeEntryType(updateDto.entryType) : undefined,
+      entryType: updateDto.entryType
+        ? this.normalizeEntryType(updateDto.entryType)
+        : undefined,
     };
   }
 }

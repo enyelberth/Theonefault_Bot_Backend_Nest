@@ -3,7 +3,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, IsString, Min, MinLength } from 'class-validator';
 
 export class MessageDto {
-  @ApiProperty({ example: 'Hola mundo', description: 'Texto del mensaje a enviar' })
+  @ApiProperty({
+    example: 'Hola mundo',
+    description: 'Texto del mensaje a enviar',
+  })
   @IsString()
   @MinLength(1)
   message: string;

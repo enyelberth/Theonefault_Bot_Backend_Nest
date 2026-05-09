@@ -7,4 +7,5 @@ export interface RateLimitRule {
   windowMs: number;
 }
 
-export const RateLimit = (rule: RateLimitRule) => SetMetadata(RATE_LIMIT_KEY, rule);
+export const RateLimit = (rule: RateLimitRule) =>
+  SetMetadata(RATE_LIMIT_KEY, rule);

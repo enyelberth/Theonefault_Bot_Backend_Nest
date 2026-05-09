@@ -36,7 +36,9 @@ describe('BinanceMarginService', () => {
       getDecimalsForSymbol: jest.fn(),
       getSymbolPrice: jest.fn(),
       cancelAllOrders: jest.fn(),
-      getFloorToStep: jest.fn().mockReturnValue((q: number) => Math.floor(q * 100000) / 100000),
+      getFloorToStep: jest
+        .fn()
+        .mockReturnValue((q: number) => Math.floor(q * 100000) / 100000),
     } as any;
 
     mockStrategyOps = {
@@ -89,7 +91,7 @@ describe('BinanceMarginService', () => {
         'BTCUSDT',
         'BUY',
         '0.1',
-        '45000'
+        '45000',
       );
 
       expect(result).toEqual(mockResponse);
@@ -102,7 +104,7 @@ describe('BinanceMarginService', () => {
           quantity: '0.1',
           price: '45000',
           timeInForce: 'GTC',
-        })
+        }),
       );
     });
 
@@ -116,7 +118,12 @@ describe('BinanceMarginService', () => {
       mockStrategyOps.buildClientOrderId.mockReturnValueOnce('test-order-id');
       mockAuthService.postSigned.mockResolvedValueOnce({ orderId: 12345 });
 
-      await service.createCrossMarginLimitOrder('BTCUSDT', 'BUY', '0.1', '45000');
+      await service.createCrossMarginLimitOrder(
+        'BTCUSDT',
+        'BUY',
+        '0.1',
+        '45000',
+      );
 
       expect(mockStrategyOps.recordOrderPlacement).toHaveBeenCalled();
     });
@@ -133,7 +140,11 @@ describe('BinanceMarginService', () => {
       mockAuthService.postSigned.mockResolvedValueOnce(mockResponse);
       mockStrategyOps.recordOrderStatus.mockResolvedValueOnce(null);
 
-      const result = await service.createCrossMarginMarketOrder('BTCUSDT', 'SELL', '0.1');
+      const result = await service.createCrossMarginMarketOrder(
+        'BTCUSDT',
+        'SELL',
+        '0.1',
+      );
 
       expect(result).toEqual(mockResponse);
       expect(mockAuthService.postSigned).toHaveBeenCalledWith(
@@ -143,7 +154,7 @@ describe('BinanceMarginService', () => {
           side: 'SELL',
           type: 'MARKET',
           quantity: '0.1',
-        })
+        }),
       );
     });
 
@@ -237,7 +248,10 @@ describe('BinanceMarginService', () => {
 
       // The actual implementation calls cancelCrossMarginOrder internally
       // which we need to mock
-      const result = await service.cancelAllCrossMarginOrdersBySide('BTCUSDT', 'BUY');
+      const result = await service.cancelAllCrossMarginOrdersBySide(
+        'BTCUSDT',
+        'BUY',
+      );
 
       expect(result).toBeDefined();
     });
@@ -261,7 +275,7 @@ describe('BinanceMarginService', () => {
         expect.objectContaining({
           symbol: 'BTCUSDT',
           limit: 500,
-        })
+        }),
       );
     });
   });
@@ -281,7 +295,7 @@ describe('BinanceMarginService', () => {
         expect.objectContaining({
           asset: 'USDT',
           amount: '100',
-        })
+        }),
       );
     });
   });
@@ -301,7 +315,7 @@ describe('BinanceMarginService', () => {
         expect.objectContaining({
           asset: 'USDT',
           amount: '100',
-        })
+        }),
       );
     });
   });

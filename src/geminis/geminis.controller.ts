@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+} from '@nestjs/common';
 import { CreateGeminiDto } from './dto/create-gemini.dto';
 import { UpdateGeminiDto } from './dto/update-gemini.dto';
 import { GeminiService } from './geminis.service';
@@ -16,26 +25,26 @@ export class GeminisController {
   }
   @Post()
   create(@Body() createGeminiDto: CreateGeminiDto) {
-   // return this.geminisService.create(createGeminiDto);
+    // return this.geminisService.create(createGeminiDto);
   }
 
   @Get()
   findAll() {
-  //  return this.geminisService.findAll();
+    //  return this.geminisService.findAll();
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-  //  return this.geminisService.findOne(+id);
+    //  return this.geminisService.findOne(+id);
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateGeminiDto: UpdateGeminiDto) {
-   // return this.geminisService.update(+id, updateGeminiDto);
+    // return this.geminisService.update(+id, updateGeminiDto);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string) {
-   // return this.geminisService.remove(+id);
+    // return this.geminisService.remove(+id);
   }
 }

@@ -38,8 +38,16 @@ export function applyRuntimeEnvMode(): void {
       DATABASE_URL: ['DATABASE_URL', 'DATABASE_URL4'],
       DIRECT_URL: ['DIRECT_URL'],
       BASE_URL: ['BASE_URL2', 'BASE_URL'],
-      BINANCE_API_KEY: ['BINANCE_API_KEY_DEV', 'BINANCE_API_KEY2', 'BINANCE_API_KEY'],
-      BINANCE_API_SECRET: ['BINANCE_API_SECRET_DEV', 'BINANCE_API_SECRET2', 'BINANCE_API_SECRET'],
+      BINANCE_API_KEY: [
+        'BINANCE_API_KEY_DEV',
+        'BINANCE_API_KEY2',
+        'BINANCE_API_KEY',
+      ],
+      BINANCE_API_SECRET: [
+        'BINANCE_API_SECRET_DEV',
+        'BINANCE_API_SECRET2',
+        'BINANCE_API_SECRET',
+      ],
     },
   };
 
@@ -64,9 +72,10 @@ export function applyRuntimeEnvMode(): void {
 
   // Defaults explicitos para Binance por entorno cuando no se definan variables.
   if (!process.env.BASE_URL || process.env.BASE_URL.trim() === '') {
-    process.env.BASE_URL = mode === 'PROD'
-      ? 'https://api.binance.com'
-      : 'https://testnet.binance.vision';
+    process.env.BASE_URL =
+      mode === 'PROD'
+        ? 'https://api.binance.com'
+        : 'https://testnet.binance.vision';
   }
 
   process.env.NODE_ENV = mode === 'PROD' ? 'production' : 'development';

@@ -29,10 +29,14 @@ export class BankAccountTypeService {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         // Manejo para error de restricción única (ejemplo 'key' o 'secretKey')
         if (error.code === 'P2002') {
-          throw new BadRequestException('Ya existe una cuenta con esa clave o información única.');
+          throw new BadRequestException(
+            'Ya existe una cuenta con esa clave o información única.',
+          );
         }
       }
-      throw new InternalServerErrorException('Error inesperado al crear la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al crear la cuenta.',
+      );
     }
   }
 
@@ -41,7 +45,9 @@ export class BankAccountTypeService {
       return await this.prisma.bankAccountType.findMany();
     } catch (error) {
       this.logger.error('Error buscando cuentas', error);
-      throw new InternalServerErrorException('Error inesperado al buscar cuentas.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar cuentas.',
+      );
     }
   }
 
@@ -52,11 +58,16 @@ export class BankAccountTypeService {
         where: { id },
       });
       if (!accounts || accounts.length === 0) {
-        throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${id}`);
+        throw new NotFoundException(
+          `No se encontraron cuentas para el usuario con id ${id}`,
+        );
       }
       return accounts;
     } catch (error) {
-      this.logger.error(`Error buscando cuentas del usuario con id ${id}`, error);
+      this.logger.error(
+        `Error buscando cuentas del usuario con id ${id}`,
+        error,
+      );
       if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException(
         'Error inesperado al buscar cuentas por usuario.',
@@ -76,7 +87,9 @@ export class BankAccountTypeService {
     } catch (error) {
       this.logger.error(`Error buscando cuenta con id ${id}`, error);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Error inesperado al buscar la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar la cuenta.',
+      );
     }
   }
 
@@ -92,13 +105,19 @@ export class BankAccountTypeService {
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2025') {
-          throw new NotFoundException(`Cuenta con id ${id} no encontrada para actualizar`);
+          throw new NotFoundException(
+            `Cuenta con id ${id} no encontrada para actualizar`,
+          );
         }
         if (error.code === 'P2002') {
-          throw new BadRequestException('Los datos actualizados violan una restricción única.');
+          throw new BadRequestException(
+            'Los datos actualizados violan una restricción única.',
+          );
         }
       }
-      throw new InternalServerErrorException('Error inesperado al actualizar la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al actualizar la cuenta.',
+      );
     }
   }
 
@@ -111,11 +130,18 @@ export class BankAccountTypeService {
     } catch (error) {
       this.logger.error(`Error eliminando cuenta con id ${id}`, error);
 
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        throw new NotFoundException(`Cuenta con id ${id} no encontrada para eliminar`);
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException(
+          `Cuenta con id ${id} no encontrada para eliminar`,
+        );
       }
 
-      throw new InternalServerErrorException('Error inesperado al eliminar la cuenta.');
+      throw new InternalServerErrorException(
+        'Error inesperado al eliminar la cuenta.',
+      );
     }
   }
 }

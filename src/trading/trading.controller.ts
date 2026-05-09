@@ -44,8 +44,12 @@ export class TradingController {
   @RateLimit({ limit: 30, windowMs: 60_000 })
   @ApiOperation({ summary: 'Crear una nueva orden de trading' })
   @ApiCreatedResponse({ description: 'Orden creada exitosamente.' })
-  @ApiBadRequestResponse({ description: 'Datos inválidos o error en creación.' })
-  @ApiNotFoundResponse({ description: 'Cuenta o entidad relacionada no encontrada.' })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos o error en creación.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Cuenta o entidad relacionada no encontrada.',
+  })
   async create(@Body() createDto: CreateTradingOrderDto) {
     return this.tradingService.createTradingOrder(createDto);
   }
@@ -54,15 +58,20 @@ export class TradingController {
   @Roles('ADMIN', 'OPERATOR', 'TRADER')
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 30, windowMs: 60_000 })
-  @ApiOperation({ summary: 'Simular orden antes de ejecutarla con validaciones de riesgo y horario' })
+  @ApiOperation({
+    summary:
+      'Simular orden antes de ejecutarla con validaciones de riesgo y horario',
+  })
   async simulate(@Body() simulateDto: SimulateTradingOrderDto) {
     return this.tradingService.simulateTradingOrder(simulateDto);
   }
   @Public()
-
   @Get()
   @ApiOperation({ summary: 'Obtener todas las órdenes de trading' })
-  @ApiResponse({ status: 200, description: 'Lista de órdenes obtenida correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de órdenes obtenida correctamente.',
+  })
   findAll() {
     return this.tradingService.findAllTradingOrders();
   }
@@ -80,7 +89,11 @@ export class TradingController {
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 40, windowMs: 60_000 })
   @ApiOperation({ summary: 'Actualizar detalles de una orden' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la orden a actualizar' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la orden a actualizar',
+  })
   @ApiResponse({ status: 200, description: 'Orden actualizada correctamente.' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -95,8 +108,18 @@ export class TradingController {
   @RateLimit({ limit: 60, windowMs: 60_000 })
   @ApiOperation({ summary: 'Actualizar estado de una orden' })
   @ApiParam({ name: 'id', type: Number, description: 'ID de la orden' })
-  @ApiQuery({ name: 'newStatus', description: 'Nuevo estado de la orden', required: true, enum: OrderStatus })
-  @ApiQuery({ name: 'cryptoPrice', description: 'Precio actual de la criptomoneda', required: true, type: Number })
+  @ApiQuery({
+    name: 'newStatus',
+    description: 'Nuevo estado de la orden',
+    required: true,
+    enum: OrderStatus,
+  })
+  @ApiQuery({
+    name: 'cryptoPrice',
+    description: 'Precio actual de la criptomoneda',
+    required: true,
+    type: Number,
+  })
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Query('newStatus') newStatus: OrderStatus,
@@ -106,7 +129,11 @@ export class TradingController {
     if (isNaN(cryptoPrice) || cryptoPrice <= 0) {
       throw new BadRequestException('cryptoPrice inválido o no proporcionado.');
     }
-    return this.tradingService.updateTradingOrderStatus(id, newStatus, cryptoPrice);
+    return this.tradingService.updateTradingOrderStatus(
+      id,
+      newStatus,
+      cryptoPrice,
+    );
   }
 
   @Delete(':id')
@@ -114,7 +141,11 @@ export class TradingController {
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 20, windowMs: 60_000 })
   @ApiOperation({ summary: 'Eliminar una orden de trading' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la orden a eliminar' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la orden a eliminar',
+  })
   @ApiResponse({ status: 200, description: 'Orden eliminada correctamente.' })
   @ApiNotFoundResponse({ description: 'Orden no encontrada.' })
   async remove(@Param('id', ParseIntPipe) id: number) {
@@ -127,12 +158,21 @@ export class TradingController {
   @Roles('ADMIN', 'OPERATOR')
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 10, windowMs: 60_000 })
-  @ApiOperation({ summary: 'Monitorear el precio actual para completar órdenes LIMIT' })
-  @ApiQuery({ name: 'currentPrice', description: 'Precio actual de la criptomoneda para monitoreo', required: true, type: Number })
+  @ApiOperation({
+    summary: 'Monitorear el precio actual para completar órdenes LIMIT',
+  })
+  @ApiQuery({
+    name: 'currentPrice',
+    description: 'Precio actual de la criptomoneda para monitoreo',
+    required: true,
+    type: Number,
+  })
   async monitor(@Query('currentPrice') currentPriceStr: string) {
     const currentPrice = Number(currentPriceStr);
     if (isNaN(currentPrice) || currentPrice <= 0) {
-      throw new BadRequestException('currentPrice inválido o no proporcionado.');
+      throw new BadRequestException(
+        'currentPrice inválido o no proporcionado.',
+      );
     }
     // Si implementas monitorPricesAndCompleteOrders, descomenta y ajusta esta llamada
     // await this.tradingService.monitorPricesAndCompleteOrders(currentPrice);
@@ -144,6 +184,8 @@ export class TradingController {
   @ApiQuery({ name: 'accountId', required: false, type: Number })
   @ApiOperation({ summary: 'Diagnóstico operativo del módulo de trading' })
   async getDiagnostics(@Query('accountId') accountId?: string) {
-    return this.tradingService.getTradingDiagnostics(accountId ? Number(accountId) : undefined);
+    return this.tradingService.getTradingDiagnostics(
+      accountId ? Number(accountId) : undefined,
+    );
   }
 }

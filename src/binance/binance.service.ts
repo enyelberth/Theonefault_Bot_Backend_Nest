@@ -38,7 +38,10 @@ export class BinanceService {
     return this.auth.getSigned(endpoint, params);
   }
 
-  async getSignedRequest(endpoint: string, params: Record<string, string | number>) {
+  async getSignedRequest(
+    endpoint: string,
+    params: Record<string, string | number>,
+  ) {
     return this.auth.getSignedRequest(endpoint, params);
   }
 
@@ -119,7 +122,11 @@ export class BinanceService {
     return this.account.getCrossMarginSaldo();
   }
 
-  async transferBetweenSpotAndCrossMargin(asset: string, amount: string, type: 1 | 2) {
+  async transferBetweenSpotAndCrossMargin(
+    asset: string,
+    amount: string,
+    type: 1 | 2,
+  ) {
     return this.account.transferBetweenSpotAndCrossMargin(asset, amount, type);
   }
 
@@ -152,16 +159,48 @@ export class BinanceService {
   }
 
   // Spot methods (delegated to BinanceSpotService)
-  async createLimitOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
-    return this.spot.createLimitOrder(symbol, side, quantity, price, timeInForce);
+  async createLimitOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    price: string,
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
+  ) {
+    return this.spot.createLimitOrder(
+      symbol,
+      side,
+      quantity,
+      price,
+      timeInForce,
+    );
   }
 
-  async createMarketOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string) {
+  async createMarketOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+  ) {
     return this.spot.createMarketOrder(symbol, side, quantity);
   }
 
-  async createOcoOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, stopPrice: string, stopLimitPrice: string, stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
-    return this.spot.createOcoOrder(symbol, side, quantity, price, stopPrice, stopLimitPrice, stopLimitTimeInForce);
+  async createOcoOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    price: string,
+    stopPrice: string,
+    stopLimitPrice: string,
+    stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
+  ) {
+    return this.spot.createOcoOrder(
+      symbol,
+      side,
+      quantity,
+      price,
+      stopPrice,
+      stopLimitPrice,
+      stopLimitTimeInForce,
+    );
   }
 
   async createStopLossOrder(
@@ -171,7 +210,13 @@ export class BinanceService {
     stopPrice: string,
     options: Record<string, any> = {},
   ) {
-    return this.spot.createStopLossOrder(symbol, side, quantity, stopPrice, options);
+    return this.spot.createStopLossOrder(
+      symbol,
+      side,
+      quantity,
+      stopPrice,
+      options,
+    );
   }
 
   async checkOrderStatus(symbol: string, orderId: number) {
@@ -206,7 +251,9 @@ export class BinanceService {
     return this.spot.getSymbolTickSize(symbol);
   }
 
-  async getDecimalsForSymbol(symbol: string): Promise<{ priceDecimals: number; quantityDecimals: number }> {
+  async getDecimalsForSymbol(
+    symbol: string,
+  ): Promise<{ priceDecimals: number; quantityDecimals: number }> {
     return this.spot.getDecimalsForSymbol(symbol);
   }
 
@@ -216,15 +263,21 @@ export class BinanceService {
     side: 'BUY' | 'SELL',
     quantity: string,
     price: string,
-    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
   ) {
-    return this.margin.createCrossMarginLimitOrder(symbol, side, quantity, price, timeInForce);
+    return this.margin.createCrossMarginLimitOrder(
+      symbol,
+      side,
+      quantity,
+      price,
+      timeInForce,
+    );
   }
 
   async createCrossMarginMarketOrder(
     symbol: string,
     side: 'BUY' | 'SELL',
-    quantity: string
+    quantity: string,
   ) {
     return this.margin.createCrossMarginMarketOrder(symbol, side, quantity);
   }
@@ -238,7 +291,15 @@ export class BinanceService {
     stopLimitPrice: string,
     stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
   ) {
-    return this.margin.createCrossMarginOcoOrder(symbol, side, quantity, price, stopPrice, stopLimitPrice, stopLimitTimeInForce);
+    return this.margin.createCrossMarginOcoOrder(
+      symbol,
+      side,
+      quantity,
+      price,
+      stopPrice,
+      stopLimitPrice,
+      stopLimitTimeInForce,
+    );
   }
 
   async createCrossMarginStopLossOrder(
@@ -246,9 +307,15 @@ export class BinanceService {
     side: 'BUY' | 'SELL',
     quantity: string,
     stopPrice: string,
-    options: Record<string, any> = {}
+    options: Record<string, any> = {},
   ) {
-    return this.margin.createCrossMarginStopLossOrder(symbol, side, quantity, stopPrice, options);
+    return this.margin.createCrossMarginStopLossOrder(
+      symbol,
+      side,
+      quantity,
+      stopPrice,
+      options,
+    );
   }
 
   async createIsolatedMarginLimitOrder(
@@ -256,15 +323,21 @@ export class BinanceService {
     side: 'BUY' | 'SELL',
     quantity: string,
     price: string,
-    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
   ) {
-    return this.margin.createIsolatedMarginLimitOrder(symbol, side, quantity, price, timeInForce);
+    return this.margin.createIsolatedMarginLimitOrder(
+      symbol,
+      side,
+      quantity,
+      price,
+      timeInForce,
+    );
   }
 
   async createIsolatedMarginMarketOrder(
     symbol: string,
     side: 'BUY' | 'SELL',
-    quantity: string
+    quantity: string,
   ) {
     return this.margin.createIsolatedMarginMarketOrder(symbol, side, quantity);
   }

@@ -19,7 +19,6 @@ interface OrderLevel {
 }
 
 @Injectable()
-
 export class GridSellMarginFixedStrategy implements TradingStrategy {
   id: string;
   symbol: string;
@@ -35,7 +34,9 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
     buySafetyMargin?: number; // Porcentaje para reactivar niveles (ej. 0.01 = 1%)
   };
 
-  private readonly logger = new LoggerMessages(new Logger(GridSellMarginFixedStrategy.name));
+  private readonly logger = new LoggerMessages(
+    new Logger(GridSellMarginFixedStrategy.name),
+  );
   private openBuyOrders = new Map<number, Order>();
   private openSellOrders = new Map<number, Order>();
   private stoppedLossLevels = new Set<number>();
@@ -46,7 +47,8 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
 
   async run() {
     this.logger.logInfo(`Starting Grid SELL FIXED on ${this.symbol}`);
-    const { priceFilter, lotSizeFilter } = await this.binanceService.obtenerFiltrosSimbolo(this.symbol);
+    const { priceFilter, lotSizeFilter } =
+      await this.binanceService.obtenerFiltrosSimbolo(this.symbol);
     if (!priceFilter || !lotSizeFilter) {
       throw new Error(`Filters not found for ${this.symbol}`);
     }
@@ -79,8 +81,13 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
     for (const level of [...this.stoppedLossLevels]) {
       const orderLevel = this.config.ordersLevels[level];
       if (!orderLevel) continue;
-      if (currentPrice >= orderLevel.price * (1 + this.config.buySafetyMargin)) {
-        this.logger.logInfo(`Reactivating stopped level ${level} as current price ${currentPrice} > threshold.`);
+      if (
+        currentPrice >=
+        orderLevel.price * (1 + this.config.buySafetyMargin)
+      ) {
+        this.logger.logInfo(
+          `Reactivating stopped level ${level} as current price ${currentPrice} > threshold.`,
+        );
         this.stoppedLossLevels.delete(level);
       }
     }
@@ -93,21 +100,27 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
 
   private async cancelExistingOrdersInRange() {
     try {
-      const allOrders = await this.binanceService.getAllCrossMarginOrders(this.symbol, 500);
+      const allOrders = await this.binanceService.getAllCrossMarginOrders(
+        this.symbol,
+        500,
+      );
       if (!this.config.ordersLevels?.length) {
-        this.logger.logWarn('No levels defined in config.ordersLevels for cancellation range.');
+        this.logger.logWarn(
+          'No levels defined in config.ordersLevels for cancellation range.',
+        );
         return;
       }
-      const prices = this.config.ordersLevels.map(level => level.price);
+      const prices = this.config.ordersLevels.map((level) => level.price);
       const lowerPrice = Math.min(...prices);
       const upperPrice = Math.max(...prices);
 
-      const activeSellOrdersInRange = allOrders.filter(o =>
-        o.side === 'SELL' &&
-        !['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(o.status) &&
-        Number.isFinite(Number(o.price)) &&
-        Number(o.price) >= lowerPrice &&
-        Number(o.price) <= upperPrice
+      const activeSellOrdersInRange = allOrders.filter(
+        (o) =>
+          o.side === 'SELL' &&
+          !['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED'].includes(o.status) &&
+          Number.isFinite(Number(o.price)) &&
+          Number(o.price) >= lowerPrice &&
+          Number(o.price) <= upperPrice,
       );
 
       if (activeSellOrdersInRange.length === 0) {
@@ -115,12 +128,19 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
         return;
       }
 
-      this.logger.logInfo(`Canceling orders in range [${lowerPrice}, ${upperPrice}]`);
+      this.logger.logInfo(
+        `Canceling orders in range [${lowerPrice}, ${upperPrice}]`,
+      );
 
       for (const order of activeSellOrdersInRange) {
         try {
-          await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
-          this.logger.logWarn(`Canceled SELL order ID ${order.orderId} price ${order.price}`);
+          await this.binanceService.cancelCrossMarginOrder(
+            this.symbol,
+            order.orderId,
+          );
+          this.logger.logWarn(
+            `Canceled SELL order ID ${order.orderId} price ${order.price}`,
+          );
           for (const [level, o] of this.openSellOrders.entries()) {
             if (o.orderId === order.orderId) {
               this.openSellOrders.delete(level);
@@ -128,7 +148,10 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
             }
           }
         } catch (err) {
-          this.logger.logError(`Error canceling order ID ${order.orderId}:`, err);
+          this.logger.logError(
+            `Error canceling order ID ${order.orderId}:`,
+            err,
+          );
         }
       }
     } catch (err) {
@@ -136,7 +159,11 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
     }
   }
 
-  private async placeSellOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+  private async placeSellOrders(
+    priceFilter: { tickSize: string },
+    lotSizeFilter: { stepSize: string },
+    currentPrice: number,
+  ) {
     for (let i = 0; i < this.config.ordersLevels.length; i++) {
       const hasBuy = this.openBuyOrders.has(i);
       const hasSell = this.openSellOrders.has(i);
@@ -144,9 +171,14 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
       const orderLevel = this.config.ordersLevels[i];
       if (!orderLevel) continue;
 
-      const sellPrice = this.roundToStep(orderLevel.price, priceFilter.tickSize);
+      const sellPrice = this.roundToStep(
+        orderLevel.price,
+        priceFilter.tickSize,
+      );
 
-      this.logger.logInfo(`Level ${i} - openBuyOrders: ${hasBuy}, openSellOrders: ${hasSell}, stoppedLossLevels: ${stopped}, sellPrice: ${sellPrice}, currentPrice: ${currentPrice}`);
+      this.logger.logInfo(
+        `Level ${i} - openBuyOrders: ${hasBuy}, openSellOrders: ${hasSell}, stoppedLossLevels: ${stopped}, sellPrice: ${sellPrice}, currentPrice: ${currentPrice}`,
+      );
 
       if (hasBuy) continue;
       if (stopped) {
@@ -154,15 +186,24 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
         continue;
       }
       if (hasSell) {
-        this.logger.logInfo(`Skipping sell order at level ${i} because sell order is still open.`);
+        this.logger.logInfo(
+          `Skipping sell order at level ${i} because sell order is still open.`,
+        );
         continue;
       }
       if (sellPrice <= currentPrice) continue;
 
-      this.logger.logInfo(`Level ${i} - Placing LIMIT SELL order price ${sellPrice}, currentPrice ${currentPrice}`);
+      this.logger.logInfo(
+        `Level ${i} - Placing LIMIT SELL order price ${sellPrice}, currentPrice ${currentPrice}`,
+      );
 
-      const quantity = this.roundToStep(orderLevel.quantity, lotSizeFilter.stepSize);
-      this.logger.logInfo(`Placing LIMIT SELL order level ${i}, price ${sellPrice}, quantity ${quantity}`);
+      const quantity = this.roundToStep(
+        orderLevel.quantity,
+        lotSizeFilter.stepSize,
+      );
+      this.logger.logInfo(
+        `Placing LIMIT SELL order level ${i}, price ${sellPrice}, quantity ${quantity}`,
+      );
 
       try {
         const order = await this.binanceService.createCrossMarginLimitOrder(
@@ -181,40 +222,66 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
         };
 
         this.openSellOrders.set(i, normalizedOrder);
-        this.logger.logSuccess(`LIMIT SELL order created ID: ${normalizedOrder.orderId} at level ${i}`);
+        this.logger.logSuccess(
+          `LIMIT SELL order created ID: ${normalizedOrder.orderId} at level ${i}`,
+        );
       } catch (err) {
-        this.logger.logError(`Error creating LIMIT SELL order at level ${i}:`, err);
+        this.logger.logError(
+          `Error creating LIMIT SELL order at level ${i}:`,
+          err,
+        );
       }
 
       await this.sleep(250);
     }
   }
 
-  private async checkSellOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+  private async checkSellOrders(
+    priceFilter: { tickSize: string },
+    lotSizeFilter: { stepSize: string },
+    currentPrice: number,
+  ) {
     for (const [i, order] of this.openSellOrders.entries()) {
       try {
-        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
+        const statusData =
+          await this.binanceService.checkCrossMarginOrderStatus(
+            this.symbol,
+            order.orderId,
+          );
         if (statusData.status === 'FILLED') {
-          this.logger.logSuccess(`Order SELL level ${i} filled ID: ${order.orderId}`);
+          this.logger.logSuccess(
+            `Order SELL level ${i} filled ID: ${order.orderId}`,
+          );
           this.openSellOrders.delete(i);
 
           const filledPrice = parseFloat(statusData.avgPrice ?? order.price);
           const orderLevel = this.config.ordersLevels[i];
           if (!orderLevel) continue;
 
-          const buyPrice = this.roundToStep(orderLevel.price * (1 - this.config.profitMargin), priceFilter.tickSize);
-          const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
-          this.logger.logInfo(`Placing LIMIT BUY order level ${i} at price ${buyPrice}`);
-          this.logger.logInfo(`Filled SELL at ${filledPrice}, placing BUY at ${buyPrice} for quantity ${quantity}`);
+          const buyPrice = this.roundToStep(
+            orderLevel.price * (1 - this.config.profitMargin),
+            priceFilter.tickSize,
+          );
+          const quantity = this.roundToStep(
+            parseFloat(order.origQty),
+            lotSizeFilter.stepSize,
+          );
+          this.logger.logInfo(
+            `Placing LIMIT BUY order level ${i} at price ${buyPrice}`,
+          );
+          this.logger.logInfo(
+            `Filled SELL at ${filledPrice}, placing BUY at ${buyPrice} for quantity ${quantity}`,
+          );
 
           try {
-            const orderBuy = await this.binanceService.createCrossMarginLimitOrder(
-              this.symbol,
-              'BUY',
-              quantity.toString(),
-              buyPrice.toString(),
-              'GTC',
-            );
+            const orderBuy =
+              await this.binanceService.createCrossMarginLimitOrder(
+                this.symbol,
+                'BUY',
+                quantity.toString(),
+                buyPrice.toString(),
+                'GTC',
+              );
 
             const normalizedBuyOrder: Order = {
               orderId: Number(orderBuy.orderId),
@@ -224,27 +291,45 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
             };
 
             this.openBuyOrders.set(i, normalizedBuyOrder);
-            this.logger.logSuccess(`LIMIT BUY order created ID: ${normalizedBuyOrder.orderId} at level ${i}`);
+            this.logger.logSuccess(
+              `LIMIT BUY order created ID: ${normalizedBuyOrder.orderId} at level ${i}`,
+            );
           } catch (err) {
-            this.logger.logError(`Error creating LIMIT BUY order at level ${i}:`, err);
+            this.logger.logError(
+              `Error creating LIMIT BUY order at level ${i}:`,
+              err,
+            );
           }
         }
       } catch (err) {
-        this.logger.logError(`Error checking SELL order status ID ${order.orderId}:`, err);
+        this.logger.logError(
+          `Error checking SELL order status ID ${order.orderId}:`,
+          err,
+        );
       }
     }
   }
 
-  private async checkBuyOrders(priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+  private async checkBuyOrders(
+    priceFilter: { tickSize: string },
+    lotSizeFilter: { stepSize: string },
+    currentPrice: number,
+  ) {
     const maxAgeMs = this.config.maxOrderAgeMs ?? 3600000;
     const toReinsertLevels = new Set<number>();
 
     for (const [i, order] of this.openBuyOrders.entries()) {
       try {
-        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
+        const statusData =
+          await this.binanceService.checkCrossMarginOrderStatus(
+            this.symbol,
+            order.orderId,
+          );
 
         if (statusData.status === 'FILLED') {
-          this.logger.logSuccess(`Order BUY level ${i} completed ID: ${order.orderId}`);
+          this.logger.logSuccess(
+            `Order BUY level ${i} completed ID: ${order.orderId}`,
+          );
           this.openBuyOrders.delete(i);
 
           const filledPrice = parseFloat(statusData.avgPrice ?? '0');
@@ -253,46 +338,81 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
 
           // Aquí agregar lógica si se necesita gestionar algo al llenarse buy orders (por ejemplo ganar/perder)
 
-          this.logger.logInfo(`BUY order filled at price ${filledPrice}, level ${i}`);
+          this.logger.logInfo(
+            `BUY order filled at price ${filledPrice}, level ${i}`,
+          );
         } else if (Date.now() - order.timestamp > maxAgeMs) {
-          this.logger.logWarn(`BUY order ID ${order.orderId} level ${i} stuck, canceling...`);
+          this.logger.logWarn(
+            `BUY order ID ${order.orderId} level ${i} stuck, canceling...`,
+          );
           try {
-            await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+            await this.binanceService.cancelCrossMarginOrder(
+              this.symbol,
+              order.orderId,
+            );
             this.openBuyOrders.delete(i);
             toReinsertLevels.add(i);
           } catch (e) {
-            this.logger.logError(`Error canceling stuck BUY order ID ${order.orderId}:`, e);
+            this.logger.logError(
+              `Error canceling stuck BUY order ID ${order.orderId}:`,
+              e,
+            );
           }
         }
       } catch (err) {
-        this.logger.logError(`Error checking BUY order status ID ${order.orderId}:`, err);
+        this.logger.logError(
+          `Error checking BUY order status ID ${order.orderId}:`,
+          err,
+        );
       }
     }
 
     if (toReinsertLevels.size > 0) {
       // Reinserta órdenes SELL para niveles con buy cancelado
-      await this.reinsertSellOrders(Array.from(toReinsertLevels), priceFilter, lotSizeFilter, currentPrice);
+      await this.reinsertSellOrders(
+        Array.from(toReinsertLevels),
+        priceFilter,
+        lotSizeFilter,
+        currentPrice,
+      );
     }
   }
 
-  private async reinsertSellOrders(levels: number[], priceFilter: { tickSize: string }, lotSizeFilter: { stepSize: string }, currentPrice: number) {
+  private async reinsertSellOrders(
+    levels: number[],
+    priceFilter: { tickSize: string },
+    lotSizeFilter: { stepSize: string },
+    currentPrice: number,
+  ) {
     for (const i of levels) {
       if (this.stoppedLossLevels.has(i)) {
-        this.logger.logInfo(`Skipping reinsertion at level ${i} due to previous stop loss.`);
+        this.logger.logInfo(
+          `Skipping reinsertion at level ${i} due to previous stop loss.`,
+        );
         continue;
       }
 
       const orderLevel = this.config.ordersLevels[i];
       if (!orderLevel) continue;
 
-      const sellPrice = this.roundToStep(orderLevel.price, priceFilter.tickSize);
+      const sellPrice = this.roundToStep(
+        orderLevel.price,
+        priceFilter.tickSize,
+      );
       if (sellPrice <= currentPrice) {
-        this.logger.logInfo(`Skipping reinsertion at level ${i} because sellPrice <= currentPrice`);
+        this.logger.logInfo(
+          `Skipping reinsertion at level ${i} because sellPrice <= currentPrice`,
+        );
         continue;
       }
 
-      const quantity = this.roundToStep(orderLevel.quantity, lotSizeFilter.stepSize);
-      this.logger.logInfo(`Reinserting LIMIT SELL order level ${i}, price ${sellPrice}, quantity ${quantity}`);
+      const quantity = this.roundToStep(
+        orderLevel.quantity,
+        lotSizeFilter.stepSize,
+      );
+      this.logger.logInfo(
+        `Reinserting LIMIT SELL order level ${i}, price ${sellPrice}, quantity ${quantity}`,
+      );
 
       try {
         const order = await this.binanceService.createCrossMarginLimitOrder(
@@ -310,9 +430,14 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
           timestamp: Date.now(),
         };
         this.openSellOrders.set(i, normalizedOrder);
-        this.logger.logSuccess(`Reinserted LIMIT SELL order created ID: ${normalizedOrder.orderId} at level ${i}`);
+        this.logger.logSuccess(
+          `Reinserted LIMIT SELL order created ID: ${normalizedOrder.orderId} at level ${i}`,
+        );
       } catch (err) {
-        this.logger.logError(`Error reinserting LIMIT SELL order at level ${i}:`, err);
+        this.logger.logError(
+          `Error reinserting LIMIT SELL order at level ${i}:`,
+          err,
+        );
       }
 
       await this.sleep(250);
@@ -328,7 +453,10 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
   }
 
   private calculateSleepDuration(): number {
-    return StrategyRuntimeUtils.calculateSleepDuration(this.config.minSleepMs, this.config.maxSleepMs);
+    return StrategyRuntimeUtils.calculateSleepDuration(
+      this.config.minSleepMs,
+      this.config.maxSleepMs,
+    );
   }
 
   private async exponentialBackoff(baseDelayMs: number, maxRetries: number) {
@@ -345,29 +473,40 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
       this.logger.logWarn('Profit margin no puede ser negativo.');
       return;
     }
-    this.logger.logInfo(`Profit margin actualizado de ${this.config.profitMargin} a ${newProfitMargin}`);
+    this.logger.logInfo(
+      `Profit margin actualizado de ${this.config.profitMargin} a ${newProfitMargin}`,
+    );
     this.config.profitMargin = newProfitMargin;
   }
 
   public addOrderLevel(orderLevel: OrderLevel) {
     this.config.ordersLevels.push(orderLevel);
     this.config.gridCount = this.config.ordersLevels.length;
-    this.logger.logInfo(`Nuevo nivel agregado: precio ${orderLevel.price}, cantidad ${orderLevel.quantity}. Total niveles: ${this.config.gridCount}`);
+    this.logger.logInfo(
+      `Nuevo nivel agregado: precio ${orderLevel.price}, cantidad ${orderLevel.quantity}. Total niveles: ${this.config.gridCount}`,
+    );
   }
 
   public async removeOrderLevel(levelIndex: number) {
     if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
-      this.logger.logWarn(`Índice inválido para eliminar orden nivel: ${levelIndex}`);
+      this.logger.logWarn(
+        `Índice inválido para eliminar orden nivel: ${levelIndex}`,
+      );
       return;
     }
     const removed = this.config.ordersLevels.splice(levelIndex, 1)[0];
     this.config.gridCount = this.config.ordersLevels.length;
-    this.logger.logInfo(`Nivel eliminado: precio ${removed.price}, cantidad ${removed.quantity}. Total niveles: ${this.config.gridCount}`);
+    this.logger.logInfo(
+      `Nivel eliminado: precio ${removed.price}, cantidad ${removed.quantity}. Total niveles: ${this.config.gridCount}`,
+    );
 
     if (this.openBuyOrders.has(levelIndex)) {
       const order = this.openBuyOrders.get(levelIndex);
       if (order) {
-        await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+        await this.binanceService.cancelCrossMarginOrder(
+          this.symbol,
+          order.orderId,
+        );
         this.openBuyOrders.delete(levelIndex);
         this.logger.logInfo(`Orden BUY cancelada en nivel ${levelIndex}`);
       }
@@ -375,7 +514,10 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
     if (this.openSellOrders.has(levelIndex)) {
       const order = this.openSellOrders.get(levelIndex);
       if (order) {
-        await this.binanceService.cancelCrossMarginOrder(this.symbol, order.orderId);
+        await this.binanceService.cancelCrossMarginOrder(
+          this.symbol,
+          order.orderId,
+        );
         this.openSellOrders.delete(levelIndex);
         this.logger.logInfo(`Orden SELL cancelada en nivel ${levelIndex}`);
       }
@@ -395,7 +537,10 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
     );
   }
 
-  private reindexOrderMap(source: Map<number, Order>, levelIndex: number): Map<number, Order> {
+  private reindexOrderMap(
+    source: Map<number, Order>,
+    levelIndex: number,
+  ): Map<number, Order> {
     const reindexed = new Map<number, Order>();
     for (const [index, order] of source.entries()) {
       if (index === levelIndex) {
@@ -408,11 +553,15 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
 
   public updateOrderLevelQuantity(levelIndex: number, newQuantity: number) {
     if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
-      this.logger.logWarn(`Índice inválido para actualizar cantidad de orden: ${levelIndex}`);
+      this.logger.logWarn(
+        `Índice inválido para actualizar cantidad de orden: ${levelIndex}`,
+      );
       return;
     }
     this.config.ordersLevels[levelIndex].quantity = newQuantity;
-    this.logger.logInfo(`Cantidad en nivel ${levelIndex} actualizada a ${newQuantity}`);
+    this.logger.logInfo(
+      `Cantidad en nivel ${levelIndex} actualizada a ${newQuantity}`,
+    );
   }
 
   public getOrderLevels(): OrderLevel[] {
@@ -431,7 +580,9 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
   }
 
   public async clearAllOrderLevels() {
-    const levelsIndices = this.config.ordersLevels.map((_, i) => i).sort((a, b) => b - a);
+    const levelsIndices = this.config.ordersLevels
+      .map((_, i) => i)
+      .sort((a, b) => b - a);
     for (const index of levelsIndices) {
       await this.removeOrderLevel(index);
     }
@@ -442,11 +593,15 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
 
   public updateOrderLevelPrice(levelIndex: number, newPrice: number) {
     if (levelIndex < 0 || levelIndex >= this.config.ordersLevels.length) {
-      this.logger.logWarn(`Índice inválido para actualizar precio de orden: ${levelIndex}`);
+      this.logger.logWarn(
+        `Índice inválido para actualizar precio de orden: ${levelIndex}`,
+      );
       return;
     }
     this.config.ordersLevels[levelIndex].price = newPrice;
-    this.logger.logInfo(`Precio en nivel ${levelIndex} actualizado a ${newPrice}`);
+    this.logger.logInfo(
+      `Precio en nivel ${levelIndex} actualizado a ${newPrice}`,
+    );
   }
 
   public stopOrderLevel(levelIndex: number) {

@@ -11,7 +11,15 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth, ApiProperty, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiBearerAuth,
+  ApiProperty,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { AuthGuard, Public } from './auth.guard';
 import { AuthService } from './auth.service';
 import { Request, Response } from 'express';
@@ -25,7 +33,6 @@ export class SignInDto {
 }
 
 @Public()
-
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -60,7 +67,7 @@ export class AuthController {
     response.cookie('jwt', access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // usar cookie segura en producción
-      maxAge: 1000 * 60 * 60 , // duración, e.g., 1 hora
+      maxAge: 1000 * 60 * 60, // duración, e.g., 1 hora
       sameSite: 'lax',
       path: '/',
     });
@@ -83,7 +90,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Validar token JWT' })
   @ApiResponse({ status: 200, description: 'Token válido.' })
   @ApiResponse({ status: 401, description: 'Token inválido o no autorizado.' })
-  @ApiQuery({ name: 'token', required: true, description: 'Token JWT a validar' })
+  @ApiQuery({
+    name: 'token',
+    required: true,
+    description: 'Token JWT a validar',
+  })
   async validateToken(@Query('token') token: string) {
     const decoded = await this.authService.validateToken(token);
     return { valid: true, decoded };

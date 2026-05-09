@@ -6,7 +6,10 @@ export class CreateLimitOrderDto {
   @IsString()
   symbol: string;
 
-  @ApiProperty({ description: 'Tipo de orden: BUY o SELL', enum: ['BUY', 'SELL'] })
+  @ApiProperty({
+    description: 'Tipo de orden: BUY o SELL',
+    enum: ['BUY', 'SELL'],
+  })
   @IsString()
   @IsIn(['BUY', 'SELL'])
   side: 'BUY' | 'SELL';
@@ -19,7 +22,11 @@ export class CreateLimitOrderDto {
   @IsNumberString()
   price: string;
 
-  @ApiPropertyOptional({ description: 'Tiempo en vigor de la orden', enum: ['GTC', 'IOC', 'FOK'], default: 'GTC' })
+  @ApiPropertyOptional({
+    description: 'Tiempo en vigor de la orden',
+    enum: ['GTC', 'IOC', 'FOK'],
+    default: 'GTC',
+  })
   @IsOptional()
   @IsIn(['GTC', 'IOC', 'FOK'])
   timeInForce?: 'GTC' | 'IOC' | 'FOK' = 'GTC';
@@ -30,7 +37,10 @@ export class CreateMarketOrderDto {
   @IsString()
   symbol: string;
 
-  @ApiProperty({ description: 'Tipo de orden: BUY o SELL', enum: ['BUY', 'SELL'] })
+  @ApiProperty({
+    description: 'Tipo de orden: BUY o SELL',
+    enum: ['BUY', 'SELL'],
+  })
   @IsString()
   @IsIn(['BUY', 'SELL'])
   side: 'BUY' | 'SELL';
@@ -45,7 +55,10 @@ export class CreateOcoOrderDto {
   @IsString()
   symbol: string;
 
-  @ApiProperty({ description: 'Tipo de orden: BUY o SELL', enum: ['BUY', 'SELL'] })
+  @ApiProperty({
+    description: 'Tipo de orden: BUY o SELL',
+    enum: ['BUY', 'SELL'],
+  })
   @IsString()
   @IsIn(['BUY', 'SELL'])
   side: 'BUY' | 'SELL';
@@ -54,19 +67,32 @@ export class CreateOcoOrderDto {
   @IsNumberString()
   quantity: string;
 
-  @ApiProperty({ description: 'Precio límite de la orden principal', type: String })
+  @ApiProperty({
+    description: 'Precio límite de la orden principal',
+    type: String,
+  })
   @IsNumberString()
   price: string;
 
-  @ApiProperty({ description: 'Precio de activación para la orden stop limit', type: String })
+  @ApiProperty({
+    description: 'Precio de activación para la orden stop limit',
+    type: String,
+  })
   @IsNumberString()
   stopPrice: string;
 
-  @ApiProperty({ description: 'Precio límite para la orden stop limit', type: String })
+  @ApiProperty({
+    description: 'Precio límite para la orden stop limit',
+    type: String,
+  })
   @IsNumberString()
   stopLimitPrice: string;
 
-  @ApiPropertyOptional({ description: 'Tiempo en vigor de la orden stop limit', enum: ['GTC', 'IOC', 'FOK'], default: 'GTC' })
+  @ApiPropertyOptional({
+    description: 'Tiempo en vigor de la orden stop limit',
+    enum: ['GTC', 'IOC', 'FOK'],
+    default: 'GTC',
+  })
   @IsOptional()
   @IsIn(['GTC', 'IOC', 'FOK'])
   stopLimitTimeInForce?: 'GTC' | 'IOC' | 'FOK' = 'GTC';

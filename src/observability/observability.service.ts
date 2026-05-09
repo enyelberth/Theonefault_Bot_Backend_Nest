@@ -16,9 +16,15 @@ export class ObservabilityService {
   }> = [];
 
   trackRequest(route: string, durationMs: number, isError: boolean) {
-    this.requestCountByRoute.set(route, (this.requestCountByRoute.get(route) ?? 0) + 1);
+    this.requestCountByRoute.set(
+      route,
+      (this.requestCountByRoute.get(route) ?? 0) + 1,
+    );
     if (isError) {
-      this.errorCountByRoute.set(route, (this.errorCountByRoute.get(route) ?? 0) + 1);
+      this.errorCountByRoute.set(
+        route,
+        (this.errorCountByRoute.get(route) ?? 0) + 1,
+      );
     }
 
     const current = this.latencyByRoute.get(route) ?? [];
@@ -30,7 +36,10 @@ export class ObservabilityService {
   }
 
   incrementCounter(metric: string, value = 1) {
-    this.customCounters.set(metric, (this.customCounters.get(metric) ?? 0) + value);
+    this.customCounters.set(
+      metric,
+      (this.customCounters.get(metric) ?? 0) + value,
+    );
   }
 
   setGauge(metric: string, value: number) {
@@ -58,15 +67,22 @@ export class ObservabilityService {
 
   getDomainEvents(module?: string, limit = 100) {
     return this.domainEvents
-      .filter(item => !module || item.module === module)
+      .filter((item) => !module || item.module === module)
       .slice(0, Math.max(1, Math.min(limit, 500)));
   }
 
   getModuleHealthSummary() {
-    const grouped = new Map<string, { total: number; errors: number; warnings: number }>();
+    const grouped = new Map<
+      string,
+      { total: number; errors: number; warnings: number }
+    >();
 
     for (const event of this.domainEvents) {
-      const current = grouped.get(event.module) ?? { total: 0, errors: 0, warnings: 0 };
+      const current = grouped.get(event.module) ?? {
+        total: 0,
+        errors: 0,
+        warnings: 0,
+      };
       current.total += 1;
       if (event.severity === 'error') {
         current.errors += 1;
@@ -79,7 +95,12 @@ export class ObservabilityService {
 
     return [...grouped.entries()].map(([module, stats]) => ({
       module,
-      status: stats.errors > 0 ? 'degraded' : stats.warnings > 0 ? 'warning' : 'healthy',
+      status:
+        stats.errors > 0
+          ? 'degraded'
+          : stats.warnings > 0
+            ? 'warning'
+            : 'healthy',
       ...stats,
     }));
   }
@@ -96,18 +117,23 @@ export class ObservabilityService {
 
     for (const [route, requests] of this.requestCountByRoute.entries()) {
       const errors = this.errorCountByRoute.get(route) ?? 0;
-      const latency = [...(this.latencyByRoute.get(route) ?? [])].sort((a, b) => a - b);
-      const avgLatencyMs = latency.length > 0
-        ? latency.reduce((acc, value) => acc + value, 0) / latency.length
-        : 0;
-      const p95Index = latency.length > 0 ? Math.floor(latency.length * 0.95) - 1 : -1;
+      const latency = [...(this.latencyByRoute.get(route) ?? [])].sort(
+        (a, b) => a - b,
+      );
+      const avgLatencyMs =
+        latency.length > 0
+          ? latency.reduce((acc, value) => acc + value, 0) / latency.length
+          : 0;
+      const p95Index =
+        latency.length > 0 ? Math.floor(latency.length * 0.95) - 1 : -1;
       const p95LatencyMs = p95Index >= 0 ? latency[p95Index] : 0;
 
       metrics.push({
         route,
         requests,
         errors,
-        errorRate: requests > 0 ? Number(((errors / requests) * 100).toFixed(2)) : 0,
+        errorRate:
+          requests > 0 ? Number(((errors / requests) * 100).toFixed(2)) : 0,
         avgLatencyMs: Number(avgLatencyMs.toFixed(2)),
         p95LatencyMs: Number(p95LatencyMs.toFixed(2)),
       });
@@ -116,8 +142,14 @@ export class ObservabilityService {
     return {
       generatedAt: new Date().toISOString(),
       routes: metrics,
-      counters: [...this.customCounters.entries()].map(([metric, value]) => ({ metric, value })),
-      gauges: [...this.customGauges.entries()].map(([metric, value]) => ({ metric, value })),
+      counters: [...this.customCounters.entries()].map(([metric, value]) => ({
+        metric,
+        value,
+      })),
+      gauges: [...this.customGauges.entries()].map(([metric, value]) => ({
+        metric,
+        value,
+      })),
       moduleHealth: this.getModuleHealthSummary(),
       recentDomainEvents: this.getDomainEvents(undefined, 25),
     };

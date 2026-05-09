@@ -3,8 +3,8 @@ import axios from 'axios';
 import { BinanceAuthService } from './binance-auth.service';
 import { BinanceAccountService } from './binance-account.service';
 import { BinanceSpotService } from './binance-spot.service';
-import { StrategyOpsService } from 'src/strategy-monitoring/strategy-ops.service';
-import { PendingLiquidation } from 'src/strategy-monitoring/strategy-ops.service';
+import { StrategyOpsService } from '../strategy-monitoring/strategy-ops.service';
+import { PendingLiquidation } from '../strategy-monitoring/strategy-ops.service';
 
 @Injectable()
 export class BinanceMarginService {
@@ -16,7 +16,16 @@ export class BinanceMarginService {
   ) {}
 
   private extractBaseAsset(symbol: string): string {
-    const knownQuotes = ['USDT', 'FDUSD', 'BUSD', 'USDC', 'BTC', 'ETH', 'BNB', 'TRY'];
+    const knownQuotes = [
+      'USDT',
+      'FDUSD',
+      'BUSD',
+      'USDC',
+      'BTC',
+      'ETH',
+      'BNB',
+      'TRY',
+    ];
     const quote = knownQuotes.find((q) => symbol.endsWith(q));
     if (!quote) {
       return symbol.slice(0, 3);
@@ -24,7 +33,9 @@ export class BinanceMarginService {
     return symbol.slice(0, symbol.length - quote.length);
   }
 
-  private async executeRiskLiquidation(trigger: PendingLiquidation): Promise<void> {
+  private async executeRiskLiquidation(
+    trigger: PendingLiquidation,
+  ): Promise<void> {
     if (trigger.market === 'margin') {
       await this.executeCrossMarginRiskLiquidation(trigger);
       return;
@@ -33,19 +44,25 @@ export class BinanceMarginService {
     await this.executeSpotRiskLiquidation(trigger);
   }
 
-  private async executeSpotRiskLiquidation(trigger: PendingLiquidation): Promise<void> {
+  private async executeSpotRiskLiquidation(
+    trigger: PendingLiquidation,
+  ): Promise<void> {
     await this.spot.cancelAllOrders(trigger.symbol);
 
     const baseAsset = this.extractBaseAsset(trigger.symbol);
     const accountInfo = await this.account.getAccountInfo();
-    const balance = accountInfo.balances?.find((asset: any) => asset.asset === baseAsset);
+    const balance = accountInfo.balances?.find(
+      (asset: any) => asset.asset === baseAsset,
+    );
     const freeQty = Number(balance?.free ?? 0);
 
     if (!Number.isFinite(freeQty) || freeQty <= 0) {
       return;
     }
 
-    const { lotSizeFilter } = await this.spot.obtenerFiltrosSimbolo(trigger.symbol);
+    const { lotSizeFilter } = await this.spot.obtenerFiltrosSimbolo(
+      trigger.symbol,
+    );
     const stepSize = Number(lotSizeFilter?.stepSize ?? 0);
     const qty = this.spot.getFloorToStep()(freeQty, stepSize);
 
@@ -65,7 +82,11 @@ export class BinanceMarginService {
       side: 'SELL',
       type: 'MARKET',
       quantity: qty.toString(),
-      newClientOrderId: this.strategyOps.buildClientOrderId(context, 'SELL', 'spot'),
+      newClientOrderId: this.strategyOps.buildClientOrderId(
+        context,
+        'SELL',
+        'spot',
+      ),
     };
 
     const response = await this.auth.postSigned('/api/v3/order', params);
@@ -76,10 +97,17 @@ export class BinanceMarginService {
       quantity: qty,
       response,
     });
-    await this.strategyOps.recordOrderStatus(trigger.symbol, response, 'spot', context);
+    await this.strategyOps.recordOrderStatus(
+      trigger.symbol,
+      response,
+      'spot',
+      context,
+    );
   }
 
-  private async executeCrossMarginRiskLiquidation(trigger: PendingLiquidation): Promise<void> {
+  private async executeCrossMarginRiskLiquidation(
+    trigger: PendingLiquidation,
+  ): Promise<void> {
     if (!this.auth.canUseMargin()) {
       return;
     }
@@ -88,14 +116,18 @@ export class BinanceMarginService {
 
     const baseAsset = this.extractBaseAsset(trigger.symbol);
     const accountInfo = await this.account.getCrossMarginAccountInfo();
-    const balance = accountInfo.userAssets?.find((asset: any) => asset.asset === baseAsset);
+    const balance = accountInfo.userAssets?.find(
+      (asset: any) => asset.asset === baseAsset,
+    );
     const freeQty = Number(balance?.free ?? 0);
 
     if (!Number.isFinite(freeQty) || freeQty <= 0) {
       return;
     }
 
-    const { lotSizeFilter } = await this.spot.obtenerFiltrosSimbolo(trigger.symbol);
+    const { lotSizeFilter } = await this.spot.obtenerFiltrosSimbolo(
+      trigger.symbol,
+    );
     const stepSize = Number(lotSizeFilter?.stepSize ?? 0);
     const qty = this.spot.getFloorToStep()(freeQty, stepSize);
 
@@ -115,10 +147,17 @@ export class BinanceMarginService {
       side: 'SELL',
       type: 'MARKET',
       quantity: qty.toString(),
-      newClientOrderId: this.strategyOps.buildClientOrderId(context, 'SELL', 'margin'),
+      newClientOrderId: this.strategyOps.buildClientOrderId(
+        context,
+        'SELL',
+        'margin',
+      ),
     };
 
-    const response = await this.auth.postSigned('/sapi/v1/margin/order', params);
+    const response = await this.auth.postSigned(
+      '/sapi/v1/margin/order',
+      params,
+    );
     await this.strategyOps.recordOrderPlacement(context, {
       side: 'SELL',
       type: 'MARKET',
@@ -126,7 +165,12 @@ export class BinanceMarginService {
       quantity: qty,
       response,
     });
-    await this.strategyOps.recordOrderStatus(trigger.symbol, response, 'margin', context);
+    await this.strategyOps.recordOrderStatus(
+      trigger.symbol,
+      response,
+      'margin',
+      context,
+    );
   }
 
   async panicLiquidateSymbol(payload: {
@@ -154,19 +198,38 @@ export class BinanceMarginService {
     side: 'BUY' | 'SELL',
     quantity: string,
     price: string,
-    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
   ) {
     const context = this.auth.getContext();
     if (context) {
-      this.strategyOps.assertRisk(context, side, Number(quantity), Number(price));
+      this.strategyOps.assertRisk(
+        context,
+        side,
+        Number(quantity),
+        Number(price),
+      );
     }
 
-    const params: Record<string, string> = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
+    const params: Record<string, string> = {
+      symbol,
+      side,
+      type: 'LIMIT',
+      quantity,
+      price,
+      timeInForce,
+    };
     if (context) {
-      params.newClientOrderId = this.strategyOps.buildClientOrderId(context, side, 'margin');
+      params.newClientOrderId = this.strategyOps.buildClientOrderId(
+        context,
+        side,
+        'margin',
+      );
     }
 
-    const response = await this.auth.postSigned('/sapi/v1/margin/order', params);
+    const response = await this.auth.postSigned(
+      '/sapi/v1/margin/order',
+      params,
+    );
 
     if (context) {
       await this.strategyOps.recordOrderPlacement(context, {
@@ -185,19 +248,31 @@ export class BinanceMarginService {
   async createCrossMarginMarketOrder(
     symbol: string,
     side: 'BUY' | 'SELL',
-    quantity: string
+    quantity: string,
   ) {
     const context = this.auth.getContext();
     if (context) {
       this.strategyOps.assertRisk(context, side, Number(quantity));
     }
 
-    const params: Record<string, string> = { symbol, side, type: 'MARKET', quantity };
+    const params: Record<string, string> = {
+      symbol,
+      side,
+      type: 'MARKET',
+      quantity,
+    };
     if (context) {
-      params.newClientOrderId = this.strategyOps.buildClientOrderId(context, side, 'margin');
+      params.newClientOrderId = this.strategyOps.buildClientOrderId(
+        context,
+        side,
+        'margin',
+      );
     }
 
-    const response = await this.auth.postSigned('/sapi/v1/margin/order', params);
+    const response = await this.auth.postSigned(
+      '/sapi/v1/margin/order',
+      params,
+    );
 
     if (context) {
       await this.strategyOps.recordOrderPlacement(context, {
@@ -209,7 +284,12 @@ export class BinanceMarginService {
       });
     }
 
-    const liquidation = await this.strategyOps.recordOrderStatus(symbol, response, 'margin', context);
+    const liquidation = await this.strategyOps.recordOrderStatus(
+      symbol,
+      response,
+      'margin',
+      context,
+    );
     if (liquidation) {
       await this.executeRiskLiquidation(liquidation);
     }
@@ -239,7 +319,9 @@ export class BinanceMarginService {
     };
 
     const query = new URLSearchParams();
-    Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(allParams).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const signature = this.auth.sign(queryString);
@@ -258,7 +340,7 @@ export class BinanceMarginService {
     side: 'BUY' | 'SELL',
     quantity: string,
     stopPrice: string,
-    options: Record<string, any> = {}
+    options: Record<string, any> = {},
   ) {
     const serverTime = await this.auth.getServerTime();
     const params = {
@@ -282,18 +364,32 @@ export class BinanceMarginService {
     side: 'BUY' | 'SELL',
     quantity: string,
     price: string,
-    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC'
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
   ) {
-    const params = { symbol, side, type: 'LIMIT', quantity, price, timeInForce, isIsolated: 'TRUE' };
+    const params = {
+      symbol,
+      side,
+      type: 'LIMIT',
+      quantity,
+      price,
+      timeInForce,
+      isIsolated: 'TRUE',
+    };
     return this.auth.postSigned('/sapi/v1/margin/isolated/order', params);
   }
 
   async createIsolatedMarginMarketOrder(
     symbol: string,
     side: 'BUY' | 'SELL',
-    quantity: string
+    quantity: string,
   ) {
-    const params = { symbol, side, type: 'MARKET', quantity, isIsolated: 'TRUE' };
+    const params = {
+      symbol,
+      side,
+      type: 'MARKET',
+      quantity,
+      isIsolated: 'TRUE',
+    };
     return this.auth.postSigned('/sapi/v1/margin/isolated/order', params);
   }
 
@@ -306,7 +402,9 @@ export class BinanceMarginService {
     };
 
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(params).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const signature = this.auth.sign(queryString);
@@ -317,7 +415,12 @@ export class BinanceMarginService {
       httpsAgent: this.auth.getHttpsAgent(),
     });
 
-    const liquidation = await this.strategyOps.recordOrderStatus(symbol, response.data, 'margin', this.auth.getContext());
+    const liquidation = await this.strategyOps.recordOrderStatus(
+      symbol,
+      response.data,
+      'margin',
+      this.auth.getContext(),
+    );
     if (liquidation) {
       await this.executeRiskLiquidation(liquidation);
     }
@@ -326,7 +429,11 @@ export class BinanceMarginService {
 
   async cancelAllCrossMarginOrders(symbol: string) {
     try {
-      const params = { symbol, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+      const params = {
+        symbol,
+        timestamp: await this.auth.getServerTime(),
+        recvWindow: 10000,
+      };
       const queryString = new URLSearchParams(params as any).toString();
       const signature = this.auth.sign(queryString);
       const url = `${this.auth.getBaseUrl()}/sapi/v1/margin/openOrders?${queryString}&signature=${signature}`;
@@ -335,24 +442,31 @@ export class BinanceMarginService {
         httpsAgent: this.auth.getHttpsAgent(),
       });
       const openOrders = response.data;
-      const cancelPromises = openOrders.map((order: any) => this.cancelCrossMarginOrder(symbol, order.orderId));
+      const cancelPromises = openOrders.map((order: any) =>
+        this.cancelCrossMarginOrder(symbol, order.orderId),
+      );
       await Promise.all(cancelPromises);
       return {
         message: `Se cancelaron ${openOrders.length} órdenes de margin cruzado para el símbolo ${symbol}`,
         canceledOrdersCount: openOrders.length,
       };
     } catch (error) {
-      throw new Error('Error cancelando todas las órdenes de margin cruzado: ' + (error as Error).message);
+      throw new Error(
+        'Error cancelando todas las órdenes de margin cruzado: ' +
+          (error as Error).message,
+      );
     }
   }
 
   async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
     try {
       const openOrders = await this.getAllCrossMarginOrders(symbol);
-      const ordersToCancel = openOrders.filter(order => order.side === side);
+      const ordersToCancel = openOrders.filter((order) => order.side === side);
 
       if (ordersToCancel.length === 0) {
-        return { message: `No hay órdenes abiertas para cancelar en ${symbol} del lado ${side}.` };
+        return {
+          message: `No hay órdenes abiertas para cancelar en ${symbol} del lado ${side}.`,
+        };
       }
 
       let canceledCount = 0;
@@ -365,8 +479,12 @@ export class BinanceMarginService {
         } catch (error: any) {
           if (error.response?.status === 429) {
             const retryAfter = error.response.headers['retry-after'] || 5;
-            console.warn(`Rate limit excedido. Esperando ${retryAfter} segundos antes de reintentar.`);
-            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+            console.warn(
+              `Rate limit excedido. Esperando ${retryAfter} segundos antes de reintentar.`,
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, retryAfter * 1000),
+            );
             try {
               await this.cancelCrossMarginOrder(symbol, order.orderId);
               canceledCount++;
@@ -377,7 +495,7 @@ export class BinanceMarginService {
             failedCount++;
           }
         }
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
       return {
@@ -386,14 +504,24 @@ export class BinanceMarginService {
         failedOrdersCount: failedCount,
       };
     } catch (error) {
-      throw new Error('Error cancelando órdenes margin cruzado por lado: ' + (error as Error).message);
+      throw new Error(
+        'Error cancelando órdenes margin cruzado por lado: ' +
+          (error as Error).message,
+      );
     }
   }
 
   async checkCrossMarginOrderStatus(symbol: string, orderId: number) {
-    const params = { symbol, orderId, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params = {
+      symbol,
+      orderId,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(params).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const signature = this.auth.sign(queryString);
@@ -404,7 +532,12 @@ export class BinanceMarginService {
       httpsAgent: this.auth.getHttpsAgent(),
     });
 
-    const liquidation = await this.strategyOps.recordOrderStatus(symbol, response.data, 'margin', this.auth.getContext());
+    const liquidation = await this.strategyOps.recordOrderStatus(
+      symbol,
+      response.data,
+      'margin',
+      this.auth.getContext(),
+    );
     if (liquidation) {
       await this.executeRiskLiquidation(liquidation);
     }
@@ -412,43 +545,71 @@ export class BinanceMarginService {
   }
 
   async getAllCrossMarginOrders(symbol: string, limit = 500, fromId?: number) {
-    const params: Record<string, string | number> = { symbol, limit, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params: Record<string, string | number> = {
+      symbol,
+      limit,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
     if (fromId !== undefined) params.fromId = fromId;
 
     return this.auth.getSigned('/sapi/v1/margin/openOrders', params);
   }
 
   async getCrossMarginOrderStatus(symbol: string, orderId: number) {
-    const params = { symbol, orderId, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params = {
+      symbol,
+      orderId,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
     return this.auth.getSigned('/sapi/v1/margin/order', params);
   }
 
   async borrowCrossMargin(asset: string, amount: string) {
-    const params = { asset, amount, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params = {
+      asset,
+      amount,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
     return this.auth.postSigned('/sapi/v1/margin/loan', params);
   }
 
   async repayCrossMargin(asset: string, amount: string) {
-    const params = { asset, amount, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params = {
+      asset,
+      amount,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
     return this.auth.postSigned('/sapi/v1/margin/repay', params);
   }
 
   async liquiCrossMagin(): Promise<void> {
     if (!this.auth.canUseMargin()) {
-      console.log('liquiCrossMagin deshabilitado en desarrollo. Usa ENABLE_MARGIN_IN_DEV=true para habilitar margin.');
+      console.log(
+        'liquiCrossMagin deshabilitado en desarrollo. Usa ENABLE_MARGIN_IN_DEV=true para habilitar margin.',
+      );
       return;
     }
 
     const data = await this.account.getCrossMarginSaldo();
 
-    const debtAssets = data.assetsSummary.filter(a => parseFloat(a.borrowed) > 0);
-    const sellAssets = data.assetsSummary.filter(a => a.asset === 'FDUSD' && parseFloat(a.netAsset) > 1);
+    const debtAssets = data.assetsSummary.filter(
+      (a) => parseFloat(a.borrowed) > 0,
+    );
+    const sellAssets = data.assetsSummary.filter(
+      (a) => a.asset === 'FDUSD' && parseFloat(a.netAsset) > 1,
+    );
 
     for (const debtAsset of debtAssets) {
       const sellAsset = sellAssets.length > 0 ? sellAssets[0] : null;
 
       if (!sellAsset) {
-        console.log(`No hay FDUSD disponible para liquidar deuda de ${debtAsset.asset}`);
+        console.log(
+          `No hay FDUSD disponible para liquidar deuda de ${debtAsset.asset}`,
+        );
         continue;
       }
 
@@ -457,20 +618,25 @@ export class BinanceMarginService {
       const priceData = await this.spot.getSymbolPrice(symbol);
       const price = parseFloat(priceData.price);
 
-      const sellQuantity = parseFloat(sellAsset.netAsset).toFixed(decimalQuantity.quantityDecimals);
+      const sellQuantity = parseFloat(sellAsset.netAsset).toFixed(
+        decimalQuantity.quantityDecimals,
+      );
 
       await this.cancelAllCrossMarginOrdersBySide(symbol, 'BUY');
       await this.cancelAllCrossMarginOrdersBySide(symbol, 'SELL');
 
       await this.createCrossMarginMarketOrder(symbol, 'SELL', sellQuantity);
 
-      await this.repayCrossMargin(debtAsset.asset, debtAsset.borrowed.toString());
+      await this.repayCrossMargin(
+        debtAsset.asset,
+        debtAsset.borrowed.toString(),
+      );
 
       console.log(`Deuda de ${debtAsset.asset} liquidada usando FDUSD.`);
     }
 
     const nonFdusdAssets = data.assetsSummary.filter(
-      a => a.asset !== 'FDUSD' && parseFloat(a.netAsset) > 1
+      (a) => a.asset !== 'FDUSD' && parseFloat(a.netAsset) > 1,
     );
 
     for (const asset of nonFdusdAssets) {
@@ -479,7 +645,9 @@ export class BinanceMarginService {
       const priceData = await this.spot.getSymbolPrice(symbol);
       const price = parseFloat(priceData.price);
 
-      const sellQuantity = parseFloat(asset.netAsset).toFixed(decimalQuantity.quantityDecimals);
+      const sellQuantity = parseFloat(asset.netAsset).toFixed(
+        decimalQuantity.quantityDecimals,
+      );
 
       await this.cancelAllCrossMarginOrdersBySide(symbol, 'BUY');
       await this.cancelAllCrossMarginOrdersBySide(symbol, 'SELL');

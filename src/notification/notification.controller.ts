@@ -1,9 +1,25 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { Notification } from '@prisma/client';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthGuard } from 'src/authA/auth.guard';
 
 @ApiBearerAuth('BearerAuth')
@@ -11,20 +27,25 @@ import { AuthGuard } from 'src/authA/auth.guard';
 @ApiTags('notification')
 @Controller('notification')
 export class NotificationController {
-  constructor(private readonly notificationService: NotificationService) { }
+  constructor(private readonly notificationService: NotificationService) {}
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva notificación' })
   @ApiResponse({ status: 201, description: 'Notificación creada' })
   @ApiBody({ type: CreateNotificationDto })
-  async create(@Body() createNotificationDto: CreateNotificationDto): Promise<Notification> {
+  async create(
+    @Body() createNotificationDto: CreateNotificationDto,
+  ): Promise<Notification> {
     return await this.notificationService.create(createNotificationDto);
   }
 
   @Post('templated')
-  @ApiOperation({ summary: 'Crear notificación usando plantilla por severidad y canal' })
+  @ApiOperation({
+    summary: 'Crear notificación usando plantilla por severidad y canal',
+  })
   async createTemplated(
-    @Body() body: {
+    @Body()
+    body: {
       userId: number;
       severity: 'INFO' | 'WARNING' | 'CRITICAL';
       channel: 'OPERATIVA' | 'SEGURIDAD' | 'CONTABILIDAD' | 'SISTEMA';
@@ -36,7 +57,10 @@ export class NotificationController {
   }
 
   @Post('daily-digest/:userId')
-  @ApiOperation({ summary: 'Generar digest diario automático con PnL, syncs y eventos recientes' })
+  @ApiOperation({
+    summary:
+      'Generar digest diario automático con PnL, syncs y eventos recientes',
+  })
   async createDailyDigest(@Param('userId') userId: string) {
     return this.notificationService.createDailyDigest(Number(userId));
   }
@@ -47,7 +71,6 @@ export class NotificationController {
   async markAsRead(@Param('id') id: string): Promise<Notification> {
     return await this.notificationService.markAsRead(+id);
   }
-
 
   @Get()
   @ApiOperation({ summary: 'Obtener todas las notificaciones' })
@@ -71,7 +94,7 @@ export class NotificationController {
   @ApiBody({ type: UpdateNotificationDto })
   async update(
     @Param('id') id: string,
-    @Body() updateNotificationDto: UpdateNotificationDto
+    @Body() updateNotificationDto: UpdateNotificationDto,
   ): Promise<Notification> {
     return await this.notificationService.update(+id, updateNotificationDto);
   }

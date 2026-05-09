@@ -8,9 +8,11 @@ import { PrismaService } from 'prisma/prisma.service';
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(createNotificationDto: CreateNotificationDto): Promise<Notification> {
+  async create(
+    createNotificationDto: CreateNotificationDto,
+  ): Promise<Notification> {
     this.logger.log('Creating a new notification');
     return this.prisma.notification.create({
       data: createNotificationDto,
@@ -24,7 +26,9 @@ export class NotificationService {
 
   async findOne(id: number): Promise<Notification> {
     this.logger.log(`Retrieving notification with id ${id}`);
-    const notification = await this.prisma.notification.findUnique({ where: { id } });
+    const notification = await this.prisma.notification.findUnique({
+      where: { id },
+    });
     if (!notification) {
       throw new NotFoundException(`Notification with id ${id} not found`);
     }
@@ -36,7 +40,10 @@ export class NotificationService {
     return this.prisma.notification.findMany({ where: { userId } });
   }
 
-  async update(id: number, updateNotificationDto: UpdateNotificationDto): Promise<Notification> {
+  async update(
+    id: number,
+    updateNotificationDto: UpdateNotificationDto,
+  ): Promise<Notification> {
     this.logger.log(`Updating notification with id ${id}`);
     await this.findOne(id); // Verificar existencia
     return this.prisma.notification.update({
@@ -55,7 +62,6 @@ export class NotificationService {
       data: { read: true },
     });
   }
-
 
   async remove(id: number): Promise<Notification> {
     this.logger.log(`Removing notification with id ${id}`);

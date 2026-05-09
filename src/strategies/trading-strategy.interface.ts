@@ -8,9 +8,16 @@ export interface TradingStrategy<TConfig = unknown> {
 }
 
 export interface MutableOrderLevelsStrategy {
-  addOrderLevel(orderLevel: { id: number; price: number; quantity: number }): void | Promise<void>;
+  addOrderLevel(orderLevel: {
+    id: number;
+    price: number;
+    quantity: number;
+  }): void | Promise<void>;
   removeOrderLevel(levelIndex: number): void | Promise<void>;
-  updateOrderLevelPrice(levelIndex: number, newPrice: number): void | Promise<void>;
+  updateOrderLevelPrice(
+    levelIndex: number,
+    newPrice: number,
+  ): void | Promise<void>;
 }
 
 export interface ProfitMarginUpdatableStrategy {
@@ -103,5 +110,4 @@ export interface GridFullStrategyConfig {
   minSleepMs?: number;
   maxSleepMs?: number;
   buySafetyMargin?: number; // P
-
 }

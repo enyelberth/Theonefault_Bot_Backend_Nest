@@ -30,7 +30,8 @@ export class PnlLedgerService implements OnModuleInit {
 
   async seedLotBookFromDb() {
     try {
-      const openLots = await (this.prisma as any).openLotPosition?.findMany?.() || [];
+      const openLots =
+        (await (this.prisma as any).openLotPosition?.findMany?.()) || [];
       this.lotBook.clear();
 
       for (const lot of openLots) {
@@ -51,7 +52,10 @@ export class PnlLedgerService implements OnModuleInit {
       }
       this.logger.log(`Seeded ${openLots.length} open lots from DB`);
     } catch (error) {
-      this.logger.error(`Error seeding lot book: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error seeding lot book: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
@@ -87,7 +91,9 @@ export class PnlLedgerService implements OnModuleInit {
         update: lot,
       });
     } catch (error) {
-      this.logger.warn(`Could not persist open lot: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not persist open lot: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -173,7 +179,9 @@ export class PnlLedgerService implements OnModuleInit {
           },
         });
       } catch (error) {
-        this.logger.warn(`Could not create trade PnL record: ${(error as Error).message}`);
+        this.logger.warn(
+          `Could not create trade PnL record: ${(error as Error).message}`,
+        );
       }
     }
 
@@ -195,11 +203,12 @@ export class PnlLedgerService implements OnModuleInit {
       winRate: Decimal;
     },
   ) {
-    const winRate = stats.losingTrades + stats.winningTrades > 0
-      ? new Decimal(stats.winningTrades).div(
-          stats.losingTrades + stats.winningTrades,
-        )
-      : new Decimal(0);
+    const winRate =
+      stats.losingTrades + stats.winningTrades > 0
+        ? new Decimal(stats.winningTrades).div(
+            stats.losingTrades + stats.winningTrades,
+          )
+        : new Decimal(0);
 
     try {
       await (this.prisma as any).strategyStatSnapshot?.upsert?.({
@@ -215,7 +224,9 @@ export class PnlLedgerService implements OnModuleInit {
         },
       });
     } catch (error) {
-      this.logger.warn(`Could not persist strategy stats: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not persist strategy stats: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -225,7 +236,9 @@ export class PnlLedgerService implements OnModuleInit {
         where: { strategyId },
       });
     } catch (error) {
-      this.logger.warn(`Could not get strategy stats: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not get strategy stats: ${(error as Error).message}`,
+      );
       return null;
     }
   }
@@ -244,20 +257,23 @@ export class PnlLedgerService implements OnModuleInit {
     if (filters?.symbol) where.symbol = filters.symbol;
     if (filters?.startDate || filters?.endDate) {
       where.closedAt = {};
-      if (filters?.startDate)
-        where.closedAt.gte = filters.startDate;
+      if (filters?.startDate) where.closedAt.gte = filters.startDate;
       if (filters?.endDate) where.closedAt.lte = filters.endDate;
     }
 
     try {
-      return await (this.prisma as any).tradePnlRecord?.findMany?.({
-        where,
-        orderBy: { closedAt: 'desc' },
-        skip: filters?.skip || 0,
-        take: filters?.limit || 100,
-      }) || [];
+      return (
+        (await (this.prisma as any).tradePnlRecord?.findMany?.({
+          where,
+          orderBy: { closedAt: 'desc' },
+          skip: filters?.skip || 0,
+          take: filters?.limit || 100,
+        })) || []
+      );
     } catch (error) {
-      this.logger.warn(`Could not get trade history: ${(error as Error).message}`);
+      this.logger.warn(
+        `Could not get trade history: ${(error as Error).message}`,
+      );
       return [];
     }
   }

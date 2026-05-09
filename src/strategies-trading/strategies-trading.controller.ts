@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { StrategiesTradingService } from './strategies-trading.service';
 import {
   ApiBadRequestResponse,
@@ -8,8 +18,14 @@ import {
   ApiTags,
   ApiBody,
 } from '@nestjs/swagger';
-import { CreateStrategyTypeDto, CreateTradingStrategyDto } from './dto/create-strategies-trading.dto';
-import { UpdateStrategyTypeDto, UpdateTradingStrategyDto } from './dto/update-strategies-trading.dto';
+import {
+  CreateStrategyTypeDto,
+  CreateTradingStrategyDto,
+} from './dto/create-strategies-trading.dto';
+import {
+  UpdateStrategyTypeDto,
+  UpdateTradingStrategyDto,
+} from './dto/update-strategies-trading.dto';
 import { StrategyType, TradingStrategy } from '@prisma/client';
 import { AuthGuard } from 'src/authA/auth.guard';
 
@@ -18,19 +34,33 @@ import { AuthGuard } from 'src/authA/auth.guard';
 @ApiTags('strategies')
 @Controller('strategies-trading')
 export class StrategiesTradingController {
-  constructor(private readonly strategiesTradingService: StrategiesTradingService) { }
+  constructor(
+    private readonly strategiesTradingService: StrategiesTradingService,
+  ) {}
 
   @ApiOperation({ summary: 'Crear una nueva estrategia de trading' })
   @ApiBody({ type: CreateTradingStrategyDto })
-  @ApiResponse({ status: 201, description: 'Estrategia de trading creada correctamente.', type: CreateTradingStrategyDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Estrategia de trading creada correctamente.',
+    type: CreateTradingStrategyDto,
+  })
   @ApiBadRequestResponse({ description: 'Datos inválidos.' })
   @Post('/createStrategy')
-  async create(@Body() createStrategiesTradingDto: CreateTradingStrategyDto): Promise<CreateTradingStrategyDto> {
-    return await this.strategiesTradingService.createStrategies(createStrategiesTradingDto);
+  async create(
+    @Body() createStrategiesTradingDto: CreateTradingStrategyDto,
+  ): Promise<CreateTradingStrategyDto> {
+    return await this.strategiesTradingService.createStrategies(
+      createStrategiesTradingDto,
+    );
   }
 
   @ApiOperation({ summary: 'Obtener todas las estrategias de trading' })
-  @ApiResponse({ status: 200, description: 'Lista de estrategias de trading', type: [CreateTradingStrategyDto] })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de estrategias de trading',
+    type: [CreateTradingStrategyDto],
+  })
   @ApiBadRequestResponse({ description: 'Error al obtener datos.' })
   @Get('/getStrategies')
   async findAll(): Promise<TradingStrategy[]> {
@@ -38,26 +68,43 @@ export class StrategiesTradingController {
   }
 
   @ApiOperation({ summary: 'Obtener una estrategia de trading por ID' })
-  @ApiResponse({ status: 200, description: 'Estrategia de trading encontrada', type: CreateTradingStrategyDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Estrategia de trading encontrada',
+    type: CreateTradingStrategyDto,
+  })
   @ApiBadRequestResponse({ description: 'ID inválido' })
   @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: string): Promise<TradingStrategy> {
+  async findOne(
+    @Param('id', ParseIntPipe) id: string,
+  ): Promise<TradingStrategy> {
     return await this.strategiesTradingService.getStrategyById(id);
   }
 
   @ApiOperation({ summary: 'Actualizar una estrategia de trading' })
   @ApiBody({ type: UpdateTradingStrategyDto })
-  @ApiResponse({ status: 200, description: 'Estrategia actualizada', type: CreateTradingStrategyDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Estrategia actualizada',
+    type: CreateTradingStrategyDto,
+  })
   @Patch(':id')
   async update(
     @Param('id') id: string,
     @Body() updateStrategiesTradingDto: UpdateTradingStrategyDto,
   ): Promise<TradingStrategy> {
-    return await this.strategiesTradingService.updateStrategy(id, updateStrategiesTradingDto);
+    return await this.strategiesTradingService.updateStrategy(
+      id,
+      updateStrategiesTradingDto,
+    );
   }
 
   @ApiOperation({ summary: 'Eliminar una estrategia de trading' })
-  @ApiResponse({ status: 200, description: 'Estrategia eliminada', type: CreateTradingStrategyDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Estrategia eliminada',
+    type: CreateTradingStrategyDto,
+  })
   @Delete(':id')
   async remove(@Param('id') id: string): Promise<TradingStrategy> {
     return await this.strategiesTradingService.removeStrategy(id);
@@ -65,10 +112,18 @@ export class StrategiesTradingController {
 
   @ApiOperation({ summary: 'Crear un nuevo tipo de estrategia' })
   @ApiBody({ type: CreateStrategyTypeDto })
-  @ApiResponse({ status: 201, description: 'Tipo de estrategia creada', type: CreateStrategyTypeDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Tipo de estrategia creada',
+    type: CreateStrategyTypeDto,
+  })
   @Post('/createTypeStrategy')
-  async createType(@Body() createTypeStrategyDto: CreateStrategyTypeDto): Promise<StrategyType> {
-    return await this.strategiesTradingService.createTypeStrategy(createTypeStrategyDto);
+  async createType(
+    @Body() createTypeStrategyDto: CreateStrategyTypeDto,
+  ): Promise<StrategyType> {
+    return await this.strategiesTradingService.createTypeStrategy(
+      createTypeStrategyDto,
+    );
   }
 
   @ApiOperation({ summary: 'Obtener todos los tipos de estrategias' })
@@ -79,57 +134,99 @@ export class StrategiesTradingController {
   }
 
   @ApiOperation({ summary: 'Obtener un tipo de estrategia por ID' })
-  @ApiResponse({ status: 200, description: 'Tipo de estrategia encontrada', type: CreateStrategyTypeDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Tipo de estrategia encontrada',
+    type: CreateStrategyTypeDto,
+  })
   @Get('/getStrategyType/:id')
-  async findOneStrategyType(@Param('id', ParseIntPipe) id: number): Promise<StrategyType> {
+  async findOneStrategyType(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<StrategyType> {
     return await this.strategiesTradingService.getStrategyTypeById(id);
   }
 
   @ApiOperation({ summary: 'Actualizar un tipo de estrategia' })
   @ApiBody({ type: UpdateStrategyTypeDto })
-  @ApiResponse({ status: 200, description: 'Tipo de estrategia actualizada', type: CreateStrategyTypeDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Tipo de estrategia actualizada',
+    type: CreateStrategyTypeDto,
+  })
   @Patch('/updateTypeStrategy/:id')
   async updateStrategyType(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateStrategyTypeDto: UpdateStrategyTypeDto,
   ): Promise<StrategyType> {
-    return await this.strategiesTradingService.updateTypeStrategy(id, updateStrategyTypeDto);
+    return await this.strategiesTradingService.updateTypeStrategy(
+      id,
+      updateStrategyTypeDto,
+    );
   }
 
   @ApiOperation({ summary: 'Eliminar un tipo de estrategia' })
-  @ApiResponse({ status: 200, description: 'Tipo de estrategia eliminada', type: CreateStrategyTypeDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Tipo de estrategia eliminada',
+    type: CreateStrategyTypeDto,
+  })
   @Delete('/deleteTypeStrategy/:id')
-  async removeStrategyType(@Param('id', ParseIntPipe) id: number): Promise<StrategyType> {
+  async removeStrategyType(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<StrategyType> {
     return await this.strategiesTradingService.removeTypeStrategy(id);
   }
 
   @Post(':id/snapshot')
-  @ApiOperation({ summary: 'Generar snapshot/versionado de configuración de estrategia' })
-  async createSnapshot(@Param('id') id: string, @Body() body: { label?: string }) {
+  @ApiOperation({
+    summary: 'Generar snapshot/versionado de configuración de estrategia',
+  })
+  async createSnapshot(
+    @Param('id') id: string,
+    @Body() body: { label?: string },
+  ) {
     return this.strategiesTradingService.createVersionSnapshot(id, body?.label);
   }
 
   @Patch(':id/runtime-mode')
-  @ApiOperation({ summary: 'Encender/apagar estrategia y configurar paper trading/alcance' })
+  @ApiOperation({
+    summary: 'Encender/apagar estrategia y configurar paper trading/alcance',
+  })
   async setRuntimeMode(
     @Param('id') id: string,
-    @Body() body: { enabled?: boolean; paperTrading?: boolean; accountId?: number; marketScope?: string },
+    @Body()
+    body: {
+      enabled?: boolean;
+      paperTrading?: boolean;
+      accountId?: number;
+      marketScope?: string;
+    },
   ) {
     return this.strategiesTradingService.setStrategyExecutionMode(id, body);
   }
 
   @Get(':id/metrics')
-  @ApiOperation({ summary: 'Métricas por estrategia: win rate, expectancy, drawdown, profit factor, tiempo medio' })
+  @ApiOperation({
+    summary:
+      'Métricas por estrategia: win rate, expectancy, drawdown, profit factor, tiempo medio',
+  })
   async getMetrics(@Param('id') id: string) {
     return this.strategiesTradingService.getStrategyMetrics(id);
   }
 
   @Post(':id/backtest-preview')
-  @ApiOperation({ summary: 'Backtesting reproducible basado en snapshot/órdenes históricas' })
+  @ApiOperation({
+    summary: 'Backtesting reproducible basado en snapshot/órdenes históricas',
+  })
   async runBacktestPreview(
     @Param('id') id: string,
     @Body() body: { from?: string; to?: string; initialCapital?: number },
   ) {
-    return this.strategiesTradingService.runBacktestPreview(id, body?.from, body?.to, body?.initialCapital);
+    return this.strategiesTradingService.runBacktestPreview(
+      id,
+      body?.from,
+      body?.to,
+      body?.initialCapital,
+    );
   }
 }

@@ -35,7 +35,10 @@ export class SessionService {
     });
   }
 
-  async update(id: number, updateSessionDto: UpdateSessionDto): Promise<Session> {
+  async update(
+    id: number,
+    updateSessionDto: UpdateSessionDto,
+  ): Promise<Session> {
     await this.findOne(id);
     return this.prisma.session.update({
       where: { id },

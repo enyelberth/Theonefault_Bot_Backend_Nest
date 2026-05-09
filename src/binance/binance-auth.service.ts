@@ -2,8 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import * as https from 'https';
-import { StrategyRuntimeContextService } from 'src/strategy-monitoring/strategy-runtime-context.service';
-import { BinanceErrorHandler, BinanceApiError, RetryConfig } from './binance-error.utils';
+import { StrategyRuntimeContextService } from '../strategy-monitoring/strategy-runtime-context.service';
+import {
+  BinanceErrorHandler,
+  BinanceApiError,
+  RetryConfig,
+} from './binance-error.utils';
 
 /**
  * Handles all Binance API authentication and HTTP requests.
@@ -36,11 +40,14 @@ export class BinanceAuthService {
   private readonly retryConfig: RetryConfig;
   private timeOffset = 0;
 
-  constructor(private readonly strategyRuntimeContext: StrategyRuntimeContextService) {
+  constructor(
+    private readonly strategyRuntimeContext: StrategyRuntimeContextService,
+  ) {
     this.API_KEY = process.env.BINANCE_API_KEY || '';
     this.API_SECRET = process.env.BINANCE_API_SECRET || '';
     this.isProduction = process.env.NODE_ENV === 'production';
-    this.enableMarginInDev = (process.env.ENABLE_MARGIN_IN_DEV || 'false').toLowerCase() === 'true';
+    this.enableMarginInDev =
+      (process.env.ENABLE_MARGIN_IN_DEV || 'false').toLowerCase() === 'true';
     this.httpsAgent = new https.Agent({
       rejectUnauthorized: this.isProduction, // ⚠️ Only allow in production
     });
@@ -67,7 +74,8 @@ export class BinanceAuthService {
    * @returns Hex-encoded HMAC SHA256 signature
    */
   sign(querystring: string): string {
-    return crypto.createHmac('sha256', this.API_SECRET)
+    return crypto
+      .createHmac('sha256', this.API_SECRET)
       .update(querystring)
       .digest('hex');
   }
@@ -85,7 +93,10 @@ export class BinanceAuthService {
       async () => {
         const url = `${process.env.BASE_URL}/api/v3/time`;
         try {
-          const response = await axios.get(url, { httpsAgent: this.httpsAgent, timeout: 5000 });
+          const response = await axios.get(url, {
+            httpsAgent: this.httpsAgent,
+            timeout: 5000,
+          });
           const serverTime = response.data.serverTime;
 
           if (this.timeOffset === 0) {
@@ -98,7 +109,7 @@ export class BinanceAuthService {
         }
       },
       { service: 'BinanceAuthService', operation: 'getServerTime' },
-      this.retryConfig
+      this.retryConfig,
     );
   }
 
@@ -107,16 +118,24 @@ export class BinanceAuthService {
       async () => {
         try {
           const serverTime = await this.getServerTime();
-          const allParams = { ...params, timestamp: serverTime, recvWindow: 30000 };
+          const allParams = {
+            ...params,
+            timestamp: serverTime,
+            recvWindow: 30000,
+          };
 
           const query = new URLSearchParams();
-          Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+          Object.entries(allParams).forEach(([key, val]) =>
+            query.append(key, val.toString()),
+          );
           const queryString = query.toString();
 
           const signature = this.sign(queryString);
           const url = `${process.env.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
 
-          this.logger.debug(`POST ${endpoint}`, { paramsCount: Object.keys(params).length });
+          this.logger.debug(`POST ${endpoint}`, {
+            paramsCount: Object.keys(params).length,
+          });
 
           const response = await axios.post(url, null, {
             headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -129,8 +148,12 @@ export class BinanceAuthService {
           throw this.normalizeError(error);
         }
       },
-      { service: 'BinanceAuthService', operation: `postSigned(${endpoint})`, params },
-      this.retryConfig
+      {
+        service: 'BinanceAuthService',
+        operation: `postSigned(${endpoint})`,
+        params,
+      },
+      this.retryConfig,
     );
   }
 
@@ -139,16 +162,24 @@ export class BinanceAuthService {
       async () => {
         try {
           const serverTime = await this.getServerTime();
-          const allParams = { ...params, timestamp: serverTime, recvWindow: 10000 };
+          const allParams = {
+            ...params,
+            timestamp: serverTime,
+            recvWindow: 10000,
+          };
 
           const query = new URLSearchParams();
-          Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+          Object.entries(allParams).forEach(([key, val]) =>
+            query.append(key, val.toString()),
+          );
           const queryString = query.toString();
 
           const signature = this.sign(queryString);
           const url = `${process.env.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
 
-          this.logger.debug(`GET ${endpoint}`, { paramsCount: Object.keys(params).length });
+          this.logger.debug(`GET ${endpoint}`, {
+            paramsCount: Object.keys(params).length,
+          });
 
           const response = await axios.get(url, {
             headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -161,12 +192,19 @@ export class BinanceAuthService {
           throw this.normalizeError(error);
         }
       },
-      { service: 'BinanceAuthService', operation: `getSigned(${endpoint})`, params },
-      this.retryConfig
+      {
+        service: 'BinanceAuthService',
+        operation: `getSigned(${endpoint})`,
+        params,
+      },
+      this.retryConfig,
     );
   }
 
-  async getSignedRequest(endpoint: string, params: Record<string, string | number>) {
+  async getSignedRequest(
+    endpoint: string,
+    params: Record<string, string | number>,
+  ) {
     return this.errorHandler.withRetry(
       async () => {
         try {
@@ -174,7 +212,9 @@ export class BinanceAuthService {
           const allParams = { ...params, timestamp: serverTime };
 
           const query = new URLSearchParams();
-          Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+          Object.entries(allParams).forEach(([key, val]) =>
+            query.append(key, val.toString()),
+          );
           const queryString = query.toString();
 
           const signature = this.sign(queryString);
@@ -191,8 +231,12 @@ export class BinanceAuthService {
           throw this.normalizeError(error);
         }
       },
-      { service: 'BinanceAuthService', operation: `getSignedRequest(${endpoint})`, params },
-      this.retryConfig
+      {
+        service: 'BinanceAuthService',
+        operation: `getSignedRequest(${endpoint})`,
+        params,
+      },
+      this.retryConfig,
     );
   }
 
@@ -202,7 +246,8 @@ export class BinanceAuthService {
   private normalizeError(error: any): BinanceApiError {
     const statusCode = error.response?.status;
     const binanceCode = error.response?.data?.code;
-    const message = error.response?.data?.msg || error.message || 'Unknown error';
+    const message =
+      error.response?.data?.msg || error.message || 'Unknown error';
     return new BinanceApiError(statusCode, binanceCode, message);
   }
 

@@ -19,7 +19,7 @@ import { PrismaClient, StrategyType, TradingStrategy } from '@prisma/client';
 export class StrategiesTradingService {
   private readonly logger = new Logger(StrategiesTradingService.name);
 
-  constructor(private readonly prisma: PrismaClient) { }
+  constructor(private readonly prisma: PrismaClient) {}
 
   private normalizeConfig(config: unknown): Record<string, any> {
     return config && typeof config === 'object' && !Array.isArray(config)
@@ -142,12 +142,15 @@ export class StrategiesTradingService {
     });
   }
 
-  async setStrategyExecutionMode(id: string, payload: {
-    enabled?: boolean;
-    paperTrading?: boolean;
-    accountId?: number;
-    marketScope?: string;
-  }) {
+  async setStrategyExecutionMode(
+    id: string,
+    payload: {
+      enabled?: boolean;
+      paperTrading?: boolean;
+      accountId?: number;
+      marketScope?: string;
+    },
+  ) {
     const strategy = await this.getStrategyById(id);
     const currentConfig = this.normalizeConfig(strategy.config);
 
@@ -157,9 +160,11 @@ export class StrategiesTradingService {
         config: {
           ...currentConfig,
           enabled: payload.enabled ?? currentConfig.enabled ?? true,
-          paperTrading: payload.paperTrading ?? currentConfig.paperTrading ?? false,
+          paperTrading:
+            payload.paperTrading ?? currentConfig.paperTrading ?? false,
           accountId: payload.accountId ?? currentConfig.accountId ?? null,
-          marketScope: payload.marketScope ?? currentConfig.marketScope ?? 'ALL',
+          marketScope:
+            payload.marketScope ?? currentConfig.marketScope ?? 'ALL',
           updatedAtRuntime: new Date().toISOString(),
         },
       },
@@ -185,14 +190,16 @@ export class StrategiesTradingService {
       orderBy: { closed_time: 'asc' },
     });
 
-    const pnl = orders.map(item => Number(item.profit_loss ?? 0));
-    const wins = pnl.filter(value => value > 0);
-    const losses = pnl.filter(value => value < 0);
+    const pnl = orders.map((item) => Number(item.profit_loss ?? 0));
+    const wins = pnl.filter((value) => value > 0);
+    const losses = pnl.filter((value) => value < 0);
     const total = pnl.reduce((acc, value) => acc + value, 0);
     const expectancy = pnl.length > 0 ? total / pnl.length : 0;
-    const profitFactor = Math.abs(losses.reduce((acc, value) => acc + value, 0)) > 0
-      ? wins.reduce((acc, value) => acc + value, 0) / Math.abs(losses.reduce((acc, value) => acc + value, 0))
-      : 0;
+    const profitFactor =
+      Math.abs(losses.reduce((acc, value) => acc + value, 0)) > 0
+        ? wins.reduce((acc, value) => acc + value, 0) /
+          Math.abs(losses.reduce((acc, value) => acc + value, 0))
+        : 0;
 
     let cumulative = 0;
     let peak = 0;
@@ -206,19 +213,28 @@ export class StrategiesTradingService {
     let avgHoldingMs = 0;
     if (orders.length > 1) {
       const diffs = orders
-        .map(item => item.closed_time?.getTime() ?? 0)
+        .map((item) => item.closed_time?.getTime() ?? 0)
         .filter(Boolean)
         .sort((a, b) => a - b)
         .slice(1)
-        .map((value, index, array) => value - (orders[index].closed_time?.getTime() ?? value));
-      avgHoldingMs = diffs.length > 0 ? diffs.reduce((acc, value) => acc + value, 0) / diffs.length : 0;
+        .map(
+          (value, index, array) =>
+            value - (orders[index].closed_time?.getTime() ?? value),
+        );
+      avgHoldingMs =
+        diffs.length > 0
+          ? diffs.reduce((acc, value) => acc + value, 0) / diffs.length
+          : 0;
     }
 
     return {
       strategyId: strategy.id,
       symbol: strategy.symbol,
       trades: orders.length,
-      winRate: orders.length > 0 ? Number(((wins.length / orders.length) * 100).toFixed(2)) : 0,
+      winRate:
+        orders.length > 0
+          ? Number(((wins.length / orders.length) * 100).toFixed(2))
+          : 0,
       expectancy: Number(expectancy.toFixed(6)),
       maxDrawdown: Number(maxDrawdown.toFixed(6)),
       profitFactor: Number(profitFactor.toFixed(6)),
@@ -227,7 +243,12 @@ export class StrategiesTradingService {
     };
   }
 
-  async runBacktestPreview(id: string, from?: string, to?: string, initialCapital = 1000) {
+  async runBacktestPreview(
+    id: string,
+    from?: string,
+    to?: string,
+    initialCapital = 1000,
+  ) {
     const metrics = await this.getStrategyMetrics(id, from, to);
     const endingCapital = initialCapital + metrics.totalPnl;
 
@@ -237,7 +258,15 @@ export class StrategiesTradingService {
       to,
       initialCapital,
       endingCapital,
-      returnPct: initialCapital > 0 ? Number((((endingCapital - initialCapital) / initialCapital) * 100).toFixed(4)) : 0,
+      returnPct:
+        initialCapital > 0
+          ? Number(
+              (
+                ((endingCapital - initialCapital) / initialCapital) *
+                100
+              ).toFixed(4),
+            )
+          : 0,
       metrics,
       note: 'Backtest preview reproducible basado en órdenes históricas del símbolo asociado y snapshot de configuración actual.',
     };
@@ -248,7 +277,9 @@ export class StrategiesTradingService {
     try {
       const types = await this.prisma.strategyType.findMany();
       if (types.length === 0) {
-        throw new BadRequestException('No hay tipos de estrategias disponibles.');
+        throw new BadRequestException(
+          'No hay tipos de estrategias disponibles.',
+        );
       }
       return types;
     } catch (error) {

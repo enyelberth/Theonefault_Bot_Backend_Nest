@@ -10,7 +10,11 @@ describe('JournalEntryService', () => {
       },
     } as any;
 
-    const service = new JournalEntryService(prisma, {} as any, { incrementCounter: jest.fn(), setGauge: jest.fn() } as any);
+    const service = new JournalEntryService(
+      prisma,
+      {} as any,
+      { incrementCounter: jest.fn(), setGauge: jest.fn() } as any,
+    );
     const result = await service.reopenAccountingPeriod(1, 'ADMIN');
 
     expect(result.status).toBe('OPEN');

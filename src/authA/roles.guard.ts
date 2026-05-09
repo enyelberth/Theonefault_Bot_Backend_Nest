@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY, AppRole } from './roles.decorator';
 import { PrismaService } from 'prisma/prisma.service';
@@ -11,10 +16,10 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredRoles = this.reflector.getAllAndOverride<AppRole[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredRoles = this.reflector.getAllAndOverride<AppRole[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!requiredRoles || requiredRoles.length === 0) {
       return true;
@@ -43,11 +48,15 @@ export class RolesGuard implements CanActivate {
     }
 
     if (!userRole) {
-      throw new ForbiddenException('No tienes rol asignado para acceder a este recurso.');
+      throw new ForbiddenException(
+        'No tienes rol asignado para acceder a este recurso.',
+      );
     }
 
     if (!requiredRoles.includes(userRole)) {
-      throw new ForbiddenException('No tienes permisos suficientes para esta operación.');
+      throw new ForbiddenException(
+        'No tienes permisos suficientes para esta operación.',
+      );
     }
 
     return true;

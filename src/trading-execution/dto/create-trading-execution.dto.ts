@@ -6,11 +6,19 @@ export class CreateTradingExecutionDto {
   @IsInt()
   orderId: number;
 
-  @ApiProperty({ description: 'Precio ejecutado', type: String, example: '32000.25' })
+  @ApiProperty({
+    description: 'Precio ejecutado',
+    type: String,
+    example: '32000.25',
+  })
   @IsDecimal()
   tradePrice: string;
 
-  @ApiProperty({ description: 'Cantidad ejecutada', type: String, example: '0.005' })
+  @ApiProperty({
+    description: 'Cantidad ejecutada',
+    type: String,
+    example: '0.005',
+  })
   @IsDecimal()
   tradeQuantity: string;
 

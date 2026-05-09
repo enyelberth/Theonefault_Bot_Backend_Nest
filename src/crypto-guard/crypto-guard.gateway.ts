@@ -1,4 +1,8 @@
-import { WebSocketGateway, WebSocketServer, OnGatewayInit } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  OnGatewayInit,
+} from '@nestjs/websockets';
 import { Server } from 'socket.io';
 import { AccountService } from 'src/account/account.service';
 import { BinanceService } from 'src/binance/binance.service';
@@ -25,7 +29,8 @@ export class CryptoGuardGateway implements OnGatewayInit {
   private totalLiabilityOfBtc: string | undefined;
   private pnlAsPercentageOfLiability: string | undefined;
   private readonly isProduction = process.env.NODE_ENV === 'production';
-  private readonly enableMarginInDev = (process.env.ENABLE_MARGIN_IN_DEV || 'false').toLowerCase() === 'true';
+  private readonly enableMarginInDev =
+    (process.env.ENABLE_MARGIN_IN_DEV || 'false').toLowerCase() === 'true';
 
   constructor(
     private accountService: AccountService,
@@ -35,7 +40,9 @@ export class CryptoGuardGateway implements OnGatewayInit {
 
   async afterInit() {
     if (!this.isProduction && !this.enableMarginInDev) {
-      console.log('CryptoGuard desactivado en desarrollo. Activa ENABLE_MARGIN_IN_DEV=true para habilitar margin.');
+      console.log(
+        'CryptoGuard desactivado en desarrollo. Activa ENABLE_MARGIN_IN_DEV=true para habilitar margin.',
+      );
       return;
     }
 
@@ -45,17 +52,20 @@ export class CryptoGuardGateway implements OnGatewayInit {
     this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
     this.riskLevel = this.binanceData?.riskLevel;
     this.totalLiabilityOfBtc = this.binanceData?.totalLiabilityOfBtc;
-    this.pnlAsPercentageOfLiability = this.binanceData?.pnlAsPercentageOfLiability;
+    this.pnlAsPercentageOfLiability =
+      this.binanceData?.pnlAsPercentageOfLiability;
 
-    this.userCryptos = cryptosRaw.map(c => ({
+    this.userCryptos = cryptosRaw.map((c) => ({
       symbol: c.symbol,
       balance: Number(c.balance), // Se asume que balance puede convertirse a number directamente
     }));
 
-    const fdusdEntry = this.userCryptos.find(c => c.symbol.toUpperCase() === 'FDUSD');
+    const fdusdEntry = this.userCryptos.find(
+      (c) => c.symbol.toUpperCase() === 'FDUSD',
+    );
     this.fdusdBalance = fdusdEntry ? fdusdEntry.balance : 0;
 
-    this.cryptoSymbols.forEach(symbol => this.connectBinanceStream(symbol));
+    this.cryptoSymbols.forEach((symbol) => this.connectBinanceStream(symbol));
 
     console.log(`Balance FDUSD encontrado: ${this.fdusdBalance}`);
   }
@@ -68,7 +78,8 @@ export class CryptoGuardGateway implements OnGatewayInit {
 
     ws.onmessage = async (event) => {
       const now = Date.now();
-      if (now - lastEmitTime < 4000) { // Limita a 4 segundos
+      if (now - lastEmitTime < 4000) {
+        // Limita a 4 segundos
         return; // Ignora el mensaje si no han pasado 4 segundos desde la última ejecución
       }
       lastEmitTime = now;
@@ -79,44 +90,45 @@ export class CryptoGuardGateway implements OnGatewayInit {
       if (symbol === 'btcusdt') {
         this.btcusdtPrice = price;
       }
-    this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
-    this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
+      this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
+      this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
 
       if (!this.totalUnrealizedPNL || !this.btcusdtPrice) {
         return; // Se asegura que existan datos para cálculo
       }
 
-      const pnlValue = Number(this.totalUnrealizedPNL) * Number(this.btcusdtPrice);
-      const threshold = this.fdusdBalance - (this.fdusdBalance * 0.04);
+      const pnlValue =
+        Number(this.totalUnrealizedPNL) * Number(this.btcusdtPrice);
+      const threshold = this.fdusdBalance - this.fdusdBalance * 0.04;
 
       console.log('PNL Value:', pnlValue);
 
       if (pnlValue < threshold) {
         console.log('Ejecutando protección de Crypto Guard');
         try {
-                 const a = await this.botService.getActiveBots();
-                 /*
+          const a = await this.botService.getActiveBots();
+          /*
           if(a.length === 0){
             console.log('No hay bots activos');
             return;
           }
             */
-              const e = new Array<{symbol: string, id: string}>();
-          a.forEach(element=>{
+          const e = new Array<{ symbol: string; id: string }>();
+          a.forEach((element) => {
             const i = element.split('-');
             const j = {
               symbol: i[0],
-              id: i[1]
+              id: i[1],
             };
             e.push(j);
           });
           console.log(e);
-          e.forEach(element=>{
+          e.forEach((element) => {
             this.botService.stopStrategy(element.symbol, element.id);
           });
           // Uncomment and update si se desea cancelar órdenes, ejemplo:
           // await this.binanceService.cancelAllCrossMarginOrdersBySide('LINKFDUSD', 'BUY');
-         //  await this.binanceService.cancelAllCrossMarginOrdersBySide('LINKFDUSD', 'SELL');
+          //  await this.binanceService.cancelAllCrossMarginOrdersBySide('LINKFDUSD', 'SELL');
 
           // await this.binanceService.cancelAllCrossMarginOrdersBySide('XRPFDUSD', 'BUY');
           // await this.binanceService.cancelAllCrossMarginOrdersBySide('XRPFDUSD', 'SELL');
@@ -124,22 +136,23 @@ export class CryptoGuardGateway implements OnGatewayInit {
           // Ejemplo de detener bots activos si es necesario
           // this.botService.stopStrategy(this.botService.getActiveBots());
 
+          await this.binanceService.liquiCrossMagin();
 
-          
-
-           await this.binanceService.liquiCrossMagin();
-
-          console.log("Cancelando posiciones de margen cruzado");
+          console.log('Cancelando posiciones de margen cruzado');
         } catch (error) {
-          console.error('Error cancelando órdenes margen cruzado:', (error as Error).message || error);
+          console.error(
+            'Error cancelando órdenes margen cruzado:',
+            (error as Error).message || error,
+          );
         }
       } else {
         try {
-   
-      
           console.log('Todo en orden');
         } catch (error) {
-          console.error('Error ejecutando liquidación margen cruzado:', (error as Error).message || error);
+          console.error(
+            'Error ejecutando liquidación margen cruzado:',
+            (error as Error).message || error,
+          );
         }
       }
 

@@ -1,5 +1,10 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AuthGuard } from 'src/authA/auth.guard';
 import { Roles } from 'src/authA/roles.decorator';
 import { ObservabilityService } from './observability.service';
@@ -26,10 +31,10 @@ export class ObservabilityController {
   @ApiOperation({ summary: 'Catalogo de eventos criticos del dominio' })
   @ApiQuery({ name: 'module', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  getEvents(
-    @Query('module') module?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.observabilityService.getDomainEvents(module, limit ? Number(limit) : 100);
+  getEvents(@Query('module') module?: string, @Query('limit') limit?: string) {
+    return this.observabilityService.getDomainEvents(
+      module,
+      limit ? Number(limit) : 100,
+    );
   }
 }

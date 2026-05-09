@@ -10,7 +10,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly sessionService: SessionService,
-  ) { }
+  ) {}
 
   private verifyPassword(password: string, stored: string): boolean {
     const [salt, key] = stored.split(':');
@@ -48,7 +48,9 @@ export class AuthService {
       });
 
       // Buscar usuario con el id en el payload
-      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
       if (!user) {
         throw new UnauthorizedException('Usuario no encontrado');
       }

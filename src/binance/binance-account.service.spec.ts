@@ -21,8 +21,20 @@ describe('BinanceAccountService', () => {
     totalNetAssetOfBtc: '8.5',
     quoteAsset: 'USDT',
     userAssets: [
-      { asset: 'USDT', free: '2000', borrowed: '1000', netAsset: '1000', interest: '10' },
-      { asset: 'BTC', free: '0.5', borrowed: '0.1', netAsset: '0.4', interest: '0.001' },
+      {
+        asset: 'USDT',
+        free: '2000',
+        borrowed: '1000',
+        netAsset: '1000',
+        interest: '10',
+      },
+      {
+        asset: 'BTC',
+        free: '0.5',
+        borrowed: '0.1',
+        netAsset: '0.4',
+        interest: '0.001',
+      },
     ],
   };
 
@@ -66,7 +78,7 @@ describe('BinanceAccountService', () => {
         expect.objectContaining({
           timestamp: 1712000000000,
           recvWindow: 10000,
-        })
+        }),
       );
     });
   });
@@ -79,9 +91,17 @@ describe('BinanceAccountService', () => {
       const result = await service.getNonZeroBalances();
 
       expect(result).toHaveLength(2);
-      expect(result).toContainEqual({ asset: 'USDT', free: '1000.00', locked: '500.00' });
+      expect(result).toContainEqual({
+        asset: 'USDT',
+        free: '1000.00',
+        locked: '500.00',
+      });
       expect(result).toContainEqual({ asset: 'BTC', free: '0.5', locked: '0' });
-      expect(result).not.toContainEqual({ asset: 'ETH', free: '0', locked: '0' });
+      expect(result).not.toContainEqual({
+        asset: 'ETH',
+        free: '0',
+        locked: '0',
+      });
     });
 
     it('should include locked balances in filter', async () => {
@@ -105,21 +125,25 @@ describe('BinanceAccountService', () => {
   describe('getCrossMarginAccountInfo', () => {
     it('should fetch cross margin account info', async () => {
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
-      mockAuthService.getSigned.mockResolvedValueOnce(mockCrossMarginAccountInfo);
+      mockAuthService.getSigned.mockResolvedValueOnce(
+        mockCrossMarginAccountInfo,
+      );
 
       const result = await service.getCrossMarginAccountInfo();
 
       expect(result).toEqual(mockCrossMarginAccountInfo);
       expect(mockAuthService.getSigned).toHaveBeenCalledWith(
         '/sapi/v1/margin/account',
-        expect.anything()
+        expect.anything(),
       );
     });
 
     it('should return error when margin not enabled', async () => {
       mockAuthService.canUseMargin.mockReturnValueOnce(false);
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
-      mockAuthService.getSigned.mockRejectedValueOnce(new Error('Margin not enabled'));
+      mockAuthService.getSigned.mockRejectedValueOnce(
+        new Error('Margin not enabled'),
+      );
 
       await expect(service.getCrossMarginAccountInfo()).rejects.toThrow();
     });
@@ -128,8 +152,18 @@ describe('BinanceAccountService', () => {
   describe('getCrossMarginPositions', () => {
     it('should fetch all cross margin positions', async () => {
       const mockPositions = [
-        { symbol: 'BTCUSDT', positionAmt: '0.5', entryPrice: '40000', markPrice: '45000' },
-        { symbol: 'ETHUSDT', positionAmt: '1.0', entryPrice: '2000', markPrice: '2500' },
+        {
+          symbol: 'BTCUSDT',
+          positionAmt: '0.5',
+          entryPrice: '40000',
+          markPrice: '45000',
+        },
+        {
+          symbol: 'ETHUSDT',
+          positionAmt: '1.0',
+          entryPrice: '2000',
+          markPrice: '2500',
+        },
       ];
 
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
@@ -146,7 +180,7 @@ describe('BinanceAccountService', () => {
       mockAuthService.getSigned.mockResolvedValueOnce({ error: 'invalid' });
 
       await expect(service.getCrossMarginPositions()).rejects.toThrow(
-        'La respuesta no es un array de posiciones'
+        'La respuesta no es un array de posiciones',
       );
     });
   });
@@ -172,7 +206,7 @@ describe('BinanceAccountService', () => {
       mockAuthService.getSigned.mockResolvedValueOnce([]);
 
       await expect(service.getCrossMarginPosition('XYZUSDT')).rejects.toThrow(
-        'No hay posición abierta para el símbolo XYZUSDT'
+        'No hay posición abierta para el símbolo XYZUSDT',
       );
     });
   });
@@ -180,7 +214,9 @@ describe('BinanceAccountService', () => {
   describe('calculateCrossMarginSummary', () => {
     it('should calculate summary with healthy margin level', async () => {
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
-      mockAuthService.getSigned.mockResolvedValueOnce(mockCrossMarginAccountInfo);
+      mockAuthService.getSigned.mockResolvedValueOnce(
+        mockCrossMarginAccountInfo,
+      );
 
       const result = await service.calculateCrossMarginSummary();
 
@@ -257,7 +293,9 @@ describe('BinanceAccountService', () => {
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
       mockAuthService.getSigned.mockResolvedValueOnce(mockAccountInfo);
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
-      mockAuthService.getSigned.mockResolvedValueOnce(mockCrossMarginAccountInfo);
+      mockAuthService.getSigned.mockResolvedValueOnce(
+        mockCrossMarginAccountInfo,
+      );
 
       const result = await service.getConsolidatedBalance();
 
@@ -270,7 +308,9 @@ describe('BinanceAccountService', () => {
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
       mockAuthService.getSigned.mockResolvedValueOnce(mockAccountInfo);
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
-      mockAuthService.getSigned.mockResolvedValueOnce(mockCrossMarginAccountInfo);
+      mockAuthService.getSigned.mockResolvedValueOnce(
+        mockCrossMarginAccountInfo,
+      );
 
       const result = await service.getAvailableToTrade();
 
@@ -284,7 +324,9 @@ describe('BinanceAccountService', () => {
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
       mockAuthService.getSigned.mockResolvedValueOnce(mockAccountInfo);
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
-      mockAuthService.getSigned.mockResolvedValueOnce(mockCrossMarginAccountInfo);
+      mockAuthService.getSigned.mockResolvedValueOnce(
+        mockCrossMarginAccountInfo,
+      );
 
       const result = await service.getAvailableToTrade();
 
@@ -324,7 +366,11 @@ describe('BinanceAccountService', () => {
       mockAuthService.getServerTime.mockResolvedValueOnce(1712000000000);
       mockAuthService.postSigned.mockResolvedValueOnce(mockResponse);
 
-      const result = await service.transferBetweenSpotAndCrossMargin('USDT', '100', 1);
+      const result = await service.transferBetweenSpotAndCrossMargin(
+        'USDT',
+        '100',
+        1,
+      );
 
       expect(result).toEqual(mockResponse);
       expect(mockAuthService.postSigned).toHaveBeenCalledWith(
@@ -333,7 +379,7 @@ describe('BinanceAccountService', () => {
           asset: 'USDT',
           amount: '100',
           type: 1,
-        })
+        }),
       );
     });
   });

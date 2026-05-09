@@ -25,7 +25,10 @@ export class CurrencyService {
     return currency;
   }
 
-  async update(code: string, updateCurrencyDto: UpdateCurrencyDto): Promise<Currency> {
+  async update(
+    code: string,
+    updateCurrencyDto: UpdateCurrencyDto,
+  ): Promise<Currency> {
     await this.findOne(code);
     return this.prisma.currency.update({
       where: { code },

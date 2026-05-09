@@ -18,9 +18,11 @@ import { SimulateTradingOrderDto } from './dto/simulate-trading-order.dto';
 export class TradingService {
   private readonly logger = new Logger(TradingService.name);
 
-  constructor(private readonly prisma: PrismaClient) { }
+  constructor(private readonly prisma: PrismaClient) {}
 
-  private toDecimal(value: Prisma.Decimal | number | string | null | undefined) {
+  private toDecimal(
+    value: Prisma.Decimal | number | string | null | undefined,
+  ) {
     return new Prisma.Decimal(value ?? 0);
   }
 
@@ -74,7 +76,16 @@ export class TradingService {
       };
     }
 
-    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const dayStart = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0,
+        0,
+        0,
+      ),
+    );
 
     const [dayOrders, symbolOrders] = await Promise.all([
       this.prisma.tradingOrder.findMany({
@@ -115,13 +126,21 @@ export class TradingService {
     }
 
     const currentExposure = symbolOrders.reduce(
-      (acc, order) => acc.plus(this.toDecimal(order.quantity).mul(this.toDecimal(order.price ?? 1))),
+      (acc, order) =>
+        acc.plus(
+          this.toDecimal(order.quantity).mul(this.toDecimal(order.price ?? 1)),
+        ),
       new Prisma.Decimal(0),
     );
-    const incomingExposure = this.toDecimal(input.quantity).mul(this.toDecimal(input.price ?? 1));
+    const incomingExposure = this.toDecimal(input.quantity).mul(
+      this.toDecimal(input.price ?? 1),
+    );
     const projectedExposure = currentExposure.plus(incomingExposure);
 
-    if (input.maxDailyLoss !== undefined && dailyPnl.lte(new Prisma.Decimal(input.maxDailyLoss).mul(-1))) {
+    if (
+      input.maxDailyLoss !== undefined &&
+      dailyPnl.lte(new Prisma.Decimal(input.maxDailyLoss).mul(-1))
+    ) {
       return {
         allowed: false,
         code: 'MAX_DAILY_LOSS_REACHED',
@@ -129,7 +148,10 @@ export class TradingService {
       };
     }
 
-    if (input.maxDrawdown !== undefined && maxDrawdown.gte(this.toDecimal(input.maxDrawdown))) {
+    if (
+      input.maxDrawdown !== undefined &&
+      maxDrawdown.gte(this.toDecimal(input.maxDrawdown))
+    ) {
       return {
         allowed: false,
         code: 'MAX_DRAWDOWN_REACHED',
@@ -137,7 +159,10 @@ export class TradingService {
       };
     }
 
-    if (input.maxSymbolExposure !== undefined && projectedExposure.gt(this.toDecimal(input.maxSymbolExposure))) {
+    if (
+      input.maxSymbolExposure !== undefined &&
+      projectedExposure.gt(this.toDecimal(input.maxSymbolExposure))
+    ) {
       return {
         allowed: false,
         code: 'MAX_SYMBOL_EXPOSURE_REACHED',
@@ -161,7 +186,9 @@ export class TradingService {
   // --------------------
   // Crear orden
   // --------------------
-  async createTradingOrder(createTradingDto: CreateTradingOrderDto): Promise<TradingOrder> {
+  async createTradingOrder(
+    createTradingDto: CreateTradingOrderDto,
+  ): Promise<TradingOrder> {
     try {
       const riskCheck = await this.evaluateOrderGuardrails(createTradingDto);
       if (!riskCheck.allowed) {
@@ -178,7 +205,10 @@ export class TradingService {
     }
   }
 
-  async createTradingOrderRevers(createTradingDtos: CreateTradingOrderDto[], client_order_id: string): Promise<TradingOrder[]> {
+  async createTradingOrderRevers(
+    createTradingDtos: CreateTradingOrderDto[],
+    client_order_id: string,
+  ): Promise<TradingOrder[]> {
     try {
       // Verificar que la orden con client_order_id exista para obtener el side
       const originalOrder = await this.prisma.tradingOrder.findUnique({
@@ -187,7 +217,9 @@ export class TradingService {
       });
 
       if (!originalOrder) {
-        throw new BadRequestException('Original order not found for client_order_id: ' + client_order_id);
+        throw new BadRequestException(
+          'Original order not found for client_order_id: ' + client_order_id,
+        );
       }
 
       // Crear las órdenes relacionadas (posiblemente reversas) en transacción
@@ -199,18 +231,23 @@ export class TradingService {
       });
 
       // Retornar solo las órdenes recién creadas - filtro por client_order_id relacionados (asumiendo que vienen en createTradingDtos)
-      const clientOrderIds = createTradingDtos.map(dto => dto.client_order_id);
+      const clientOrderIds = createTradingDtos.map(
+        (dto) => dto.client_order_id,
+      );
       return this.prisma.tradingOrder.findMany({
         where: { client_order_id: { in: clientOrderIds } },
       });
-
     } catch (error) {
       this.logger.error('Error creating multiple trading orders', error);
       throw new BadRequestException('Error creating multiple trading orders');
     }
   }
 
-  async closeOrder(orderId: number, closingOrderId: number, closedTime: Date): Promise<TradingOrder> {
+  async closeOrder(
+    orderId: number,
+    closingOrderId: number,
+    closedTime: Date,
+  ): Promise<TradingOrder> {
     return this.prisma.tradingOrder.update({
       where: { id: orderId },
       data: {
@@ -231,8 +268,13 @@ export class TradingService {
       },
     });
   }
-  async updateOrderExecution(orderId: number, executedQuantity: number): Promise<TradingOrder> {
-    const order = await this.prisma.tradingOrder.findUnique({ where: { id: orderId } });
+  async updateOrderExecution(
+    orderId: number,
+    executedQuantity: number,
+  ): Promise<TradingOrder> {
+    const order = await this.prisma.tradingOrder.findUnique({
+      where: { id: orderId },
+    });
     if (!order) throw new NotFoundException('Order not found');
 
     const newQuantityExecuted = order.quantityExecuted.plus(executedQuantity);
@@ -263,7 +305,9 @@ export class TradingService {
 
   async simulateTradingOrder(simulateDto: SimulateTradingOrderDto) {
     const riskCheck = await this.evaluateOrderGuardrails(simulateDto);
-    const notional = this.toDecimal(simulateDto.quantity).mul(this.toDecimal(simulateDto.price ?? 1));
+    const notional = this.toDecimal(simulateDto.quantity).mul(
+      this.toDecimal(simulateDto.price ?? 1),
+    );
 
     return {
       ok: riskCheck.allowed,
@@ -310,7 +354,7 @@ export class TradingService {
         orders: pnlAgg._count.id,
         realizedPnl: pnlAgg._sum.profit_loss?.toString() ?? '0',
       },
-      bySymbolAndStatus: orders.map(item => ({
+      bySymbolAndStatus: orders.map((item) => ({
         symbol: item.symbol,
         status: item.status,
         count: item._count.id,
@@ -319,8 +363,6 @@ export class TradingService {
       })),
     };
   }
-
-
 
   async findAllTradingOrders(): Promise<TradingOrder[]> {
     try {
@@ -348,11 +390,19 @@ export class TradingService {
       const order = await this.prisma.tradingOrder.findUnique({
         where: { client_order_id },
       });
-      if (!order) throw new NotFoundException(`Order with client_order_id ${client_order_id} not found`);
+      if (!order)
+        throw new NotFoundException(
+          `Order with client_order_id ${client_order_id} not found`,
+        );
       return order;
     } catch (error) {
-      this.logger.error(`Error fetching trading order with client_order_id ${client_order_id}`, error);
-      throw new BadRequestException(`Error fetching trading order with client_order_id ${client_order_id}`);
+      this.logger.error(
+        `Error fetching trading order with client_order_id ${client_order_id}`,
+        error,
+      );
+      throw new BadRequestException(
+        `Error fetching trading order with client_order_id ${client_order_id}`,
+      );
     }
   }
   async searchOrderId(orderId: number): Promise<TradingOrder> {
@@ -360,11 +410,17 @@ export class TradingService {
       const order = await this.prisma.tradingOrder.findUnique({
         where: { id: orderId },
       });
-      if (!order) throw new NotFoundException(`Order with id ${orderId} not found`);
+      if (!order)
+        throw new NotFoundException(`Order with id ${orderId} not found`);
       return order;
     } catch (error) {
-      this.logger.error(`Error fetching trading order with id ${orderId}`, error);
-      throw new BadRequestException(`Error fetching trading order with id ${orderId}`);
+      this.logger.error(
+        `Error fetching trading order with id ${orderId}`,
+        error,
+      );
+      throw new BadRequestException(
+        `Error fetching trading order with id ${orderId}`,
+      );
     }
   }
   async searchOrdersSymbol(symbol: string): Promise<TradingOrder[]> {
@@ -372,11 +428,17 @@ export class TradingService {
       const orders = await this.prisma.tradingOrder.findMany({
         where: { symbol },
       });
-      if (!orders) throw new NotFoundException(`No orders with symbol ${symbol} found`);
+      if (!orders)
+        throw new NotFoundException(`No orders with symbol ${symbol} found`);
       return orders;
     } catch (error) {
-      this.logger.error(`Error fetching trading orders with symbol ${symbol}`, error);
-      throw new BadRequestException(`Error fetching trading orders with symbol ${symbol}`);
+      this.logger.error(
+        `Error fetching trading orders with symbol ${symbol}`,
+        error,
+      );
+      throw new BadRequestException(
+        `Error fetching trading orders with symbol ${symbol}`,
+      );
     }
   }
   async searchOrdersStatus(status: OrderStatus): Promise<TradingOrder[]> {
@@ -384,14 +446,23 @@ export class TradingService {
       const orders = await this.prisma.tradingOrder.findMany({
         where: { status },
       });
-      if (!orders) throw new NotFoundException(`No orders with status ${status} found`);
+      if (!orders)
+        throw new NotFoundException(`No orders with status ${status} found`);
       return orders;
     } catch (error) {
-      this.logger.error(`Error fetching trading orders with status ${status}`, error);
-      throw new BadRequestException(`Error fetching trading orders with status ${status}`);
+      this.logger.error(
+        `Error fetching trading orders with status ${status}`,
+        error,
+      );
+      throw new BadRequestException(
+        `Error fetching trading orders with status ${status}`,
+      );
     }
   }
-  async updateTradingOrder(id: number, updateDto: UpdateTradingOrderDto): Promise<TradingOrder> {
+  async updateTradingOrder(
+    id: number,
+    updateDto: UpdateTradingOrderDto,
+  ): Promise<TradingOrder> {
     try {
       const existingOrder = await this.prisma.tradingOrder.findUnique({
         where: { id },
@@ -477,6 +548,8 @@ export class TradingService {
       this.processingPairs.delete(id);
     }
       */
-    throw new BadRequestException('updateTradingOrderStatus no está implementado para el modelo actual de órdenes.');
+    throw new BadRequestException(
+      'updateTradingOrderStatus no está implementado para el modelo actual de órdenes.',
+    );
   }
 }

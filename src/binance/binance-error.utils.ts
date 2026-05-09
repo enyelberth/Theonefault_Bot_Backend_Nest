@@ -126,7 +126,11 @@ export class BinanceErrorHandler {
     }
 
     // Network errors (transient)
-    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+    if (
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ETIMEDOUT' ||
+      error.code === 'ENOTFOUND'
+    ) {
       return ErrorSeverity.TRANSIENT;
     }
 
@@ -138,14 +142,23 @@ export class BinanceErrorHandler {
    */
   isRetryable(error: any): boolean {
     const severity = this.classifyError(error);
-    return [ErrorSeverity.TRANSIENT, ErrorSeverity.SERVER_ERROR, ErrorSeverity.RATE_LIMIT].includes(severity);
+    return [
+      ErrorSeverity.TRANSIENT,
+      ErrorSeverity.SERVER_ERROR,
+      ErrorSeverity.RATE_LIMIT,
+    ].includes(severity);
   }
 
   /**
    * Calculate delay for exponential backoff
    */
-  getRetryDelay(attemptNumber: number, config: RetryConfig = DEFAULT_RETRY_CONFIG): number {
-    const exponentialDelay = config.baseDelayMs * Math.pow(config.backoffMultiplier, attemptNumber - 1);
+  getRetryDelay(
+    attemptNumber: number,
+    config: RetryConfig = DEFAULT_RETRY_CONFIG,
+  ): number {
+    const exponentialDelay =
+      config.baseDelayMs *
+      Math.pow(config.backoffMultiplier, attemptNumber - 1);
     const cappedDelay = Math.min(exponentialDelay, config.maxDelayMs);
     // Add jitter (±10%)
     const jitter = cappedDelay * (0.9 + Math.random() * 0.2);
@@ -199,11 +212,13 @@ export class BinanceErrorHandler {
       params?: Record<string, any>;
       attempt?: number;
       maxAttempts?: number;
-    }
+    },
   ): void {
     const severity = this.classifyError(error);
     const message = this.getErrorMessage(error);
-    const attemptInfo = context.attempt ? ` (attempt ${context.attempt}/${context.maxAttempts})` : '';
+    const attemptInfo = context.attempt
+      ? ` (attempt ${context.attempt}/${context.maxAttempts})`
+      : '';
 
     this.logger.warn(
       `[${context.service}.${context.operation}]${attemptInfo} ${severity}: ${message}`,
@@ -214,7 +229,7 @@ export class BinanceErrorHandler {
         params: context.params,
         errorCode: error?.response?.data?.code || error?.code,
         statusCode: error?.response?.status,
-      }
+      },
     );
   }
 
@@ -228,7 +243,7 @@ export class BinanceErrorHandler {
       operation: string;
       params?: Record<string, any>;
     },
-    config: RetryConfig = DEFAULT_RETRY_CONFIG
+    config: RetryConfig = DEFAULT_RETRY_CONFIG,
   ): Promise<T> {
     let lastError: any;
 
@@ -239,14 +254,18 @@ export class BinanceErrorHandler {
         lastError = error;
 
         if (!this.isRetryable(error) || attempt === config.maxAttempts) {
-          this.logError(error, { ...context, attempt, maxAttempts: config.maxAttempts });
+          this.logError(error, {
+            ...context,
+            attempt,
+            maxAttempts: config.maxAttempts,
+          });
           throw error;
         }
 
         const delay = this.getRetryDelay(attempt, config);
         this.logger.debug(
           `[${context.service}.${context.operation}] Retrying after ${delay}ms (attempt ${attempt}/${config.maxAttempts})`,
-          { severity: this.classifyError(error), delay }
+          { severity: this.classifyError(error), delay },
         );
 
         await this.sleep(delay);
@@ -271,7 +290,7 @@ export class BinanceApiError extends Error {
   constructor(
     public readonly statusCode: number | undefined,
     public readonly binanceCode: number | undefined,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'BinanceApiError';

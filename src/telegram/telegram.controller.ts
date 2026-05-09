@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+} from '@nestjs/common';
 import { TelegramService } from './telegram.service';
 import { CreateTelegramDto } from './dto/create-telegram.dto';
 import { UpdateTelegramDto } from './dto/update-telegram.dto';
@@ -23,7 +31,10 @@ export class TelegramController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTelegramDto: UpdateTelegramDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateTelegramDto: UpdateTelegramDto,
+  ) {
     return this.telegramService.update(+id, updateTelegramDto);
   }
 

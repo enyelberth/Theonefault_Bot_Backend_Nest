@@ -12,19 +12,15 @@ interface Grid {
 export class PruebaService {
   private readonly logger = new Logger(PruebaService.name);
 
-  private name:string;
-  private seconName:string;
-  private age:number;
+  private name: string;
+  private seconName: string;
+  private age: number;
 
+  public Greed() {}
 
-  public Greed(){
-
-  }
-
-
-@Interval(6000)
-async fetchAndSaveBtcPrice() {
-  /*
+  @Interval(6000)
+  async fetchAndSaveBtcPrice() {
+    /*
   try {
   //  const price = await this.getBtcPriceFromApi();
   //  await this.savePriceToDatabase(price);
@@ -47,8 +43,5 @@ async fetchAndSaveBtcPrice() {
   } catch (error) {
     this.logger.error('Error obteniendo el precio BTC', error);
   }*/
-}
-
-
- 
+  }
 }

@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PrismaClient, Prisma } from '@prisma/client';
@@ -14,7 +20,11 @@ export class TransactionService {
 
   private buildTransferDescription(
     description: string | undefined,
-    metadata: { idempotencyKey?: string; externalReference?: string; receiptUrl?: string },
+    metadata: {
+      idempotencyKey?: string;
+      externalReference?: string;
+      receiptUrl?: string;
+    },
   ) {
     return JSON.stringify({
       description: description ?? null,
@@ -41,7 +51,9 @@ export class TransactionService {
 
   private async ensureTransactionStatus(statusName: string) {
     const normalized = statusName.trim().toUpperCase();
-    const existing = await this.prisma.transactionStatus.findFirst({ where: { statusName: normalized } });
+    const existing = await this.prisma.transactionStatus.findFirst({
+      where: { statusName: normalized },
+    });
     if (existing) {
       return existing;
     }
@@ -52,7 +64,6 @@ export class TransactionService {
   }
 
   async createTranfer(createTransactionDto: CreateTransferDto) {
-    
     try {
       const transaction = await this.prisma.transfer.create({
         data: createTransactionDto,
@@ -62,14 +73,18 @@ export class TransactionService {
       this.logger.error('Error creando transacción', error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') { // Unique constraint failed
-          throw new BadRequestException('Ya existe una transacción con ese identificador único.');
+        if (error.code === 'P2002') {
+          // Unique constraint failed
+          throw new BadRequestException(
+            'Ya existe una transacción con ese identificador único.',
+          );
         }
       }
 
-      throw new InternalServerErrorException('Error inesperado al crear la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al crear la transacción.',
+      );
     }
-      
   }
 
   async createManagedTransfer(
@@ -103,11 +118,14 @@ export class TransactionService {
       data: {
         ...createTransferDto,
         statusId: createTransferDto.statusId ?? pendingStatus.id,
-        description: this.buildTransferDescription(createTransferDto.description, {
-          idempotencyKey: createTransferDto.idempotencyKey,
-          externalReference: createTransferDto.externalReference,
-          receiptUrl: createTransferDto.receiptUrl,
-        }),
+        description: this.buildTransferDescription(
+          createTransferDto.description,
+          {
+            idempotencyKey: createTransferDto.idempotencyKey,
+            externalReference: createTransferDto.externalReference,
+            receiptUrl: createTransferDto.receiptUrl,
+          },
+        ),
       },
     });
 
@@ -116,8 +134,7 @@ export class TransactionService {
       transfer,
     };
   }
-   async createTransactionStatus(transactionStatusDto: TransactionStatusDto) {
-    
+  async createTransactionStatus(transactionStatusDto: TransactionStatusDto) {
     try {
       const transaction = await this.prisma.transactionStatus.create({
         data: transactionStatusDto,
@@ -127,40 +144,42 @@ export class TransactionService {
       this.logger.error('Error creando transacción', error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') { // Unique constraint failed
-          throw new BadRequestException('Ya existe una transacción con ese identificador único.');
+        if (error.code === 'P2002') {
+          // Unique constraint failed
+          throw new BadRequestException(
+            'Ya existe una transacción con ese identificador único.',
+          );
         }
       }
 
-      throw new InternalServerErrorException('Error inesperado al crear la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al crear la transacción.',
+      );
     }
-      
   }
-    async findAllTransactionStatus() {
-    
+  async findAllTransactionStatus() {
     try {
       return await this.prisma.transactionStatus.findMany();
     } catch (error) {
       this.logger.error('Error obteniendo transferencias', error);
-      throw new InternalServerErrorException('Error inesperado al obtener las transferencias.');
+      throw new InternalServerErrorException(
+        'Error inesperado al obtener las transferencias.',
+      );
     }
-      
   }
 
-
   async findAllTranfer() {
-    
     try {
       return await this.prisma.transfer.findMany();
     } catch (error) {
       this.logger.error('Error obteniendo transferencias', error);
-      throw new InternalServerErrorException('Error inesperado al obtener las transferencias.');
+      throw new InternalServerErrorException(
+        'Error inesperado al obtener las transferencias.',
+      );
     }
-      
   }
 
   async findOneTranfer(id: number) {
-    
     try {
       const transaction = await this.prisma.transfer.findUnique({
         where: { id },
@@ -172,13 +191,13 @@ export class TransactionService {
     } catch (error) {
       this.logger.error(`Error buscando transacción con id ${id}`, error);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Error inesperado al buscar la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar la transacción.',
+      );
     }
-      
   }
 
   async update(id: number, updateTransactionDto: UpdateTransferDto) {
-    
     try {
       const transaction = await this.prisma.transfer.update({
         where: { id },
@@ -189,20 +208,29 @@ export class TransactionService {
       this.logger.error(`Error actualizando transacción con id ${id}`, error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2025') { // Record not found
-          throw new NotFoundException(`Transacción con id ${id} no encontrada para actualizar.`);
+        if (error.code === 'P2025') {
+          // Record not found
+          throw new NotFoundException(
+            `Transacción con id ${id} no encontrada para actualizar.`,
+          );
         }
         if (error.code === 'P2002') {
-          throw new BadRequestException('Los datos actualizados violan una restricción única.');
+          throw new BadRequestException(
+            'Los datos actualizados violan una restricción única.',
+          );
         }
       }
 
-      throw new InternalServerErrorException('Error inesperado al actualizar la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al actualizar la transacción.',
+      );
     }
-      
   }
 
-  async transitionTransferStatus(id: number, statusName: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERSED') {
+  async transitionTransferStatus(
+    id: number,
+    statusName: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERSED',
+  ) {
     const status = await this.ensureTransactionStatus(statusName);
     return this.prisma.transfer.update({
       where: { id },
@@ -227,8 +255,13 @@ export class TransactionService {
     }
 
     const lines = transfer.journalEntry?.lines ?? [];
-    const matchingCurrency = lines.filter(line => line.currencyCode === transfer.currencyCode);
-    const totalAmount = matchingCurrency.reduce((acc, line) => acc.plus(line.amount), new Prisma.Decimal(0));
+    const matchingCurrency = lines.filter(
+      (line) => line.currencyCode === transfer.currencyCode,
+    );
+    const totalAmount = matchingCurrency.reduce(
+      (acc, line) => acc.plus(line.amount),
+      new Prisma.Decimal(0),
+    );
 
     return {
       transferId: transfer.id,
@@ -238,7 +271,9 @@ export class TransactionService {
       journalEntryId: transfer.journalEntryId,
       matchingLines: matchingCurrency.length,
       journalAmountRaw: totalAmount.toString(),
-      matchesExpectedAmount: totalAmount.gte(new Prisma.Decimal(transfer.amount)),
+      matchesExpectedAmount: totalAmount.gte(
+        new Prisma.Decimal(transfer.amount),
+      ),
       metadata: this.parseTransferDescription(transfer.description),
     };
   }
@@ -258,7 +293,7 @@ export class TransactionService {
     ]);
 
     return {
-      latest: transfers.map(item => ({
+      latest: transfers.map((item) => ({
         id: item.id,
         currencyCode: item.currencyCode,
         amount: item.amount.toString(),
@@ -288,5 +323,4 @@ export class TransactionService {
     }
   */
   }
-  
 }

@@ -12,7 +12,10 @@ export interface StrategyRuntimeContext {
 export class StrategyRuntimeContextService {
   private readonly storage = new AsyncLocalStorage<StrategyRuntimeContext>();
 
-  runWithContext<T>(context: StrategyRuntimeContext, fn: () => Promise<T>): Promise<T> {
+  runWithContext<T>(
+    context: StrategyRuntimeContext,
+    fn: () => Promise<T>,
+  ): Promise<T> {
     return this.storage.run(context, fn);
   }
 

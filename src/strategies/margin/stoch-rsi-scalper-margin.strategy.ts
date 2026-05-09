@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ATR, EMA, SMA, StochasticRSI } from 'technicalindicators';
 import { BinanceService } from '../../binance/binance.service';
-import { StochRsiScalperStrategyConfig, TradingStrategy } from '../trading-strategy.interface';
+import {
+  StochRsiScalperStrategyConfig,
+  TradingStrategy,
+} from '../trading-strategy.interface';
 import { StrategyRuntimeUtils } from '../shared/strategy-runtime.utils';
 
 @Injectable()
-export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiScalperStrategyConfig> {
+export class StochRsiScalperMarginStrategy
+  implements TradingStrategy<StochRsiScalperStrategyConfig>
+{
   id: string;
   symbol: string;
   config: StochRsiScalperStrategyConfig;
@@ -24,7 +29,9 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
     this.validateConfig();
     this.logger.log(`Starting StochRSI scalper margin on ${this.symbol}`);
 
-    const { lotSizeFilter } = await this.binanceService.obtenerFiltrosSimbolo(this.symbol);
+    const { lotSizeFilter } = await this.binanceService.obtenerFiltrosSimbolo(
+      this.symbol,
+    );
     if (!lotSizeFilter?.stepSize) {
       throw new Error(`Lot size filter not found for ${this.symbol}`);
     }
@@ -51,7 +58,10 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
           candlesCount,
         } = snapshot;
 
-        const quantity = this.roundToStep(this.config.tradeQuantity, lotSizeFilter.stepSize);
+        const quantity = this.roundToStep(
+          this.config.tradeQuantity,
+          lotSizeFilter.stepSize,
+        );
         if (quantity <= 0) {
           throw new Error('tradeQuantity ajustado por lotSize queda en 0');
         }
@@ -65,28 +75,49 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
         const crossUp = prevStochK <= prevStochD && stochK > stochD;
         const crossDown = prevStochK >= prevStochD && stochK < stochD;
 
-        const longSignal = bullishTrend && volumeOk && crossUp && stochK <= lowerBand;
+        const longSignal =
+          bullishTrend && volumeOk && crossUp && stochK <= lowerBand;
 
         if (!this.inPosition && longSignal) {
-          await this.binanceService.createCrossMarginMarketOrder(this.symbol, 'BUY', quantity.toString());
+          await this.binanceService.createCrossMarginMarketOrder(
+            this.symbol,
+            'BUY',
+            quantity.toString(),
+          );
           this.inPosition = true;
-          this.stopLossPrice = currentPrice - atr * this.getStopLossAtrMultiplier();
-          this.takeProfitPrice = currentPrice + atr * this.getTakeProfitAtrMultiplier();
+          this.stopLossPrice =
+            currentPrice - atr * this.getStopLossAtrMultiplier();
+          this.takeProfitPrice =
+            currentPrice + atr * this.getTakeProfitAtrMultiplier();
           this.openedCandleIndex = candlesCount;
           this.logger.log(
             `MARGIN BUY ${this.symbol} @ ${currentPrice}. K=${stochK.toFixed(2)} D=${stochD.toFixed(2)} Vol=${volume.toFixed(4)}`,
           );
         } else if (this.inPosition) {
-          const hitStop = this.stopLossPrice !== null && currentPrice <= this.stopLossPrice;
-          const hitTakeProfit = this.takeProfitPrice !== null && currentPrice >= this.takeProfitPrice;
+          const hitStop =
+            this.stopLossPrice !== null && currentPrice <= this.stopLossPrice;
+          const hitTakeProfit =
+            this.takeProfitPrice !== null &&
+            currentPrice >= this.takeProfitPrice;
           const momentumExit = crossDown && stochK >= upperBand;
           const trendExit = bearishTrend;
           const timeoutExit =
             this.openedCandleIndex !== null &&
-            candlesCount - this.openedCandleIndex >= this.getMaxTradeDurationCandles();
+            candlesCount - this.openedCandleIndex >=
+              this.getMaxTradeDurationCandles();
 
-          if (hitStop || hitTakeProfit || momentumExit || trendExit || timeoutExit) {
-            await this.binanceService.createCrossMarginMarketOrder(this.symbol, 'SELL', quantity.toString());
+          if (
+            hitStop ||
+            hitTakeProfit ||
+            momentumExit ||
+            trendExit ||
+            timeoutExit
+          ) {
+            await this.binanceService.createCrossMarginMarketOrder(
+              this.symbol,
+              'SELL',
+              quantity.toString(),
+            );
             this.logger.log(
               `MARGIN SELL ${this.symbol} @ ${currentPrice}. reason=${hitStop ? 'stop' : hitTakeProfit ? 'take_profit' : momentumExit ? 'momentum_exit' : trendExit ? 'trend_exit' : 'timeout'}`,
             );
@@ -94,7 +125,10 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
           }
         }
       } catch (error) {
-        this.logger.error('Error in StochRSI scalper margin loop', error instanceof Error ? error.stack : String(error));
+        this.logger.error(
+          'Error in StochRSI scalper margin loop',
+          error instanceof Error ? error.stack : String(error),
+        );
         await StrategyRuntimeUtils.exponentialBackoff(
           5000,
           3,
@@ -126,9 +160,19 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
     candlesCount: number;
   } | null> {
     const interval = this.config.interval ?? '1m';
-    const lookback = Math.max(this.getEmaSlowPeriod(), this.getStochRsiPeriod(), this.getAtrPeriod(), this.getVolumeLookback()) + 30;
+    const lookback =
+      Math.max(
+        this.getEmaSlowPeriod(),
+        this.getStochRsiPeriod(),
+        this.getAtrPeriod(),
+        this.getVolumeLookback(),
+      ) + 30;
 
-    const candles = await this.binanceService.getCandles(this.symbol, interval, lookback);
+    const candles = await this.binanceService.getCandles(
+      this.symbol,
+      interval,
+      lookback,
+    );
     if (!candles || candles.length < 40) {
       return null;
     }
@@ -138,9 +182,20 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
     const closes = candles.map((c) => parseFloat(c.close));
     const volumes = candles.map((c) => parseFloat(c.volume));
 
-    const emaFastSeries = EMA.calculate({ period: this.getEmaFastPeriod(), values: closes });
-    const emaSlowSeries = EMA.calculate({ period: this.getEmaSlowPeriod(), values: closes });
-    const atrSeries = ATR.calculate({ period: this.getAtrPeriod(), high: highs, low: lows, close: closes });
+    const emaFastSeries = EMA.calculate({
+      period: this.getEmaFastPeriod(),
+      values: closes,
+    });
+    const emaSlowSeries = EMA.calculate({
+      period: this.getEmaSlowPeriod(),
+      values: closes,
+    });
+    const atrSeries = ATR.calculate({
+      period: this.getAtrPeriod(),
+      high: highs,
+      low: lows,
+      close: closes,
+    });
     const stochRsiSeries = StochasticRSI.calculate({
       values: closes,
       rsiPeriod: this.getStochRsiPeriod(),
@@ -149,7 +204,10 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
       dPeriod: this.getStochDPeriod(),
     });
 
-    const volumeSma = SMA.calculate({ period: this.getVolumeLookback(), values: volumes });
+    const volumeSma = SMA.calculate({
+      period: this.getVolumeLookback(),
+      values: volumes,
+    });
 
     if (
       !emaFastSeries.length ||
@@ -161,7 +219,9 @@ export class StochRsiScalperMarginStrategy implements TradingStrategy<StochRsiSc
       return null;
     }
 
-    const currentPriceResp = await this.binanceService.getSymbolPrice(this.symbol);
+    const currentPriceResp = await this.binanceService.getSymbolPrice(
+      this.symbol,
+    );
     const currentPrice = parseFloat(currentPriceResp.price);
 
     const lastStoch = stochRsiSeries[stochRsiSeries.length - 1];

@@ -9,6 +9,11 @@ import { AccountModule } from 'src/account/account.module';
 @Module({
   imports: [BinanceModule, AccountModule],
   exports: [TradingService],
-  providers: [TradingService, IndicatorsService, CryptoPriceWatcherGateway, PrismaClient],
+  providers: [
+    TradingService,
+    IndicatorsService,
+    CryptoPriceWatcherGateway,
+    PrismaClient,
+  ],
 })
 export class CryptoPriceWatcherModule {}

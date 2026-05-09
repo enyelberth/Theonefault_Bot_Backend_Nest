@@ -8,11 +8,17 @@ export class UpdateBalanceDto {
   @Type(() => Number)
   accountId: number;
 
-  @ApiProperty({ description: 'Código de la moneda (ejemplo: BTC)', example: 'BTC' })
+  @ApiProperty({
+    description: 'Código de la moneda (ejemplo: BTC)',
+    example: 'BTC',
+  })
   @IsString()
   currencyCode: string;
 
-  @ApiProperty({ description: 'Nuevo saldo para la cuenta y moneda', example: 0.1234 })
+  @ApiProperty({
+    description: 'Nuevo saldo para la cuenta y moneda',
+    example: 0.1234,
+  })
   @IsNumber({ maxDecimalPlaces: 18 })
   @Min(0)
   @Type(() => Number)

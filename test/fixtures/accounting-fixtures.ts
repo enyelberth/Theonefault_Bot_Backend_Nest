@@ -1,7 +1,10 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { createBaseFixtures } from './base-fixtures';
 
-export async function createAccountingFixture(prisma: PrismaClient, seed = 'accounting') {
+export async function createAccountingFixture(
+  prisma: PrismaClient,
+  seed = 'accounting',
+) {
   const base = await createBaseFixtures(prisma, { fixtureTag: seed });
 
   const entry = await prisma.journalEntry.create({

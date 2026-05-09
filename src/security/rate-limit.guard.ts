@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RATE_LIMIT_KEY, RateLimitRule } from './rate-limit.decorator';
 
@@ -9,10 +15,10 @@ export class RateLimitGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const rule = this.reflector.getAllAndOverride<RateLimitRule>(RATE_LIMIT_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const rule = this.reflector.getAllAndOverride<RateLimitRule>(
+      RATE_LIMIT_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!rule) {
       return true;
@@ -26,7 +32,9 @@ export class RateLimitGuard implements CanActivate {
 
     const now = Date.now();
     const windowStart = now - rule.windowMs;
-    const events = (this.buckets.get(bucketKey) ?? []).filter(ts => ts >= windowStart);
+    const events = (this.buckets.get(bucketKey) ?? []).filter(
+      (ts) => ts >= windowStart,
+    );
 
     if (events.length >= rule.limit) {
       throw new HttpException(

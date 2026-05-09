@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { BinanceAuthService } from './binance-auth.service';
-import { StrategyOpsService } from 'src/strategy-monitoring/strategy-ops.service';
+import { StrategyOpsService } from '../strategy-monitoring/strategy-ops.service';
 
 @Injectable()
 export class BinanceSpotService {
@@ -24,7 +24,16 @@ export class BinanceSpotService {
   }
 
   private extractBaseAsset(symbol: string): string {
-    const knownQuotes = ['USDT', 'FDUSD', 'BUSD', 'USDC', 'BTC', 'ETH', 'BNB', 'TRY'];
+    const knownQuotes = [
+      'USDT',
+      'FDUSD',
+      'BUSD',
+      'USDC',
+      'BTC',
+      'ETH',
+      'BNB',
+      'TRY',
+    ];
     const quote = knownQuotes.find((q) => symbol.endsWith(q));
     if (!quote) {
       return symbol.slice(0, 3);
@@ -33,15 +42,37 @@ export class BinanceSpotService {
     return symbol.slice(0, symbol.length - quote.length);
   }
 
-  async createLimitOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
+  async createLimitOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    price: string,
+    timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
+  ) {
     const context = this.auth.getContext();
     if (context) {
-      this.strategyOps.assertRisk(context, side, Number(quantity), Number(price));
+      this.strategyOps.assertRisk(
+        context,
+        side,
+        Number(quantity),
+        Number(price),
+      );
     }
 
-    const params: Record<string, string> = { symbol, side, type: 'LIMIT', quantity, price, timeInForce };
+    const params: Record<string, string> = {
+      symbol,
+      side,
+      type: 'LIMIT',
+      quantity,
+      price,
+      timeInForce,
+    };
     if (context) {
-      params.newClientOrderId = this.strategyOps.buildClientOrderId(context, side, 'spot');
+      params.newClientOrderId = this.strategyOps.buildClientOrderId(
+        context,
+        side,
+        'spot',
+      );
     }
 
     const response = await this.auth.postSigned('/api/v3/order', params);
@@ -60,15 +91,28 @@ export class BinanceSpotService {
     return response;
   }
 
-  async createMarketOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string) {
+  async createMarketOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+  ) {
     const context = this.auth.getContext();
     if (context) {
       this.strategyOps.assertRisk(context, side, Number(quantity));
     }
 
-    const params: Record<string, string> = { symbol, side, type: 'MARKET', quantity };
+    const params: Record<string, string> = {
+      symbol,
+      side,
+      type: 'MARKET',
+      quantity,
+    };
     if (context) {
-      params.newClientOrderId = this.strategyOps.buildClientOrderId(context, side, 'spot');
+      params.newClientOrderId = this.strategyOps.buildClientOrderId(
+        context,
+        side,
+        'spot',
+      );
     }
 
     const response = await this.auth.postSigned('/api/v3/order', params);
@@ -86,7 +130,15 @@ export class BinanceSpotService {
     return response;
   }
 
-  async createOcoOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, stopPrice: string, stopLimitPrice: string, stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
+  async createOcoOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: string,
+    price: string,
+    stopPrice: string,
+    stopLimitPrice: string,
+    stopLimitTimeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC',
+  ) {
     const serverTime = await this.auth.getServerTime();
     const allParams = {
       symbol,
@@ -101,7 +153,9 @@ export class BinanceSpotService {
     };
 
     const query = new URLSearchParams();
-    Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(allParams).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const signature = this.auth.sign(queryString);
@@ -140,13 +194,22 @@ export class BinanceSpotService {
   }
 
   async checkOrderStatus(symbol: string, orderId: number) {
-    const params = { symbol, orderId, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params = {
+      symbol,
+      orderId,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
     const response = await this.auth.getSigned('/api/v3/order', params);
     return response;
   }
 
   async cancelOrder(symbol: string, orderId?: number) {
-    const params: Record<string, string | number> = { symbol, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params: Record<string, string | number> = {
+      symbol,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
 
     if (orderId !== undefined) {
       params.orderId = orderId;
@@ -154,7 +217,9 @@ export class BinanceSpotService {
 
     const serverTime = params.timestamp as number;
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(params).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const signature = this.auth.sign(queryString);
@@ -169,7 +234,12 @@ export class BinanceSpotService {
   }
 
   async getAllOrders(symbol: string, limit = 500, fromId?: number) {
-    const params: Record<string, string | number> = { symbol, limit, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+    const params: Record<string, string | number> = {
+      symbol,
+      limit,
+      timestamp: await this.auth.getServerTime(),
+      recvWindow: 10000,
+    };
 
     if (fromId !== undefined) {
       params.fromId = fromId;
@@ -181,11 +251,23 @@ export class BinanceSpotService {
   async getCandles(
     symbol: string,
     interval: string,
-    limit: number
-  ): Promise<{ open: string; high: string; low: string; close: string; volume: string; openTime: number; closeTime: number }[]> {
+    limit: number,
+  ): Promise<
+    {
+      open: string;
+      high: string;
+      low: string;
+      close: string;
+      volume: string;
+      openTime: number;
+      closeTime: number;
+    }[]
+  > {
     const params = { symbol, interval, limit };
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(params).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const url = `${this.auth.getBaseUrl()}/api/v3/klines?${queryString}`;
@@ -207,9 +289,15 @@ export class BinanceSpotService {
 
   async cancelAllOrders(symbol: string) {
     try {
-      const params = { symbol, timestamp: await this.auth.getServerTime(), recvWindow: 10000 };
+      const params = {
+        symbol,
+        timestamp: await this.auth.getServerTime(),
+        recvWindow: 10000,
+      };
       const query = new URLSearchParams();
-      Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+      Object.entries(params).forEach(([key, val]) =>
+        query.append(key, val.toString()),
+      );
       const queryString = query.toString();
 
       const signature = this.auth.sign(queryString);
@@ -221,7 +309,9 @@ export class BinanceSpotService {
       });
 
       const openOrders = response.data;
-      const cancelPromises = openOrders.map((order: any) => this.cancelOrder(symbol, order.orderId));
+      const cancelPromises = openOrders.map((order: any) =>
+        this.cancelOrder(symbol, order.orderId),
+      );
       await Promise.all(cancelPromises);
 
       return {
@@ -236,7 +326,9 @@ export class BinanceSpotService {
   async getSymbolPrice(symbol: string) {
     const params = { symbol };
     const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
+    Object.entries(params).forEach(([key, val]) =>
+      query.append(key, val.toString()),
+    );
     const queryString = query.toString();
 
     const url = `${this.auth.getBaseUrl()}/api/v3/ticker/price?${queryString}`;
@@ -250,15 +342,23 @@ export class BinanceSpotService {
 
   async obtenerFiltrosSimbolo(symbol: string) {
     const url = `${this.auth.getBaseUrl()}/api/v3/exchangeInfo`;
-    const response = await axios.get(url, { httpsAgent: this.auth.getHttpsAgent() });
+    const response = await axios.get(url, {
+      httpsAgent: this.auth.getHttpsAgent(),
+    });
 
-    const symbolInfo = response.data.symbols.find((s: any) => s.symbol === symbol);
+    const symbolInfo = response.data.symbols.find(
+      (s: any) => s.symbol === symbol,
+    );
     if (!symbolInfo) {
       throw new Error(`Símbolo ${symbol} no encontrado en exchangeInfo`);
     }
 
-    const priceFilter = symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER');
-    const lotSizeFilter = symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE');
+    const priceFilter = symbolInfo.filters.find(
+      (f: any) => f.filterType === 'PRICE_FILTER',
+    );
+    const lotSizeFilter = symbolInfo.filters.find(
+      (f: any) => f.filterType === 'LOT_SIZE',
+    );
 
     return { priceFilter, lotSizeFilter };
   }
@@ -271,8 +371,11 @@ export class BinanceSpotService {
     return parseFloat(priceFilter.tickSize);
   }
 
-  async getDecimalsForSymbol(symbol: string): Promise<{ priceDecimals: number; quantityDecimals: number }> {
-    const { priceFilter, lotSizeFilter } = await this.obtenerFiltrosSimbolo(symbol);
+  async getDecimalsForSymbol(
+    symbol: string,
+  ): Promise<{ priceDecimals: number; quantityDecimals: number }> {
+    const { priceFilter, lotSizeFilter } =
+      await this.obtenerFiltrosSimbolo(symbol);
 
     if (!priceFilter || !lotSizeFilter) {
       throw new Error(`No se encontraron filtros para el símbolo ${symbol}`);

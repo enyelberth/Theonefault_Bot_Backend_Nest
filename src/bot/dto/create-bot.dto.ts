@@ -37,19 +37,28 @@ export class BotConfigDto {
   @Min(1)
   gridCount?: number;
 
-  @ApiPropertyOptional({ description: 'Precio inferior del rango', example: 25000 })
+  @ApiPropertyOptional({
+    description: 'Precio inferior del rango',
+    example: 25000,
+  })
   @IsOptional()
   @IsNumber()
   @IsPositive()
   lowerPrice?: number;
 
-  @ApiPropertyOptional({ description: 'Precio superior del rango', example: 30000 })
+  @ApiPropertyOptional({
+    description: 'Precio superior del rango',
+    example: 30000,
+  })
   @IsOptional()
   @IsNumber()
   @IsPositive()
   upperPrice?: number;
 
-  @ApiPropertyOptional({ description: 'Cantidad total a negociar', example: 1.5 })
+  @ApiPropertyOptional({
+    description: 'Cantidad total a negociar',
+    example: 1.5,
+  })
   @IsOptional()
   @IsNumber()
   @IsPositive()
@@ -60,27 +69,39 @@ export class BotConfigDto {
   @Min(0)
   profitMargin: number;
 
-  @ApiPropertyOptional({ description: 'Máximo tiempo permitido para que una orden esté abierta en milisegundos', example: 3600000 })
+  @ApiPropertyOptional({
+    description:
+      'Máximo tiempo permitido para que una orden esté abierta en milisegundos',
+    example: 3600000,
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
   maxOrderAgeMs?: number;
 
-  @ApiPropertyOptional({ description: 'Niveles de órdenes para estrategias fijas', type: [OrderLevelDto] })
+  @ApiPropertyOptional({
+    description: 'Niveles de órdenes para estrategias fijas',
+    type: [OrderLevelDto],
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OrderLevelDto)
   ordersLevels?: OrderLevelDto[];
 
-  @ApiPropertyOptional({ description: 'Configuración libre adicional de estrategia' })
+  @ApiPropertyOptional({
+    description: 'Configuración libre adicional de estrategia',
+  })
   @IsOptional()
   @IsObject()
   additional?: Record<string, unknown>;
 }
 
 export class StartBotDto {
-  @ApiProperty({ description: 'Identificador único de estrategia', example: 'er10' })
+  @ApiProperty({
+    description: 'Identificador único de estrategia',
+    example: 'er10',
+  })
   @IsString()
   @IsNotEmpty()
   id: string;
@@ -90,17 +111,26 @@ export class StartBotDto {
   @Min(1)
   typeId: number;
 
-  @ApiProperty({ description: 'Símbolo de la criptomoneda', example: 'BTCUSDT' })
+  @ApiProperty({
+    description: 'Símbolo de la criptomoneda',
+    example: 'BTCUSDT',
+  })
   @IsString()
   @IsNotEmpty()
   symbol: string;
 
-  @ApiProperty({ description: 'Tipo de estrategia', example: 'gridBuyMarginFixed' })
+  @ApiProperty({
+    description: 'Tipo de estrategia',
+    example: 'gridBuyMarginFixed',
+  })
   @IsString()
   @IsNotEmpty()
   strategyType: string;
 
-  @ApiProperty({ description: 'Configuración específica de la estrategia', type: BotConfigDto })
+  @ApiProperty({
+    description: 'Configuración específica de la estrategia',
+    type: BotConfigDto,
+  })
   @ValidateNested()
   @Type(() => BotConfigDto)
   config: BotConfigDto;

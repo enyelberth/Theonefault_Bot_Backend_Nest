@@ -1,5 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AccountBalance } from '@prisma/client';
 import { AuthGuard } from 'src/authA/auth.guard';
 import { AccountBalanceService } from './account-balance.service';
@@ -16,7 +31,9 @@ export class AccountBalanceController {
   @Post()
   @ApiOperation({ summary: 'Crear un balance de cuenta' })
   @ApiBody({ type: CreateAccountBalanceDto })
-  async create(@Body() createAccountBalanceDto: CreateAccountBalanceDto): Promise<AccountBalance> {
+  async create(
+    @Body() createAccountBalanceDto: CreateAccountBalanceDto,
+  ): Promise<AccountBalance> {
     return this.accountBalanceService.create(createAccountBalanceDto);
   }
 
@@ -29,7 +46,9 @@ export class AccountBalanceController {
   @Get('account/:accountId')
   @ApiOperation({ summary: 'Listar balances por cuenta' })
   @ApiParam({ name: 'accountId', type: Number })
-  async findByAccount(@Param('accountId') accountId: string): Promise<AccountBalance[]> {
+  async findByAccount(
+    @Param('accountId') accountId: string,
+  ): Promise<AccountBalance[]> {
     return this.accountBalanceService.findByAccount(+accountId);
   }
 
@@ -42,7 +61,10 @@ export class AccountBalanceController {
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar balance por id' })
   @ApiBody({ type: UpdateAccountBalanceDto })
-  async update(@Param('id') id: string, @Body() updateAccountBalanceDto: UpdateAccountBalanceDto): Promise<AccountBalance> {
+  async update(
+    @Param('id') id: string,
+    @Body() updateAccountBalanceDto: UpdateAccountBalanceDto,
+  ): Promise<AccountBalance> {
     return this.accountBalanceService.update(+id, updateAccountBalanceDto);
   }
 

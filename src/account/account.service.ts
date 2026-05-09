@@ -99,38 +99,44 @@ export class AccountService {
     }
   }
   async findCryptosByUserId(userId: number) {
-  try {
-    const accounts = await this.prisma.account.findMany({
-      where: { userId },
-      include: {
-        accountBalances: {
-          include: {
-            currency: true,
+    try {
+      const accounts = await this.prisma.account.findMany({
+        where: { userId },
+        include: {
+          accountBalances: {
+            include: {
+              currency: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!accounts || accounts.length === 0) {
-      throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${userId}`);
+      if (!accounts || accounts.length === 0) {
+        throw new NotFoundException(
+          `No se encontraron cuentas para el usuario con id ${userId}`,
+        );
+      }
+
+      // Extraemos solo las cryptos de los saldos con su información de moneda
+      const cryptos = accounts.flatMap((account) =>
+        account.accountBalances.map((balance) => ({
+          symbol: balance.currency.code,
+          balance: balance.balance,
+        })),
+      );
+
+      return cryptos;
+    } catch (error) {
+      this.logger.error(
+        `Error buscando cryptos del usuario con id ${userId}`,
+        error,
+      );
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar cryptos de usuario.',
+      );
     }
-
-    // Extraemos solo las cryptos de los saldos con su información de moneda
-    const cryptos = accounts.flatMap(account => 
-      account.accountBalances.map(balance => ({
-        symbol: balance.currency.code,
-        balance: balance.balance,
-      }))
-    );
-
-    return cryptos;
-  } catch (error) {
-    this.logger.error(`Error buscando cryptos del usuario con id ${userId}`, error);
-    if (error instanceof NotFoundException) throw error;
-    throw new InternalServerErrorException('Error inesperado al buscar cryptos de usuario.');
   }
-}
-
 
   async findAll() {
     try {
@@ -312,7 +318,7 @@ export class AccountService {
       },
     });
 
-    return accounts.map(account => ({
+    return accounts.map((account) => ({
       accountId: account.id,
       userId: account.userId,
       accountTypeName: account.bankAccountType.typeName,
@@ -323,7 +329,7 @@ export class AccountService {
           : 'PATRIMONIO',
       parentAccountId: account.parentAccountId,
       childrenCount: account.subAccounts.length,
-      balances: account.accountBalances.map(balance => ({
+      balances: account.accountBalances.map((balance) => ({
         currencyCode: balance.currencyCode,
         balance: balance.balance.toString(),
       })),
@@ -359,10 +365,15 @@ export class AccountService {
     const journalTotals = new Map<string, Prisma.Decimal>();
     for (const line of lines) {
       const key = `${line.accountId}:${line.currencyCode}`;
-      const signed = line.entryType.toUpperCase().includes('INGRESO') || line.entryType.toUpperCase().includes('DEBIT')
-        ? new Prisma.Decimal(line.amount)
-        : new Prisma.Decimal(line.amount).mul(-1);
-      journalTotals.set(key, (journalTotals.get(key) ?? new Prisma.Decimal(0)).plus(signed));
+      const signed =
+        line.entryType.toUpperCase().includes('INGRESO') ||
+        line.entryType.toUpperCase().includes('DEBIT')
+          ? new Prisma.Decimal(line.amount)
+          : new Prisma.Decimal(line.amount).mul(-1);
+      journalTotals.set(
+        key,
+        (journalTotals.get(key) ?? new Prisma.Decimal(0)).plus(signed),
+      );
     }
 
     const prismaAny = this.prisma as any;
@@ -374,17 +385,21 @@ export class AccountService {
         })
       : [];
 
-    return balances.map(balance => {
+    return balances.map((balance) => {
       const key = `${balance.accountId}:${balance.currencyCode}`;
       const journalBalance = journalTotals.get(key) ?? new Prisma.Decimal(0);
-      const lastSync = latestSyncs.find((item: any) => item.accountId === balance.accountId);
+      const lastSync = latestSyncs.find(
+        (item: any) => item.accountId === balance.accountId,
+      );
 
       return {
         accountId: balance.accountId,
         currencyCode: balance.currencyCode,
         accountBalance: balance.balance.toString(),
         journalBalance: journalBalance.toString(),
-        differenceLocal: new Prisma.Decimal(balance.balance).minus(journalBalance).toString(),
+        differenceLocal: new Prisma.Decimal(balance.balance)
+          .minus(journalBalance)
+          .toString(),
         lastExchangeSyncAt: lastSync?.createdAt ?? null,
         lastExchangeScope: lastSync?.scope ?? null,
       };

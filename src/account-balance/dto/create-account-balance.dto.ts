@@ -6,12 +6,20 @@ export class CreateAccountBalanceDto {
   @IsInt()
   accountId: number;
 
-  @ApiProperty({ description: 'Código de moneda', example: 'USDT', maxLength: 5 })
+  @ApiProperty({
+    description: 'Código de moneda',
+    example: 'USDT',
+    maxLength: 5,
+  })
   @IsString()
   @MaxLength(5)
   currencyCode: string;
 
-  @ApiProperty({ description: 'Balance actual', type: String, example: '1250.55' })
+  @ApiProperty({
+    description: 'Balance actual',
+    type: String,
+    example: '1250.55',
+  })
   @IsDecimal()
   balance: string;
 }

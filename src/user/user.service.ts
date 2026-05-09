@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from 'prisma/prisma.service';
@@ -7,7 +12,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private hashPassword(password: string): string {
     const salt = randomBytes(16).toString('hex');
@@ -30,7 +35,9 @@ export class UserService {
     return timingSafeEqual(candidate, storedKey);
   }
 
-  private sanitizeUser<T extends { password: string }>(user: T): Omit<T, 'password'> {
+  private sanitizeUser<T extends { password: string }>(
+    user: T,
+  ): Omit<T, 'password'> {
     const { password, ...safeUser } = user;
     return safeUser;
   }
@@ -65,18 +72,18 @@ export class UserService {
     return await this.prisma.user.findUnique({ where: { email } });
   }
 
-
   async findByUsername(username: string) {
     return await this.prisma.user.findFirst({ where: { username } });
   }
-
 
   async update(id: number, updateUserDto: UpdateUserDto) {
     try {
       await this.findOne(id); // Verifica que exista antes de actualizar
       const data = {
         ...updateUserDto,
-        ...(updateUserDto.password ? { password: this.hashPassword(updateUserDto.password) } : {}),
+        ...(updateUserDto.password
+          ? { password: this.hashPassword(updateUserDto.password) }
+          : {}),
       };
       const user = await this.prisma.user.update({ where: { id }, data });
       return this.sanitizeUser(user);

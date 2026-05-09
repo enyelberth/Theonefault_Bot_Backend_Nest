@@ -1,5 +1,11 @@
 // bot-telegram.controller.ts
-import { Controller, Post, Body, Headers, UnauthorizedException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Headers,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { MessageDto } from './dto/message-dto';
 import { BotTelegramService } from './bot-telegram.service';
@@ -26,6 +32,9 @@ export class BotTelegramController {
       throw new UnauthorizedException('Token interno inválido');
     }
 
-    return this.telegramService.sendMessage(messageDto.chatId, messageDto.message);
+    return this.telegramService.sendMessage(
+      messageDto.chatId,
+      messageDto.message,
+    );
   }
 }
