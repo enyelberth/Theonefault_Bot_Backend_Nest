@@ -1,6 +1,8 @@
-import { Controller, Post, Body, Patch, Delete, Param, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Body, Patch, Delete, Param, Get, UseGuards, Query, NotFoundException } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { PaperOrderStatus, PrismaClient } from '@prisma/client';
 import { BotService } from './bot.service';
+import { BotPnlService } from './bot-pnl.service';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
 
 @ApiBearerAuth('BearerAuth')
@@ -8,7 +10,11 @@ import { AuthGuard, Public } from 'src/authA/auth.guard';
 @ApiTags('bot')
 @Controller('bot')
 export class BotController {
-  constructor(private readonly botService: BotService) { }
+  constructor(
+    private readonly botService: BotService,
+    private readonly botPnlService: BotPnlService,
+    private readonly prisma: PrismaClient,
+  ) { }
 
   @Public()
   @Post('start')
@@ -38,6 +44,25 @@ export class BotController {
   async stopBot(@Param('symbol') symbol: string, @Param('id') id: string) {
     await this.botService.stopStrategy(symbol, id);
     return { message: `Bot detenido para ${symbol} con id ${id}` };
+  }
+
+  @Public()
+  @Post('restart/:symbol/:id')
+  @ApiOperation({
+    summary:
+      'Reiniciar bot: stop + start reutilizando configSnapshot y strategyType del BotRun',
+  })
+  @ApiParam({ name: 'symbol', required: true, example: 'BTCUSDT' })
+  @ApiParam({ name: 'id', required: true, example: 'strategy1' })
+  async restartBot(
+    @Param('symbol') symbol: string,
+    @Param('id') id: string,
+  ) {
+    const result = await this.botService.restartStrategy(symbol, id);
+    return {
+      message: `Bot reiniciado para ${symbol} con id ${id}`,
+      ...result,
+    };
   }
 
   @Get('active')
@@ -141,5 +166,73 @@ export class BotController {
   async updateOrderLevelPrice(@Param('symbol') symbol: string, @Param('id') id: string, @Param('levelIndex') levelIndex: number, @Body() body: { newPrice: number }) {
     await this.botService.updateOrderLevelPrice(id, symbol, levelIndex, body.newPrice);
     return { message: `Precio actualizado para nivel ${levelIndex} en estrategia ${id}` };
+  }
+
+  @Public()
+  @Get('runs/active')
+  @ApiOperation({ summary: 'Listar BotRuns activos (persistidos en DB)' })
+  listActiveRuns() {
+    return this.botPnlService.listActiveBotRuns();
+  }
+
+  @Public()
+  @Get('runs/:botRunId/summary')
+  @ApiOperation({ summary: 'Resumen PnL de un BotRun' })
+  @ApiParam({ name: 'botRunId', type: 'number', example: 1 })
+  getRunSummary(@Param('botRunId') botRunId: string) {
+    return this.botPnlService.getBotRunSummary(Number(botRunId));
+  }
+
+  @Public()
+  @Get('runs/:botRunId/metrics')
+  @ApiOperation({ summary: 'Métricas históricas de un BotRun' })
+  @ApiParam({ name: 'botRunId', type: 'number', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: 'number' })
+  getRunMetrics(@Param('botRunId') botRunId: string, @Query('limit') limit?: string) {
+    return this.botPnlService.listBotRunMetrics(Number(botRunId), limit ? Number(limit) : 100);
+  }
+
+  @Public()
+  @Get('runs/:botRunId/trades')
+  @ApiOperation({ summary: 'Trades cerrados de un BotRun' })
+  @ApiParam({ name: 'botRunId', type: 'number', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: 'number' })
+  getRunTrades(@Param('botRunId') botRunId: string, @Query('limit') limit?: string) {
+    return this.botPnlService.listTradeResults(Number(botRunId), limit ? Number(limit) : 100);
+  }
+
+  @Public()
+  @Get('paper-orders')
+  @ApiOperation({ summary: 'Listar PaperOrders (bots en modo dryRun)' })
+  @ApiQuery({ name: 'symbol', required: false, example: 'BTCUSDT' })
+  @ApiQuery({ name: 'botRunId', required: false, type: 'number' })
+  @ApiQuery({ name: 'status', required: false, example: 'OPEN' })
+  @ApiQuery({ name: 'limit', required: false, type: 'number' })
+  async listPaperOrders(
+    @Query('symbol') symbol?: string,
+    @Query('botRunId') botRunId?: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const where: any = {};
+    if (symbol) where.symbol = symbol.toUpperCase();
+    if (botRunId) where.botRunId = Number(botRunId);
+    if (status) where.status = status.toUpperCase() as PaperOrderStatus;
+    return this.prisma.paperOrder.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit ? Number(limit) : 200,
+    });
+  }
+
+  @Public()
+  @Get('runs/lookup/:symbol/:strategyId')
+  @ApiOperation({ summary: 'Obtener botRunId activo por (symbol, strategyId)' })
+  @ApiParam({ name: 'symbol', example: 'BTCUSDT' })
+  @ApiParam({ name: 'strategyId', example: 'strategy1' })
+  async lookupRun(@Param('symbol') symbol: string, @Param('strategyId') strategyId: string) {
+    const run = await this.botPnlService.findActiveBotRun(strategyId, symbol);
+    if (!run) throw new NotFoundException('BotRun activo no encontrado');
+    return run;
   }
 }

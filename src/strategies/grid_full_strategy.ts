@@ -1,8 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OrderSide } from '@prisma/client';
 import { TradingStrategy } from './trading-strategy.interface';
 import { BinanceService } from '../binance/binance.service';
 import { Order, OrderLevel } from 'src/interfaces/order';
 import { LoggerMessages } from 'src/utils/logs';
+import { PnlTracker } from '../bot/pnl-tracker';
+import { StrategyPnlReporter } from '../bot/strategy-pnl-reporter';
+
+const SELL_LEG_OFFSET = 100000;
 
 
 @Injectable()
@@ -33,8 +38,13 @@ export class GridFullStrategy implements TradingStrategy {
   private stoppedLossLevelsSell = new Set<number>();
 
   private profitLoss:number = 0;
+  private pnl = new PnlTracker();
 
   constructor(private readonly binanceService: BinanceService) {}
+
+  attachPnlReporter(reporter: StrategyPnlReporter): void {
+    this.pnl.attach(reporter);
+  }
 
   async run() {
     this.logMessages.logInfo(`Starting Grid Full Strategy on ${this.symbol}`);
@@ -59,6 +69,11 @@ export class GridFullStrategy implements TradingStrategy {
 
         await this.placeSellOrders(priceFilter, lotSizeFilter, currentPrice);
         await this.checkSellOrders(priceFilter, lotSizeFilter, currentPrice);
+
+        await this.pnl.snapshot(
+          this.openBuyOrders.size + this.openSellOrders.size,
+          currentPrice,
+        );
 
         const sleepDuration = this.calculateSleepDuration();
         this.logMessages.logInfo(`Sleeping ${sleepDuration} ms`);
@@ -175,6 +190,14 @@ export class GridFullStrategy implements TradingStrategy {
           const sellPrice = this.roundToStep(orderLevel.price * (1 + this.config.profitMargin), priceFilter.tickSize);
           const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
 
+          // BUY fill contexto:
+          //  - Si leg SHORT existía en (SELL_LEG_OFFSET+i) → cierra sell-grid leg.
+          //  - Si NO, apertura buy-grid → open leg BUY en i.
+          if (this.pnl.hasLeg(SELL_LEG_OFFSET + i)) {
+            await this.pnl.closeLeg(SELL_LEG_OFFSET + i, parseFloat(order.price), order.orderId);
+          } else {
+            this.pnl.openLeg(i, parseFloat(order.price), quantity, OrderSide.BUY);
+          }
           this.logMessages.logInfo(`Placing LIMIT SELL order at level ${i} price ${sellPrice}`);
           try {
             const orderSell = await this.binanceService.createCrossMarginLimitOrder(
@@ -229,6 +252,14 @@ export class GridFullStrategy implements TradingStrategy {
           const buyPrice = this.roundToStep(orderLevel.price * (1 - this.config.profitMargin), priceFilter.tickSize);
           const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
 
+          // SELL fill contexto sell-grid:
+          //  - Si leg BUY existía en level i (buy-grid) → esto era cierre de buy-grid (ya manejado por buy-grid SELL contraparte). Este bloque atiende sell-grid inicial.
+          //  - Si NO había leg BUY, este SELL abre leg SHORT del sell-grid.
+          if (!this.pnl.hasLeg(i)) {
+            this.pnl.openLeg(SELL_LEG_OFFSET + i, parseFloat(order.price), quantity, OrderSide.SELL);
+          } else {
+            await this.pnl.closeLeg(i, parseFloat(order.price), order.orderId);
+          }
           this.logMessages.logInfo(`Placing LIMIT BUY order at level ${i} price ${buyPrice}`);
           try {
             const orderBuy = await this.binanceService.createCrossMarginLimitOrder(

@@ -73,4 +73,9 @@ async chat(chatId: number, prompt: string): Promise<string> {
     throw error;
   }
 }
+
+  async generateText(prompt: string): Promise<string> {
+    const result = await this.model.generateContent(prompt);
+    return result.response.text();
+  }
 }

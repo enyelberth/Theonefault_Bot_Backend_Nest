@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>KAIZEN</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; background: #0b0f14; color: #e6edf3; }
+      code { background: #161b22; padding: 2px 6px; border-radius: 4px; }
+      a { color: #58a6ff; }
+      section { border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 24px; background: #0d1117; }
+      h2 { margin-top: 0; }
+      table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+      th, td { border: 1px solid #30363d; padding: 6px 10px; text-align: left; font-size: 13px; }
+      th { background: #161b22; }
+      button { padding: 6px 12px; border-radius: 4px; border: 1px solid #30363d; cursor: pointer; margin-right: 6px; background: #21262d; color: #e6edf3; }
+      button:hover { background: #30363d; }
+      .btn-restart { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+      .btn-stop    { background: #da3633; color: #fff; border-color: #da3633; }
+      .btn-refresh { background: #238636; color: #fff; border-color: #238636; }
+      .btn-danger  { background: #da3633; color: #fff; border-color: #da3633; }
+      .neg { color: #f85149; }
+      .pos { color: #3fb950; }
+      .mode-prod { color: #f85149; font-weight: bold; }
+      .mode-test { color: #d29922; font-weight: bold; }
+      input, select { background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; margin-right: 6px; }
+      #log { margin-top: 16px; font-family: monospace; font-size: 12px; color: #8b949e; max-height: 240px; overflow-y: auto; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+      .warn { background: #3b1f1f; border: 1px solid #da3633; border-radius: 6px; padding: 8px 12px; margin-top: 8px; color: #f85149; }
+    </style>
+  </head>
+  <body>
+    <h1>KAIZEN</h1>
+    <p>Backend API: <a href="http://localhost:50000/api">http://localhost:50000/api</a> (Swagger)</p>
+
+    <section>
+      <h2>Binance — Cuenta Real</h2>
+      <div class="row">
+        <span>Modo: <span id="binance-mode">-</span></span>
+        <span>BaseUrl: <code id="binance-baseurl">-</code></span>
+        <span>API Key: <code id="binance-key">-</code></span>
+        <span>Ping: <span id="binance-ping">-</span></span>
+        <button class="btn-refresh" onclick="loadBinance()">Refrescar</button>
+      </div>
+      <div id="binance-warn" class="warn" style="display:none">
+        MODO TEST (testnet) activo. Órdenes NO afectan cuenta real. Para trading real: <code>PRODUCTION=true</code> en <code>.env</code>.
+      </div>
+      <table id="balances">
+        <thead>
+          <tr><th>Asset</th><th>Free</th><th>Locked</th><th>Total</th><th>Acciones</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Vender rápido (Market)</h3>
+      <div class="row">
+        <input id="qs-symbol" placeholder="XRPUSDT" value="XRPUSDT" />
+        <input id="qs-qty" placeholder="cantidad" />
+        <label><input type="checkbox" id="qs-dryrun" checked /> dry-run (simular)</label>
+        <button class="btn-danger" onclick="quickSell()">Vender Market</button>
+      </div>
+
+      <h3>Orden LIMIT</h3>
+      <div class="row">
+        <input id="lm-symbol" placeholder="XRPUSDT" value="XRPUSDT" />
+        <select id="lm-side">
+          <option value="SELL">SELL</option>
+          <option value="BUY">BUY</option>
+        </select>
+        <input id="lm-qty" placeholder="cantidad" />
+        <input id="lm-price" placeholder="precio" />
+        <button onclick="createLimit()">Crear LIMIT</button>
+      </div>
+
+      <div class="row">
+        <span>Auth token (opcional para endpoints protegidos):</span>
+        <input id="auth-token" placeholder="Bearer token" style="width: 320px" />
+        <button onclick="saveToken()">Guardar</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Bots Activos</h2>
+      <button class="btn-refresh" onclick="loadBots()">Refrescar</button>
+      <table id="bots">
+        <thead>
+          <tr>
+            <th>BotRunId</th><th>Symbol</th><th>StrategyId</th><th>Type</th>
+            <th>Realized PnL</th><th>Unrealized</th><th>Trades (W/L)</th><th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <div id="log"></div>
+
+    <script>
+      const API = 'http://localhost:50000';
+
+      function log(msg) {
+        const el = document.getElementById('log');
+        const ts = new Date().toLocaleTimeString();
+        el.innerHTML = `[${ts}] ${msg}<br>` + el.innerHTML;
+      }
+
+      function authHeaders() {
+        const t = localStorage.getItem('kaizen_token') || '';
+        return t ? { Authorization: `Bearer ${t}` } : {};
+      }
+
+      function saveToken() {
+        const t = document.getElementById('auth-token').value.trim();
+        localStorage.setItem('kaizen_token', t);
+        log('Token guardado');
+      }
+
+      async function loadBinance() {
+        try {
+          const mode = await fetch(`${API}/binance/mode`).then((r) => r.json());
+          document.getElementById('binance-mode').innerHTML =
+            `<span class="mode-${mode.mode === 'PRODUCTION' ? 'prod' : 'test'}">${mode.mode}</span>`;
+          document.getElementById('binance-baseurl').textContent = mode.baseUrl;
+          document.getElementById('binance-key').textContent = mode.apiKeyPrefix;
+          document.getElementById('binance-warn').style.display = mode.mode === 'TEST' ? '' : 'none';
+
+          const ping = await fetch(`${API}/binance/ping`).then((r) => r.json());
+          document.getElementById('binance-ping').innerHTML = ping.ok
+            ? `<span class="pos">OK canTrade=${ping.canTrade}</span>`
+            : `<span class="neg">FAIL ${ping.error}</span>`;
+
+          const balances = await fetch(`${API}/binance/balances-public`).then((r) => r.json());
+          const tbody = document.querySelector('#balances tbody');
+          tbody.innerHTML = '';
+          if (!Array.isArray(balances)) {
+            log(`Balances error: ${JSON.stringify(balances)}`);
+            return;
+          }
+          balances
+            .map((b) => ({ asset: b.asset, free: Number(b.free), locked: Number(b.locked) }))
+            .filter((b) => b.free + b.locked > 0)
+            .sort((a, b) => (b.free + b.locked) - (a.free + a.locked))
+            .forEach((b) => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td><b>${b.asset}</b></td>
+                <td>${b.free.toFixed(8)}</td>
+                <td>${b.locked.toFixed(8)}</td>
+                <td>${(b.free + b.locked).toFixed(8)}</td>
+                <td>
+                  ${b.asset !== 'USDT' && b.free > 0 ? `<button onclick="quickSellAsset('${b.asset}', ${b.free})">Vender ${b.asset}→USDT</button>` : ''}
+                </td>`;
+              tbody.appendChild(tr);
+            });
+        } catch (e) {
+          log(`Binance error: ${e.message}`);
+        }
+      }
+
+      function quickSellAsset(asset, qty) {
+        document.getElementById('qs-symbol').value = `${asset}USDT`;
+        document.getElementById('qs-qty').value = String(qty);
+        window.scrollTo({ top: document.body.scrollHeight / 3, behavior: 'smooth' });
+      }
+
+      async function quickSell() {
+        const symbol = document.getElementById('qs-symbol').value.trim().toUpperCase();
+        const quantity = document.getElementById('qs-qty').value.trim();
+        const dryRun = document.getElementById('qs-dryrun').checked;
+        if (!symbol || !quantity) { log('Symbol/qty requeridos'); return; }
+        if (!dryRun && !confirm(`ORDEN REAL: SELL ${quantity} ${symbol} @ MARKET. Continuar?`)) return;
+        try {
+          const res = await fetch(`${API}/binance/quick-sell`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, quantity, confirm: true, dryRun }),
+          }).then((r) => r.json());
+          log(`QUICK-SELL ${dryRun ? '(dry)' : ''} ${symbol} → ${JSON.stringify(res)}`);
+          if (!dryRun) setTimeout(loadBinance, 1500);
+        } catch (e) {
+          log(`Sell error: ${e.message}`);
+        }
+      }
+
+      async function createLimit() {
+        const symbol = document.getElementById('lm-symbol').value.trim().toUpperCase();
+        const side = document.getElementById('lm-side').value;
+        const quantity = document.getElementById('lm-qty').value.trim();
+        const price = document.getElementById('lm-price').value.trim();
+        if (!symbol || !quantity || !price) { log('Faltan campos LIMIT'); return; }
+        if (!confirm(`LIMIT ${side} ${quantity} ${symbol} @ ${price}. Continuar?`)) return;
+        try {
+          const res = await fetch(`${API}/binance/order/limit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ symbol, side, quantity, price, timeInForce: 'GTC' }),
+          }).then((r) => r.json());
+          log(`LIMIT ${JSON.stringify(res)}`);
+          setTimeout(loadBinance, 1500);
+        } catch (e) {
+          log(`Limit error: ${e.message}`);
+        }
+      }
+
+      async function loadBots() {
+        try {
+          const runs = await fetch(`${API}/bot/runs/active`).then((r) => r.json());
+          const tbody = document.querySelector('#bots tbody');
+          tbody.innerHTML = '';
+          for (const run of runs) {
+            const summary = await fetch(`${API}/bot/runs/${run.id}/summary`).then((r) => r.json());
+            const metrics = await fetch(`${API}/bot/runs/${run.id}/metrics?limit=1`).then((r) => r.json());
+            const last = metrics[0] || {};
+            const unrealized = Number(last.unrealizedPnl ?? 0);
+            const uCls = unrealized < 0 ? 'neg' : 'pos';
+            const rPnl = Number(summary.realizedPnl ?? 0);
+            const rCls = rPnl < 0 ? 'neg' : 'pos';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${run.id}</td>
+              <td>${run.symbol}</td>
+              <td>${run.strategyId}</td>
+              <td>${run.strategyType || ''}</td>
+              <td class="${rCls}">${rPnl.toFixed(4)}</td>
+              <td class="${uCls}">${unrealized.toFixed(4)}</td>
+              <td>${summary.tradesCount} (${summary.winCount}/${summary.lossCount})</td>
+              <td>
+                <button class="btn-restart" onclick="restartBot('${run.symbol}','${run.strategyId}')">Restart</button>
+                <button class="btn-stop" onclick="stopBot('${run.symbol}','${run.strategyId}')">Stop</button>
+              </td>`;
+            tbody.appendChild(tr);
+          }
+        } catch (e) {
+          log(`Bots error: ${e.message}`);
+        }
+      }
+
+      async function restartBot(symbol, id) {
+        if (!confirm(`Reiniciar ${symbol}/${id}?`)) return;
+        try {
+          const res = await fetch(`${API}/bot/restart/${symbol}/${id}`, { method: 'POST' }).then((r) => r.json());
+          log(`RESTART ${symbol}/${id} → ${JSON.stringify(res)}`);
+          setTimeout(loadBots, 1500);
+        } catch (e) {
+          log(`Restart error: ${e.message}`);
+        }
+      }
+
+      async function stopBot(symbol, id) {
+        if (!confirm(`Parar ${symbol}/${id}?`)) return;
+        try {
+          const res = await fetch(`${API}/bot/stop/${symbol}/${id}`, { method: 'DELETE' }).then((r) => r.json());
+          log(`STOP ${symbol}/${id} → ${JSON.stringify(res)}`);
+          setTimeout(loadBots, 800);
+        } catch (e) {
+          log(`Stop error: ${e.message}`);
+        }
+      }
+
+      const savedTok = localStorage.getItem('kaizen_token');
+      if (savedTok) document.getElementById('auth-token').value = savedTok;
+
+      loadBinance();
+      loadBots();
+      setInterval(loadBots, 15000);
+    </script>
+  </body>
+</html>

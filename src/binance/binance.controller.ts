@@ -2,7 +2,7 @@ import { Controller, Get, Post, Param, Body, ParseIntPipe, Query, UseGuards } fr
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiQuery, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
 import { BinanceService } from './binance.service';
 import { CreateLimitOrderDto, CreateMarketOrderDto, CreateOcoOrderDto } from './dto/create-binance.dto';
-import { AuthGuard } from 'src/authA/auth.guard';
+import { AuthGuard, Public } from 'src/authA/auth.guard';
 import { IsNotEmpty, IsString } from 'class-validator';
 class RepayCrossMarginDto {
   @ApiProperty({ description: 'Activo a repagar', example: 'USDT' })
@@ -21,6 +21,69 @@ class RepayCrossMarginDto {
 @Controller('binance')
 export class BinanceController {
   constructor(private readonly binanceService: BinanceService) { }
+
+  @Public()
+  @Get('mode')
+  @ApiOperation({ summary: 'Modo actual (PROD/TEST) + baseUrl (sin exponer secretos)' })
+  getMode() {
+    return this.binanceService.getMode();
+  }
+
+  @Public()
+  @Get('ping')
+  @ApiOperation({ summary: 'Test conectividad autenticada (verifica keys + firma)' })
+  ping() {
+    return this.binanceService.pingSigned();
+  }
+
+  @Public()
+  @Get('balances-public')
+  @ApiOperation({ summary: 'Balances no cero (Spot) — versión pública para dashboard' })
+  balancesPublic() {
+    return this.binanceService.getNonZeroBalances();
+  }
+
+  @Public()
+  @Get('price/:symbol')
+  @ApiOperation({ summary: 'Precio de un símbolo (público)' })
+  @ApiParam({ name: 'symbol', example: 'XRPUSDT' })
+  getPrice(@Param('symbol') symbol: string) {
+    return this.binanceService.getSymbolPrice(symbol.toUpperCase());
+  }
+
+  @Public()
+  @Post('quick-sell')
+  @ApiOperation({
+    summary: 'Vender cantidad de un asset por quote (market order). Confirmación requerida.',
+  })
+  async quickSell(
+    @Body()
+    body: {
+      symbol: string;
+      quantity: string;
+      confirm: boolean;
+      dryRun?: boolean;
+    },
+  ) {
+    const symbol = (body.symbol || '').toUpperCase();
+    if (!body.confirm) {
+      throw new Error('confirm=true requerido para ejecutar quick-sell');
+    }
+    if (!symbol || !body.quantity) {
+      throw new Error('symbol y quantity son obligatorios');
+    }
+    if (body.dryRun) {
+      const price = await this.binanceService.getSymbolPrice(symbol);
+      return {
+        dryRun: true,
+        symbol,
+        side: 'SELL',
+        quantity: body.quantity,
+        estimatedProceeds: Number(price?.price) * Number(body.quantity),
+      };
+    }
+    return this.binanceService.createMarketOrder(symbol, 'SELL', body.quantity);
+  }
 
   @Get('account-info')
   @ApiOperation({ summary: 'Obtener información completa de la cuenta' })

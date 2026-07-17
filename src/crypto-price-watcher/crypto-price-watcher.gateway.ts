@@ -19,7 +19,7 @@ export class CryptoPriceWatcherGateway implements OnGatewayInit, OnModuleDestroy
   private binanceWs: WebSocket | null = null;
   private readonly symbols = ['btcfdusd', 'linkfdusd', 'dogefdusd', 'xrpfdusd', 'bnbfdusd', 'solfdusd'];
   private readonly lastRunAt: Record<string, number> = {};
-  private readonly MIN_INTERVAL_MS = 60 * 1000;
+  private readonly MIN_INTERVAL_MS = 5 * 1000;
 
   constructor(private readonly indicatorsService: IndicatorsService) {}
 

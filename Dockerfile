@@ -17,6 +17,6 @@ COPY .env .
 RUN npx prisma generate
 RUN npm run seed
 RUN npm run build
-EXPOSE 3000
+EXPOSE 50000
 
 CMD ["npm", "run", "start:prod"]

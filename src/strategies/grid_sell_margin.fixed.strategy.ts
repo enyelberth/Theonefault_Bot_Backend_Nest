@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OrderSide } from '@prisma/client';
 import { TradingStrategy } from './trading-strategy.interface';
 import { BinanceService } from '../binance/binance.service';
 import { LoggerMessages } from 'src/utils/logs';
+import { PnlTracker } from '../bot/pnl-tracker';
+import { StrategyPnlReporter } from '../bot/strategy-pnl-reporter';
 
 interface Order {
   orderId: number;
@@ -40,8 +43,13 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
   private stoppedLossLevels = new Set<number>();
   private isRunning = true;
   private profitLoss = 0;
+  private pnl = new PnlTracker();
 
   constructor(private readonly binanceService: BinanceService) {}
+
+  attachPnlReporter(reporter: StrategyPnlReporter): void {
+    this.pnl.attach(reporter);
+  }
 
   async run() {
     this.logger.logInfo(`Starting Grid SELL FIXED on ${this.symbol}`);
@@ -62,6 +70,10 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
         await this.placeSellOrders(priceFilter, lotSizeFilter, currentPrice);
         await this.checkSellOrders(priceFilter, lotSizeFilter, currentPrice);
         await this.checkBuyOrders(priceFilter, lotSizeFilter, currentPrice);
+
+        await this.pnl.snapshot(this.openBuyOrders.size, currentPrice, {
+          openSells: this.openSellOrders.size,
+        });
 
         const sleepDuration = this.calculateSleepDuration();
         this.logger.logInfo(`Sleeping ${sleepDuration} ms`);
@@ -203,6 +215,7 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
 
           const buyPrice = this.roundToStep(orderLevel.price * (1 - this.config.profitMargin), priceFilter.tickSize);
           const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
+          this.pnl.openLeg(i, filledPrice, quantity, OrderSide.SELL);
           this.logger.logInfo(`Placing LIMIT BUY order level ${i} at price ${buyPrice}`);
           this.logger.logInfo(`Filled SELL at ${filledPrice}, placing BUY at ${buyPrice} for quantity ${quantity}`);
 
@@ -250,7 +263,9 @@ export class GridSellMarginFixedStrategy implements TradingStrategy {
           const orderLevel = this.config.ordersLevels[i];
           if (!orderLevel) continue;
 
-          // Aquí agregar lógica si se necesita gestionar algo al llenarse buy orders (por ejemplo ganar/perder)
+          // Cierre de leg SHORT: SELL abrió, BUY cierra
+          const pnl = await this.pnl.closeLeg(i, filledPrice, order.orderId);
+          if (pnl !== null) this.profitLoss += pnl;
 
           this.logger.logInfo(`BUY order filled at price ${filledPrice}, level ${i}`);
         } else if (Date.now() - order.timestamp > maxAgeMs) {

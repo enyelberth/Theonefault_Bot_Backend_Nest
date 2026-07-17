@@ -1,22 +1,88 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import * as https from 'https';
 import { isNotEmptyObject } from 'class-validator';
 import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
+import { envConfig } from '../config/env.config';
 
 @Injectable()
-export class BinanceService {
+export class BinanceService implements OnModuleInit {
   private readonly API_KEY: string;
   private readonly API_SECRET: string;
+  private readonly BASE_URL: string;
+  private readonly MARGIN_ENABLED: boolean;
+  private readonly PRODUCTION: boolean;
   private readonly httpsAgent: https.Agent;
 
+  // Cached delta: server epoch (ms) - local epoch (ms).
+  private timeOffsetMs: number = 0;
+  private lastSyncAt: number = 0;
+  private readonly SYNC_TTL_MS = 60 * 1000; // resync cada 1 min (era 5 min)
+  private readonly TIMESTAMP_SAFETY_MS = 5000; // envía timestamp N ms detrás del server
+  private syncing: Promise<void> | null = null;
+
   constructor() {
-    this.API_KEY = process.env.BINANCE_API_KEY || '';
-    this.API_SECRET = process.env.BINANCE_API_SECRET || '';
+    const cfg = envConfig();
+    this.API_KEY = cfg.binance.apiKey;
+    this.API_SECRET = cfg.binance.apiSecret;
+    this.BASE_URL = cfg.binance.baseUrl;
+    this.MARGIN_ENABLED = cfg.marginEnabled;
+    this.PRODUCTION = cfg.production;
     this.httpsAgent = new https.Agent({
-      rejectUnauthorized: false, // ⚠️ Solo para desarrollo - no usar en producción
+      rejectUnauthorized: cfg.production,
     });
+    const keyPrefix = this.API_KEY ? this.API_KEY.slice(0, 8) + '...' : '(empty)';
+    const secretPrefix = this.API_SECRET ? this.API_SECRET.slice(0, 4) + '...' : '(empty)';
+    console.log(
+      `[BinanceService] mode=${cfg.production ? 'PRODUCTION' : 'TEST'} baseUrl=${this.BASE_URL} margin=${this.MARGIN_ENABLED ? 'ON' : 'OFF'} apiKey=${keyPrefix} apiSecret=${secretPrefix} keyLen=${this.API_KEY.length} secretLen=${this.API_SECRET.length}`,
+    );
+  }
+
+  getMode(): { mode: 'PRODUCTION' | 'TEST'; baseUrl: string; marginEnabled: boolean; apiKeyPrefix: string } {
+    return {
+      mode: this.PRODUCTION ? 'PRODUCTION' : 'TEST',
+      baseUrl: this.BASE_URL,
+      marginEnabled: this.MARGIN_ENABLED,
+      apiKeyPrefix: this.API_KEY ? this.API_KEY.slice(0, 6) + '...' : '(empty)',
+    };
+  }
+
+  async pingSigned(): Promise<{ ok: boolean; canTrade?: boolean; accountType?: string; error?: string }> {
+    try {
+      const info = await this.getAccountInfo();
+      return {
+        ok: true,
+        canTrade: info.canTrade,
+        accountType: info.accountType,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.response?.data?.msg ?? err?.message ?? 'unknown',
+      };
+    }
+  }
+
+  private ensureMarginEnabled(): void {
+    if (!this.MARGIN_ENABLED) {
+      throw new ForbiddenException(
+        'Margin disabled. Set MARGIN=true in .env to enable margin endpoints.',
+      );
+    }
+    if (!this.PRODUCTION) {
+      throw new ForbiddenException(
+        'Margin endpoints not available on testnet (testnet.binance.vision does not expose /sapi/v1/margin/*). Set PRODUCTION=true and provide production API keys.',
+      );
+    }
+  }
+
+  async onModuleInit() {
+    try {
+      await this.syncTime();
+    } catch (err) {
+      console.warn('Initial Binance time sync failed:', (err as Error).message);
+    }
   }
 
   sign(querystring: string): string {
@@ -24,50 +90,116 @@ export class BinanceService {
       .update(querystring)
       .digest('hex');
   }
-  //Firmas 
 
+  private async syncTime(): Promise<void> {
+    if (this.syncing) return this.syncing;
+    this.syncing = (async () => {
+      try {
+        const url = `${this.BASE_URL}/api/v3/time`;
+        const localBefore = Date.now();
+        const response = await axios.get(url, { httpsAgent: this.httpsAgent });
+        const localAfter = Date.now();
+        const rtt = localAfter - localBefore;
+        // ajuste: serverTime midió cerca del punto medio del rtt
+        this.timeOffsetMs = Math.round(
+          response.data.serverTime - (localBefore + rtt / 2),
+        );
+        this.lastSyncAt = localAfter;
+        console.log(
+          `[BinanceService] time sync: offset=${this.timeOffsetMs}ms rtt=${rtt}ms`,
+        );
+      } finally {
+        this.syncing = null;
+      }
+    })();
+    return this.syncing;
+  }
+
+  /**
+   * Timestamp para firmar. Usa reloj local + offset (cached).
+   * Resync cada SYNC_TTL_MS o si nunca sincronizó.
+   */
   async getServerTime(): Promise<number> {
-    const url = `${process.env.BASE_URL}/api/v3/time`;
-    const response = await axios.get(url, { httpsAgent: this.httpsAgent });
-    return response.data.serverTime;
+    if (this.lastSyncAt === 0 || Date.now() - this.lastSyncAt > this.SYNC_TTL_MS) {
+      try {
+        await this.syncTime();
+      } catch (err) {
+        console.warn('syncTime failed, using local + last offset', (err as Error).message);
+      }
+    }
+    // Envía timestamp ligeramente atrasado para evitar "ahead of server's time"
+    return Math.floor(Date.now() + this.timeOffsetMs - this.TIMESTAMP_SAFETY_MS);
   }
 
-  async postSigned(endpoint: string, params: Record<string, string | number>) {
-    const serverTime = await this.getServerTime();
-    const allParams = { ...params, timestamp: serverTime, recvWindow: 30000 };
-
-    const query = new URLSearchParams();
-    Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
-    const queryString = query.toString();
-
-    const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
-
-    const response = await axios.post(url, null, {
-      headers: { 'X-MBX-APIKEY': this.API_KEY },
-      httpsAgent: this.httpsAgent,
-    });
-
-    return response.data;
+  private isTimestampError(err: any): boolean {
+    const code = err?.response?.data?.code;
+    return code === -1021;
   }
 
-  async getSigned(endpoint: string, params: Record<string, string | number>) {
-    const serverTime = await this.getServerTime();
-    const allParams = { ...params, timestamp: serverTime, recvWindow: 10000 };
+  private isMarginEndpoint(endpoint: string): boolean {
+    return endpoint.includes('/margin/');
+  }
 
-    const query = new URLSearchParams();
-    Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
-    const queryString = query.toString();
+  async postSigned(endpoint: string, params: Record<string, string | number>): Promise<any> {
+    if (this.isMarginEndpoint(endpoint)) this.ensureMarginEnabled();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const serverTime = await this.getServerTime();
+      const allParams = { ...params, timestamp: serverTime, recvWindow: 60000 };
 
-    const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
+      const query = new URLSearchParams();
+      Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+      const queryString = query.toString();
 
-    const response = await axios.get(url, {
-      headers: { 'X-MBX-APIKEY': this.API_KEY },
-      httpsAgent: this.httpsAgent,
-    });
+      const signature = this.sign(queryString);
+      const url = `${this.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
 
-    return response.data;
+      try {
+        const response = await axios.post(url, null, {
+          headers: { 'X-MBX-APIKEY': this.API_KEY },
+          httpsAgent: this.httpsAgent,
+        });
+        return response.data;
+      } catch (err) {
+        if (attempt === 0 && this.isTimestampError(err)) {
+          console.warn('Binance -1021 detected. Forcing time resync and retrying.');
+          this.lastSyncAt = 0;
+          await this.syncTime().catch(() => {});
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  async getSigned(endpoint: string, params: Record<string, string | number>): Promise<any> {
+    if (this.isMarginEndpoint(endpoint)) this.ensureMarginEnabled();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const serverTime = await this.getServerTime();
+      const allParams = { ...params, timestamp: serverTime, recvWindow: 60000 };
+
+      const query = new URLSearchParams();
+      Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
+      const queryString = query.toString();
+
+      const signature = this.sign(queryString);
+      const url = `${this.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
+
+      try {
+        const response = await axios.get(url, {
+          headers: { 'X-MBX-APIKEY': this.API_KEY },
+          httpsAgent: this.httpsAgent,
+        });
+        return response.data;
+      } catch (err) {
+        if (attempt === 0 && this.isTimestampError(err)) {
+          console.warn('Binance -1021 detected. Forcing time resync and retrying.');
+          this.lastSyncAt = 0;
+          await this.syncTime().catch(() => {});
+          continue;
+        }
+        throw err;
+      }
+    }
   }
   //Create ordenes 
   async createLimitOrder(symbol: string, side: 'BUY' | 'SELL', quantity: string, price: string, timeInForce: 'GTC' | 'IOC' | 'FOK' = 'GTC') {
@@ -99,7 +231,7 @@ export class BinanceService {
       stopLimitPrice,
       stopLimitTimeInForce,
       timestamp: serverTime,
-      recvWindow: 10000,
+      recvWindow: 60000,
     };
 
     const query = new URLSearchParams();
@@ -107,7 +239,7 @@ export class BinanceService {
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/order/oco?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/order/oco?${queryString}&signature=${signature}`;
 
     const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -119,14 +251,14 @@ export class BinanceService {
 
   async checkOrderStatus(symbol: string, orderId: number) {
     const serverTime = await this.getServerTime();
-    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
+    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -137,7 +269,7 @@ export class BinanceService {
   }
   async cancelOrder(symbol: string, orderId?: number) {
     const serverTime = await this.getServerTime();
-    const params: Record<string, string | number> = { symbol, timestamp: serverTime, recvWindow: 10000 };
+    const params: Record<string, string | number> = { symbol, timestamp: serverTime, recvWindow: 60000 };
 
     // Si se pasa orderId cancela esa orden, sino cancela todas (opcional)
     if (orderId !== undefined) {
@@ -149,7 +281,7 @@ export class BinanceService {
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
 
     const response = await axios.delete(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -167,7 +299,7 @@ export class BinanceService {
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
-    const url = `${process.env.BASE_URL}/api/v3/ticker/price?${queryString}`;
+    const url = `${this.BASE_URL}/api/v3/ticker/price?${queryString}`;
 
     const response = await axios.get(url, {
       httpsAgent: this.httpsAgent,
@@ -176,7 +308,7 @@ export class BinanceService {
     return response.data;
   }
   async obtenerFiltrosSimbolo(symbol: string) {
-    const url = `${process.env.BASE_URL}/api/v3/exchangeInfo`;
+    const url = `${this.BASE_URL}/api/v3/exchangeInfo`;
     const response = await axios.get(url, { httpsAgent: this.httpsAgent });
 
     const symbolInfo = response.data.symbols.find((s: any) => s.symbol === symbol);
@@ -202,14 +334,15 @@ export class BinanceService {
   }
   async borrowCrossMargin(asset: string, amount: string) {
     const serverTime = await this.getServerTime();
-    const params = { asset, amount, timestamp: serverTime, recvWindow: 10000 };
+    const params = { asset, amount, timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/loan?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/loan?${queryString}&signature=${signature}`;
 
     const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -220,14 +353,15 @@ export class BinanceService {
   }
   async repayCrossMargin(asset: string, amount: string) {
     const serverTime = await this.getServerTime();
-    const params = { asset, amount, timestamp: serverTime, recvWindow: 10000 };
+    const params = { asset, amount, timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/repay?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/repay?${queryString}&signature=${signature}`;
 
     const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -249,14 +383,15 @@ export class BinanceService {
   }
   async transferBetweenSpotAndCrossMargin(asset: string, amount: string, type: 1 | 2) {
     const serverTime = await this.getServerTime();
-    const params = { asset, amount, type, timestamp: serverTime, recvWindow: 10000 };
+    const params = { asset, amount, type, timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/transfer?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/transfer?${queryString}&signature=${signature}`;
 
     const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -270,7 +405,7 @@ export class BinanceService {
   //Obtener saldos 
   async getAllOrders(symbol: string, limit = 500, fromId?: number) {
     const serverTime = await this.getServerTime();
-    const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 10000 };
+    const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 60000 };
 
     if (fromId !== undefined) {
       params.fromId = fromId;
@@ -281,7 +416,7 @@ export class BinanceService {
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/allOrders?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/allOrders?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -293,14 +428,14 @@ export class BinanceService {
 
   async getAccountInfo() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -311,7 +446,7 @@ export class BinanceService {
   }
   async getFullCrossMarginBalance() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
     return this.getSigned('/sapi/v1/margin/account', params);
   }
   async getCrossMarginLoans() {
@@ -324,7 +459,7 @@ export class BinanceService {
 
   async getCrossMarginAccountInfo() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
@@ -332,7 +467,8 @@ export class BinanceService {
 
     const signature = this.sign(queryString);
     // CORRECCIÓN AQUÍ: Cambia api por sapi
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/account?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/account?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -343,14 +479,14 @@ export class BinanceService {
   }
   async getNonZeroBalances() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/account?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -372,14 +508,15 @@ export class BinanceService {
 
   async getIsolatedMarginAccountInfo(symbol: string) {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000, symbol };
+    const params = { timestamp: serverTime, recvWindow: 60000, symbol };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v1/margin/isolated/account?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/api/v1/margin/isolated/account?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -390,14 +527,14 @@ export class BinanceService {
   }
   async getFuturesAccountBalance() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/fapi/v2/balance?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/fapi/v2/balance?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -423,7 +560,7 @@ export class BinanceService {
       stopPrice,
       timeInForce: 'GTC',
       timestamp: serverTime,
-      recvWindow: 10000,
+      recvWindow: 60000,
       ...options,
     };
 
@@ -432,7 +569,7 @@ export class BinanceService {
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}/api/v3/order?${queryString}&signature=${signature}`;
 
     const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -444,14 +581,18 @@ export class BinanceService {
   async getCandles(
     symbol: string,
     interval: string,
-    limit: number
+    limit: number,
+    startTime?: number,
+    endTime?: number,
   ): Promise<{ open: string; high: string; low: string; close: string; volume: string; openTime: number; closeTime: number; }[]> {
-    const params = { symbol, interval, limit };
+    const params: Record<string, string | number> = { symbol, interval, limit };
+    if (startTime !== undefined) params.startTime = startTime;
+    if (endTime !== undefined) params.endTime = endTime;
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
-    const url = `${process.env.BASE_URL}/api/v3/klines?${queryString}`;
+    const url = `${this.BASE_URL}/api/v3/klines?${queryString}`;
 
     const response = await axios.get(url, {
       httpsAgent: this.httpsAgent,
@@ -486,13 +627,13 @@ export class BinanceService {
     try {
       // 1. Obtener todas las órdenes abiertas para el símbolo
       const serverTime = await this.getServerTime();
-      const params = { symbol, timestamp: serverTime, recvWindow: 10000 };
+      const params = { symbol, timestamp: serverTime, recvWindow: 60000 };
       const query = new URLSearchParams();
       Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
       const queryString = query.toString();
 
       const signature = this.sign(queryString);
-      const url = `${process.env.BASE_URL}/api/v3/openOrders?${queryString}&signature=${signature}`;
+      const url = `${this.BASE_URL}/api/v3/openOrders?${queryString}&signature=${signature}`;
 
       const response = await axios.get(url, {
         headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -522,14 +663,15 @@ export class BinanceService {
 
   async getAccountBalancesAll() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/account?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/account?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -581,14 +723,15 @@ export class BinanceService {
 
   async getAccountBalanceMarginIsolated() {
     const serverTime = await this.getServerTime();
-    const params = { timestamp: serverTime, recvWindow: 10000 };
+    const params = { timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/isolated/account?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/isolated/account?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -600,7 +743,7 @@ export class BinanceService {
   // Obtener todas las órdenes abiertas en margin cruzado para un símbolo
   async getAllCrossMarginOrders(symbol: string, limit = 500, fromId?: number) {
     const serverTime = await this.getServerTime();
-    const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 10000 };
+    const params: Record<string, string | number> = { symbol, limit, timestamp: serverTime, recvWindow: 60000 };
     if (fromId !== undefined) params.fromId = fromId;
 
     return this.getSigned('/sapi/v1/margin/openOrders', params);
@@ -609,7 +752,7 @@ export class BinanceService {
   // Consultar una orden específica margin cruzado
   async getCrossMarginOrderStatus(symbol: string, orderId: number) {
     const serverTime = await this.getServerTime();
-    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
+    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 60000 };
     return this.getSigned('/sapi/v1/margin/order', params);
   }
 
@@ -617,10 +760,11 @@ export class BinanceService {
   async cancelAllCrossMarginOrders(symbol: string) {
     try {
       const serverTime = await this.getServerTime();
-      const params = { symbol, timestamp: serverTime, recvWindow: 10000 };
+      const params = { symbol, timestamp: serverTime, recvWindow: 60000 };
       const queryString = new URLSearchParams(params as any).toString();
       const signature = this.sign(queryString);
-      const url = `${process.env.BASE_URL}/sapi/v1/margin/openOrders?${queryString}&signature=${signature}`;
+      this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/openOrders?${queryString}&signature=${signature}`;
       const response = await axios.get(url, {
         headers: { 'X-MBX-APIKEY': this.API_KEY },
         httpsAgent: this.httpsAgent,
@@ -646,7 +790,7 @@ export class BinanceService {
       symbol,
       orderId,
       timestamp: serverTime,
-      recvWindow: 10000,
+      recvWindow: 60000,
     };
 
     const query = new URLSearchParams();
@@ -654,7 +798,8 @@ export class BinanceService {
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
 
     const response = await axios.delete(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -711,14 +856,15 @@ async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
 
   async checkCrossMarginOrderStatus(symbol: string, orderId: number) {
     const serverTime = await this.getServerTime();
-    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 10000 };
+    const params = { symbol, orderId, timestamp: serverTime, recvWindow: 60000 };
 
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
 
     const response = await axios.get(url, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -744,7 +890,7 @@ async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
       stopPrice,
       timeInForce: 'GTC',
       timestamp: serverTime,
-      recvWindow: 10000,
+      recvWindow: 60000,
       ...options,
     };
 
@@ -753,7 +899,8 @@ async cancelAllCrossMarginOrdersBySide(symbol: string, side: 'BUY' | 'SELL') {
     const queryString = query.toString();
 
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
+    this.ensureMarginEnabled();
+    const url = `${this.BASE_URL}/sapi/v1/margin/order?${queryString}&signature=${signature}`;
 
     const response = await axios.post(url, null, {
       headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -782,7 +929,7 @@ async createCrossMarginOcoOrder(
     stopLimitPrice,
     stopLimitTimeInForce,
     timestamp: serverTime,
-    recvWindow: 10000,
+    recvWindow: 60000,
   };
 
  
@@ -792,7 +939,8 @@ async createCrossMarginOcoOrder(
   const queryString = query.toString();
 
   const signature = this.sign(queryString);
-  const url = `${process.env.BASE_URL}/sapi/v1/margin/order/oco?${queryString}&signature=${signature}`;
+  this.ensureMarginEnabled();
+  const url = `${this.BASE_URL}/sapi/v1/margin/order/oco?${queryString}&signature=${signature}`;
 
   const response = await axios.post(url, null, {
     headers: { 'X-MBX-APIKEY': this.API_KEY },
@@ -843,12 +991,12 @@ async createCrossMarginOcoOrder(
   }
     private async getSignedRequest(endpoint: string, params: Record<string, string | number>, method: 'GET' | 'POST' | 'DELETE' = 'GET') {
     const serverTime = await this.getServerTime();
-    const allParams = { ...params, timestamp: serverTime, recvWindow: 10000 };
+    const allParams = { ...params, timestamp: serverTime, recvWindow: 60000 };
     const query = new URLSearchParams();
     Object.entries(allParams).forEach(([key, val]) => query.append(key, val.toString()));
     const queryString = query.toString();
     const signature = this.sign(queryString);
-    const url = `${process.env.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
+    const url = `${this.BASE_URL}${endpoint}?${queryString}&signature=${signature}`;
 
     const config = {
       headers: { 'X-MBX-APIKEY': this.API_KEY },

@@ -33,12 +33,18 @@ export class CryptoGuardGateway implements OnGatewayInit {
 
   async afterInit() {
     const cryptosRaw = await this.accountService.findCryptosByUserId(1);
-    this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
-
-    this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
-    this.riskLevel = this.binanceData?.riskLevel;
-    this.totalLiabilityOfBtc = this.binanceData?.totalLiabilityOfBtc;
-    this.pnlAsPercentageOfLiability = this.binanceData?.pnlAsPercentageOfLiability;
+    try {
+      this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
+      this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
+      this.riskLevel = this.binanceData?.riskLevel;
+      this.totalLiabilityOfBtc = this.binanceData?.totalLiabilityOfBtc;
+      this.pnlAsPercentageOfLiability = this.binanceData?.pnlAsPercentageOfLiability;
+    } catch (err) {
+      console.warn(
+        `[CryptoGuardGateway] margin PNL summary skipped: ${(err as Error).message}`,
+      );
+      this.binanceData = null;
+    }
 
     this.userCryptos = cryptosRaw.map(c => ({
       symbol: c.symbol,
@@ -72,8 +78,12 @@ export class CryptoGuardGateway implements OnGatewayInit {
       if (symbol === 'btcusdt') {
         this.btcusdtPrice = price;
       }
-    this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
-    this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
+      try {
+        this.binanceData = await this.binanceService.getCrossMarginPNLSummary();
+        this.totalUnrealizedPNL = this.binanceData?.totalUnrealizedPNL;
+      } catch (err) {
+        return;
+      }
 
       if (!this.totalUnrealizedPNL || !this.btcusdtPrice) {
         return; // Se asegura que existan datos para cálculo

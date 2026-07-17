@@ -6,10 +6,20 @@ import { GridSellMarginFixedStrategy } from "src/strategies/grid_sell_margin.fix
 import { GridSellMarginStrategy } from "src/strategies/grid_sell_margin.strategy";
 import { RsiStrategy } from "src/strategies/rsi.strategy";
 import { TradingStrategy } from "src/strategies/trading-strategy.interface";
-import {GridBuyMarginFixedStrategy} from "src/strategies/grid_buy_margin_fixed.strategy"
+import { GridBuyMarginFixedStrategy } from "src/strategies/grid_buy_margin_fixed.strategy"
+import { BollingerRsiStrategy } from "src/strategies/bollinger-rsi.strategy";
+import { AdaptiveGridStrategy } from "src/strategies/adaptive-grid.strategy";
+import { IndicatorsService } from "src/indicators/indicators.service";
 
 export class StrategyFactory {
-  static createStrategy(type: string, binanceService: BinanceService,id:string ,symbol: string, config: any): TradingStrategy {
+  static createStrategy(
+    type: string,
+    binanceService: BinanceService,
+    id: string,
+    symbol: string,
+    config: any,
+    deps?: { indicators?: IndicatorsService },
+  ): TradingStrategy {
     switch (type) {
       case 'gridBuy':
         const grid = new GridBuyStrategy(binanceService);
@@ -53,6 +63,24 @@ export class StrategyFactory {
         gridFull.config = config;
         gridFull.id=id;
         return gridFull;
+      case 'bollingerRsi':
+        if (!deps?.indicators) {
+          throw new Error('bollingerRsi requires IndicatorsService');
+        }
+        const bbRsi = new BollingerRsiStrategy(binanceService, deps.indicators);
+        bbRsi.symbol = symbol;
+        bbRsi.config = config;
+        bbRsi.id = id;
+        return bbRsi;
+      case 'adaptiveGrid':
+        if (!deps?.indicators) {
+          throw new Error('adaptiveGrid requires IndicatorsService');
+        }
+        const adaptive = new AdaptiveGridStrategy(binanceService, deps.indicators);
+        adaptive.symbol = symbol;
+        adaptive.config = config;
+        adaptive.id = id;
+        return adaptive;
       default:
         throw new Error(`Estrategia desconocida: ${type}`);
     }

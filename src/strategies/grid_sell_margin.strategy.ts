@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OrderSide } from '@prisma/client';
 import { TradingStrategy } from './trading-strategy.interface';
 import { BinanceService } from '../binance/binance.service';
+import { PnlTracker } from '../bot/pnl-tracker';
+import { StrategyPnlReporter } from '../bot/strategy-pnl-reporter';
 
 interface Order {
   orderId: number;
@@ -44,8 +47,13 @@ export class GridSellMarginStrategy implements TradingStrategy {
   private isRunning = true;
 
   private profitLoss = 0; // Variable para acumulación de ganancia/pérdida
+  private pnl = new PnlTracker();
 
   constructor(private readonly binanceService: BinanceService) {}
+
+  attachPnlReporter(reporter: StrategyPnlReporter): void {
+    this.pnl.attach(reporter);
+  }
 
   async run() {
     this.logInfo(`Starting Grid Sell on ${this.symbol} with config: ${JSON.stringify(this.config)}`);
@@ -64,6 +72,11 @@ export class GridSellMarginStrategy implements TradingStrategy {
         await this.placeSellOrders(lowerPrice, upperPrice, priceFilter, lotSizeFilter, currentPrice);
 
         await this.checkSellOrders(priceFilter, lotSizeFilter, currentPrice);
+        await this.checkBuyOrdersClosings();
+
+        await this.pnl.snapshot(this.openBuyOrders.size, currentPrice, {
+          openSells: this.openSellOrders.size,
+        });
 
         const sleepDuration = this.calculateSleepDuration();
         this.logInfo(`Sleeping ${sleepDuration} ms`);
@@ -174,6 +187,9 @@ export class GridSellMarginStrategy implements TradingStrategy {
           const buyPrice = this.roundToStep(buyPriceRaw, priceFilter.tickSize);
           const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
 
+          // Sell grid: SELL primero = apertura leg SHORT (side=SELL)
+          this.pnl.openLeg(i, parseFloat(order.price), quantity, OrderSide.SELL);
+
           this.logInfo(`Placing BUY order contraparte for completed SELL order level ${i}, price ${buyPrice}, quantity ${quantity}`);
 
           try {
@@ -212,6 +228,21 @@ export class GridSellMarginStrategy implements TradingStrategy {
 
     if (toReinsertLevels.size > 0) {
       await this.reinsertSellOrders(Array.from(toReinsertLevels), priceFilter, lotSizeFilter, currentPrice);
+    }
+  }
+
+  private async checkBuyOrdersClosings() {
+    for (const [i, order] of Array.from(this.openBuyOrders.entries())) {
+      try {
+        const statusData = await this.binanceService.checkCrossMarginOrderStatus(this.symbol, order.orderId);
+        if (statusData.status === 'FILLED') {
+          this.logSuccess(`Order BUY (closing) level ${i} completed ID: ${order.orderId}`);
+          this.openBuyOrders.delete(i);
+          await this.pnl.closeLeg(i, parseFloat(order.price), order.orderId);
+        }
+      } catch (err) {
+        this.logError(`Error checking BUY closing status ID ${order.orderId}:`, err);
+      }
     }
   }
 

@@ -5,19 +5,17 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiParam,
-  ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
 import { IndicatorsService } from './indicators.service';
 import { CryptoPrice } from '@prisma/client';
-import { AuthGuard } from 'src/authA/auth.guard';
+import { Public } from 'src/authA/auth.guard';
 
 class CreateCryptoPriceDto {
   symbol: string;
@@ -26,77 +24,175 @@ class CreateCryptoPriceDto {
   timestamp: Date;
 }
 
-@ApiBearerAuth('BearerAuth')
-@UseGuards(AuthGuard)
 @ApiTags('indicators')
 @Controller('indicators')
 export class IndicatorsController {
   constructor(private readonly indicatorsService: IndicatorsService) {}
 
+  @Public()
   @Post('crypto-price')
   @ApiOperation({ summary: 'Crear nuevo precio para criptomoneda' })
-  @ApiResponse({ status: 201, description: 'Precio creado exitosamente' })
   async createCryptoPrice(
-    @Body() createCryptoPriceDto: CreateCryptoPriceDto,
+    @Body() dto: CreateCryptoPriceDto,
   ): Promise<CryptoPrice> {
-    return this.indicatorsService.createCryptoPrice(createCryptoPriceDto);
+    return this.indicatorsService.createCryptoPrice(dto);
   }
 
+  @Public()
   @Get('crypto-price/:symbol')
-  @ApiOperation({ summary: 'Obtener precios históricos de una criptomoneda' })
-  @ApiParam({
-    name: 'symbol',
-    description: 'Símbolo de la criptomoneda, ej. BTC',
-  })
-  @ApiResponse({ status: 200, description: 'Lista de precios históricos' })
+  @ApiOperation({ summary: 'Precios históricos de un símbolo' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
   async findPricesBySymbol(@Param('symbol') symbol: string): Promise<CryptoPrice[]> {
     return this.indicatorsService.findPricesBySymbol(symbol);
   }
 
+  @Public()
   @Get('crypto-price/latest/:symbol')
-  @ApiOperation({ summary: 'Obtener el último precio registrado de una criptomoneda' })
-  @ApiParam({
-    name: 'symbol',
-    description: 'Símbolo de la criptomoneda, ej. BTC',
-  })
-  @ApiResponse({ status: 200, description: 'Último precio registrado' })
+  @ApiOperation({ summary: 'Último precio registrado' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
   async findLatestPrice(@Param('symbol') symbol: string): Promise<CryptoPrice | null> {
     return this.indicatorsService.findLatestPrice(symbol);
   }
 
-  // Nuevo endpoint para calcular RSI con parámetro de intervalo
+  @Public()
   @Get('rsi/:symbol')
-  @ApiOperation({ summary: 'Calcular el RSI para un símbolo y periodo dado' })
-  @ApiParam({
-    name: 'symbol',
-    description: 'Símbolo de la criptomoneda, ej. BTC',
-  })
-  @ApiQuery({
-    name: 'period',
-    description: 'Número de períodos para calcular RSI',
-    required: false,
-    type: Number,
-    example: 14,
-  })
-  @ApiQuery({
-    name: 'intervalMinutes',
-    description: 'Intervalo de minutos para agrupar datos (ej. 1, 16, 60)',
-    required: false,
-    type: Number,
-    example: 1,
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Valor del RSI calculado o null si no hay datos suficientes',
-    type: Number,
-  })
+  @ApiOperation({ summary: 'RSI' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  @ApiQuery({ name: 'period', required: false, type: Number, example: 14 })
   async getRSI(
     @Param('symbol') symbol: string,
-    @Query('period') period?: number,
-    @Query('intervalMinutes') intervalMinutes?: number,
-  ): Promise<number | null> {
-    const rsiPeriod = period ?? 14;
-    const rsiInterval = intervalMinutes ?? 1;
-    return this.indicatorsService.calculateRSIWithInterval(symbol, rsiPeriod, rsiInterval);
+    @Query('interval') interval = '1m',
+    @Query('period') period?: string,
+  ) {
+    return this.indicatorsService.getRSI(symbol.toUpperCase(), interval, period ? Number(period) : 14);
+  }
+
+  @Public()
+  @Get('bollinger/:symbol')
+  @ApiOperation({ summary: 'Bandas de Bollinger' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  @ApiQuery({ name: 'period', required: false, type: Number, example: 20 })
+  @ApiQuery({ name: 'k', required: false, type: Number, example: 2 })
+  async getBollinger(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('period') period?: string,
+    @Query('k') k?: string,
+  ) {
+    return this.indicatorsService.getBollinger(
+      symbol.toUpperCase(),
+      interval,
+      period ? Number(period) : 20,
+      k ? Number(k) : 2,
+    );
+  }
+
+  @Public()
+  @Get('macd/:symbol')
+  @ApiOperation({ summary: 'MACD' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  async getMACD(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('fast') fast?: string,
+    @Query('slow') slow?: string,
+    @Query('signal') signalP?: string,
+  ) {
+    return this.indicatorsService.getMACD(
+      symbol.toUpperCase(),
+      interval,
+      fast ? Number(fast) : 12,
+      slow ? Number(slow) : 26,
+      signalP ? Number(signalP) : 9,
+    );
+  }
+
+  @Public()
+  @Get('atr/:symbol')
+  @ApiOperation({ summary: 'Average True Range' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  @ApiQuery({ name: 'period', required: false, type: Number, example: 14 })
+  async getATR(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('period') period?: string,
+  ) {
+    return this.indicatorsService.getATR(symbol.toUpperCase(), interval, period ? Number(period) : 14);
+  }
+
+  @Public()
+  @Get('vwap/:symbol')
+  @ApiOperation({ summary: 'VWAP' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  @ApiQuery({ name: 'lookback', required: false, type: Number, example: 96 })
+  async getVWAP(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('lookback') lookback?: string,
+  ) {
+    return this.indicatorsService.getVWAP(
+      symbol.toUpperCase(),
+      interval,
+      lookback ? Number(lookback) : 96,
+    );
+  }
+
+  @Public()
+  @Get('trend/:symbol')
+  @ApiOperation({ summary: 'Detección tendencia (EMA cross + slope)' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  async getTrend(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('fast') fast?: string,
+    @Query('slow') slow?: string,
+  ) {
+    return this.indicatorsService.getTrend(
+      symbol.toUpperCase(),
+      interval,
+      fast ? Number(fast) : 20,
+      slow ? Number(slow) : 50,
+    );
+  }
+
+  @Public()
+  @Get('ema/:symbol')
+  @ApiOperation({ summary: 'EMA' })
+  async getEMA(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('period') period?: string,
+  ) {
+    return this.indicatorsService.getEMA(symbol.toUpperCase(), interval, period ? Number(period) : 20);
+  }
+
+  @Public()
+  @Get('sma/:symbol')
+  @ApiOperation({ summary: 'SMA' })
+  async getSMA(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+    @Query('period') period?: string,
+  ) {
+    return this.indicatorsService.getSMA(symbol.toUpperCase(), interval, period ? Number(period) : 20);
+  }
+
+  @Public()
+  @Get('snapshot/:symbol')
+  @ApiOperation({ summary: 'Snapshot completo (RSI, Bollinger, MACD, ATR, VWAP, trend, EMAs)' })
+  @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
+  @ApiQuery({ name: 'interval', required: false, example: '1m' })
+  @ApiResponse({ status: 200, description: 'Indicadores agregados' })
+  async getSnapshot(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval = '1m',
+  ) {
+    return this.indicatorsService.getSnapshot(symbol.toUpperCase(), interval);
   }
 }

@@ -342,11 +342,18 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     await this.sendMessage(chatId, 'Toda tu información y alertas en este chat han sido borradas de nuestro sistema.');
   }
   async handleFondo(chatId: number) {
-    let data = await this.binanceService.getCrossMarginPNLSummary();
-    const precio = data?.totalUnrealizedPNL;
-    const precioBTC = await this.cryptoPrice.findOne('BTCFDUSD');
-    const e = Number(precio) * Number(precioBTC);
-    await this.sendMessage(chatId, `Uso: /fondo\nPrecio: ${precio}\nPrecio BTC: ${precioBTC}\nEquivalente en BTC: ${e}`);
+    try {
+      const data = await this.binanceService.getCrossMarginPNLSummary();
+      const precio = data?.totalUnrealizedPNL;
+      const precioBTC = await this.cryptoPrice.findOne('BTCFDUSD');
+      const e = Number(precio) * Number(precioBTC);
+      await this.sendMessage(chatId, `Uso: /fondo\nPrecio: ${precio}\nPrecio BTC: ${precioBTC}\nEquivalente en BTC: ${e}`);
+    } catch (err) {
+      await this.sendMessage(
+        chatId,
+        `No disponible: ${(err as Error).message}`,
+      );
+    }
   }
 
   async handleCallbackQuery(callbackQuery: any) {

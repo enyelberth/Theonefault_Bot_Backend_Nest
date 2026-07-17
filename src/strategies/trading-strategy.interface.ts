@@ -1,3 +1,6 @@
+import type { PrismaClient } from '@prisma/client';
+import type { StrategyPnlReporter } from 'src/bot/strategy-pnl-reporter';
+
 export interface TradingStrategy<TConfig = any> {
   symbol: string;
   config: TConfig;
@@ -5,6 +8,12 @@ export interface TradingStrategy<TConfig = any> {
 
   run(): Promise<void>;
   stop?(): Promise<void>;
+
+  /** Opcional: strategy que quiera reportar PnL implementa este método. */
+  attachPnlReporter?(reporter: StrategyPnlReporter): void;
+
+  /** Opcional: strategies con estado persistido usan este método para hidratar desde DB al restart/rehydrate. */
+  setBotRunContext?(botRunId: number, prisma: PrismaClient): void;
 }
 export interface GridStrategyConfig {
   gridCount: number;

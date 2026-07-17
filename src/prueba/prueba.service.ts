@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import axios from 'axios';
 
@@ -12,13 +12,22 @@ interface Grid {
 export class PruebaService {
   private readonly logger = new Logger(PruebaService.name);
 
-  private name:string;
-  private seconName:string;
-  private age:number;
+  private name: string;
+  private seconName: string;
+  private age: number;
 
+  constructor(
+    @Optional() name: string = '',
+    @Optional() seconName: string = '',
+    @Optional() age: number = 0,
+  ) {
+    this.name = name;
+    this.seconName = seconName;
+    this.age = age;
+  }
 
-  public Greed(){
-
+  public Greed(): string {
+    return `Hola ${this.name} ${this.seconName}, tienes ${this.age} años.`;
   }
 
 

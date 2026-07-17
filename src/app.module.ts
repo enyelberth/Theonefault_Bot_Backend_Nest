@@ -31,8 +31,20 @@ import { CryptoGuardModule } from './crypto-guard/crypto-guard.module';
 import { AlertModule } from './alert/alert.module';
 import { GeminisModule } from './geminis/geminis.module';
 import { TelegramSofiaModule } from './telegram-sofia/telegram-sofia.module';
+import { MarketDataModule } from './market-data/market-data.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { RiskManagerModule } from './risk-manager/risk-manager.module';
+import { ExchangesModule } from './exchanges/exchanges.module';
+import { StrategiesV2Module } from './strategies/v2/strategies-v2.module';
+import { BacktestingModule } from './backtesting/backtesting.module';
+import { PaperExchangeModule } from './exchanges/paper/paper-exchange.module';
+import { BotRunnerModule } from './bot-runner/bot-runner.module';
+import { RiskModule } from './risk/risk.module';
+import { CopyTradingModule } from './copy-trading/copy-trading.module';
+import { SessionModule } from './session/session.module';
+import { TradingExecutionModule } from './trading-execution/trading-execution.module';
 @Module({
-  imports: [AuthModule,ScheduleModule.forRoot(),CryptoPriceWatcherModule,CryptoGuardModule,AlertModule,BotModule,TelegramBotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule, CryptoGuardModule, GeminisModule, TelegramSofiaModule],
+  imports: [AuthModule,ScheduleModule.forRoot(),CryptoPriceWatcherModule,CryptoGuardModule,AlertModule,BotModule,TelegramBotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, ExchangesModule, StrategiesV2Module, BacktestingModule, PaperExchangeModule, RiskModule, BotRunnerModule, CopyTradingModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule, GeminisModule, TelegramSofiaModule, MarketDataModule, DashboardModule, RiskManagerModule, SessionModule, TradingExecutionModule],
   controllers: [AppController, ProfileController],
   providers: [AppService, ProfileService, PruebaService],
 })

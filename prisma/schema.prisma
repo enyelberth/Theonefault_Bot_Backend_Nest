@@ -207,8 +207,8 @@ model TradingOrder {
   // Campo inverso para que Prisma entienda la relación 1 - 1 o 1 - n
   closedByOrders TradingOrder[] @relation("OrderClosing")
 
-  account    Account            @relation(fields: [accountId], references: [id])
-  executions TradingExecution[]
+  account      Account            @relation(fields: [accountId], references: [id])
+  executions   TradingExecution[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -257,6 +257,8 @@ model TradingStrategy {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
+  botRuns BotRun[]
+
   @@index([typeId]) // Índice para mejorar consultas por tipo
 }
 
@@ -279,19 +281,476 @@ model CryptoPrice {
   @@index([symbol, timestamp])
 }
 
+// Configuración global de riesgo (singleton, id=1)
+model RiskConfig {
+  id                      Int      @id @default(1)
+  enabled                 Boolean  @default(true)
+  maxDailyLossQuote       Decimal? // pérdida absoluta día (quote)
+  maxDrawdownPct          Float?   // % drawdown per-bot
+  maxOpenBots             Int?     // máximo bots simultáneos
+  maxLossPerBotQuote      Decimal? // pérdida absoluta per-bot
+  minWinRatePct           Float?   // si baja, stop
+  minTradesForWinRateEval Int      @default(20)
+  emergencyStopUntil      DateTime?
+  updatedAt               DateTime @updatedAt
+  createdAt               DateTime @default(now())
+}
+
+// Paper trading — órdenes simuladas
+enum PaperOrderStatus {
+  OPEN
+  FILLED
+  CANCELED
+}
+
+model PaperOrder {
+  id          Int              @id @default(autoincrement())
+  botRunId    Int?
+  externalId  String           @unique // id sintético devuelto a la strategy
+  symbol      String
+  side        OrderSide
+  type        String // LIMIT, MARKET, STOP_LOSS, STOP_LOSS_LIMIT
+  price       Decimal?
+  stopPrice   Decimal?
+  quantity    Decimal
+  status      PaperOrderStatus @default(OPEN)
+  filledPrice Decimal?
+  filledAt    DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([symbol, status])
+  @@index([botRunId])
+}
+
+// Evento de riesgo detectado
+model RiskEvent {
+  id        Int      @id @default(autoincrement())
+  type      String // MAX_LOSS, MAX_DRAWDOWN, DAILY_LOSS, MANUAL_STOP, EMERGENCY, WIN_RATE
+  botRunId  Int?
+  symbol    String?
+  message   String
+  action    String // STOPPED_BOT, STOPPED_ALL, NOTIFIED, IGNORED
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([botRunId])
+}
+
+// Vela OHLCV por intervalo (1m, 5m, 15m, 1h, 4h, 1d, etc.)
+model Candle {
+  id        Int      @id @default(autoincrement())
+  symbol    String
+  interval  String // "1m", "5m", "1h" ...
+  openTime  DateTime
+  closeTime DateTime
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+  trades    Int?
+  createdAt DateTime @default(now())
+
+  @@unique([symbol, interval, openTime])
+  @@index([symbol, interval, closeTime])
+}
+
 model Alert {
   id        Int      @id @default(autoincrement())
-  symbol    String   // Símbolo del activo (ejemplo: "BTCUSDT")
-  price     Float    // Precio objetivo para la alerta
-  up_down   UpDown   // Condición: arriba o abajo (usando enum para mejor control)
-  volume    Float?   // Volumen negociado opcional
+  symbol    String // Símbolo del activo (ejemplo: "BTCUSDT")
+  price     Float // Precio objetivo para la alerta
+  up_down   UpDown // Condición: arriba o abajo (usando enum para mejor control)
+  volume    Float? // Volumen negociado opcional
   timestamp DateTime // Momento del registro del precio
   createdAt DateTime @default(now())
-  
+
   @@index([symbol, timestamp])
 }
 
 enum UpDown {
   up
   down
+}
+
+// Ejecución concreta de una estrategia (bot corriendo)
+enum BotRunStatus {
+  RUNNING
+  STOPPED
+  ERROR
+}
+
+model BotRun {
+  id             Int          @id @default(autoincrement())
+  strategyId     String
+  symbol         String
+  strategyType   String?
+  status         BotRunStatus @default(RUNNING)
+  initialQuote   Decimal? // capital inicial en quote currency
+  configSnapshot Json? // copia de config al arrancar
+  startedAt      DateTime     @default(now())
+  stoppedAt      DateTime?
+  errorMessage   String?
+
+  strategy     TradingStrategy @relation(fields: [strategyId], references: [id])
+  metrics      BotMetric[]
+  tradeResults TradeResult[]
+
+  @@index([strategyId])
+  @@index([symbol, status])
+  @@index([startedAt])
+}
+
+// Snapshot periódico de métricas por bot
+model BotMetric {
+  id            Int      @id @default(autoincrement())
+  botRunId      Int
+  ts            DateTime @default(now())
+  realizedPnl   Decimal  @default(0)
+  unrealizedPnl Decimal  @default(0)
+  openPositions Int      @default(0)
+  tradesCount   Int      @default(0)
+  winCount      Int      @default(0)
+  lossCount     Int      @default(0)
+  lastPrice     Decimal?
+  extra         Json? // campo libre (drawdown, sharpe, etc.)
+
+  botRun BotRun @relation(fields: [botRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunId, ts])
+}
+
+// Resultado de una operación cerrada (par buy+sell)
+model TradeResult {
+  id              Int      @id @default(autoincrement())
+  botRunId        Int
+  externalOrderId String? // orderId de Binance/exchange
+  symbol          String
+  side            OrderSide
+  entryPrice      Decimal
+  exitPrice       Decimal
+  quantity        Decimal
+  pnl             Decimal // en quote currency
+  pnlPct          Decimal // porcentaje
+  fees            Decimal  @default(0)
+  openedAt        DateTime
+  closedAt        DateTime @default(now())
+
+  botRun BotRun @relation(fields: [botRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunId, closedAt])
+  @@index([symbol, closedAt])
+}
+
+// --- Backtesting ---
+enum BacktestStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+model BacktestRun {
+  id             Int            @id @default(autoincrement())
+  strategyId     String
+  strategyVersion String?
+  exchange       String         @default("binance")
+  symbol         String
+  timeframe      String
+  startTime      DateTime
+  endTime        DateTime
+  initialQuote   Decimal
+  finalQuote     Decimal?
+  config         Json
+  fees           Json?
+  status         BacktestStatus @default(PENDING)
+  errorMessage   String?
+
+  // metrics (denormalized for fast list queries)
+  totalTrades    Int?
+  winningTrades  Int?
+  losingTrades   Int?
+  winRate        Float?
+  profitFactor   Float?
+  sharpeRatio    Float?
+  sortinoRatio   Float?
+  maxDrawdownPct Float?
+  totalReturnPct Float?
+  expectancy     Float?
+
+  metrics        Json?      // full metrics payload
+  equityCurve    Json?      // array of {t, equity}
+  createdBy      Int?
+  createdAt      DateTime   @default(now())
+  completedAt    DateTime?
+
+  trades         BacktestTrade[]
+
+  @@index([strategyId])
+  @@index([symbol, timeframe])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// --- Copy Trading ---
+enum CopyVisibility {
+  PRIVATE
+  PUBLIC
+}
+
+enum CopyMode {
+  MIRROR
+  PROPORTIONAL
+  FIXED_QUOTE
+}
+
+model CopyMaster {
+  id               Int             @id @default(autoincrement())
+  runId            String          @unique
+  ownerId          Int?
+  name             String
+  description      String?
+  visibility       CopyVisibility  @default(PRIVATE)
+  performanceScore Float?
+  followerCount    Int             @default(0)
+  active           Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  subscriptions CopySubscription[]
+  events        CopyEvent[]
+
+  @@index([visibility, active])
+  @@index([ownerId])
+}
+
+model CopySubscription {
+  id             Int      @id @default(autoincrement())
+  masterId       Int
+  followerRunId  String
+  ownerId        Int?
+  exchangeMode   String   // 'real' | 'paper'
+  exchangeId     String?
+  paperAccountId Int?
+  mode           CopyMode @default(PROPORTIONAL)
+  sizeMultiplier Float    @default(1)
+  fixedQuote     Float?
+  maxRiskPct     Float?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  master  CopyMaster        @relation(fields: [masterId], references: [id], onDelete: Cascade)
+  events  CopyExecution[]
+
+  @@unique([masterId, followerRunId])
+  @@index([followerRunId])
+  @@index([active])
+}
+
+model CopyEvent {
+  id            Int      @id @default(autoincrement())
+  masterId      Int
+  signal        Json
+  fanoutCount   Int      @default(0)
+  emittedAt     DateTime @default(now())
+
+  master     CopyMaster       @relation(fields: [masterId], references: [id], onDelete: Cascade)
+  executions CopyExecution[]
+
+  @@index([masterId, emittedAt])
+}
+
+model CopyExecution {
+  id             Int      @id @default(autoincrement())
+  copyEventId    Int
+  subscriptionId Int
+  orderId        String?
+  status         String   // 'FILLED' | 'REJECTED' | 'ERROR'
+  reason         String?
+  price          Decimal?
+  quantity       Decimal?
+  quoteQuantity  Decimal?
+  executedAt     DateTime @default(now())
+
+  copyEvent    CopyEvent        @relation(fields: [copyEventId], references: [id], onDelete: Cascade)
+  subscription CopySubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([copyEventId])
+  @@index([subscriptionId, executedAt])
+}
+
+// --- Bot Runner v2 persistence ---
+enum RunnerStatus {
+  RUNNING
+  STOPPED
+  ERROR
+}
+
+model BotRunnerRun {
+  id             Int          @id @default(autoincrement())
+  runId          String       @unique
+  strategyId     String
+  ownerId        Int?
+  symbol         String
+  timeframe      String
+  exchangeMode   String
+  exchangeId     String?
+  paperAccountId Int?
+  riskProfileId  Int?
+  status         RunnerStatus @default(RUNNING)
+  config         Json
+  initialEquity  Decimal?
+  peakEquity     Decimal?
+  finalEquity    Decimal?
+  dailyPnl       Decimal      @default(0)
+  realizedPnl    Decimal      @default(0)
+  ticks          Int          @default(0)
+  signals        Int          @default(0)
+  ordersPlaced   Int          @default(0)
+  ordersRejected Int          @default(0)
+  errors         Int          @default(0)
+  lastError      String?
+  startedAt      DateTime     @default(now())
+  stoppedAt      DateTime?
+
+  trades    BotRunnerTrade[]
+  snapshots BotRunnerSnapshot[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([symbol, startedAt])
+}
+
+model BotRunnerTrade {
+  id             Int      @id @default(autoincrement())
+  botRunnerRunId Int
+  orderId        String
+  symbol         String
+  side           OrderSide
+  entryPrice     Decimal
+  exitPrice      Decimal?
+  quantity       Decimal
+  fee            Decimal   @default(0)
+  pnl            Decimal?
+  pnlPct         Decimal?
+  reason         String?
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+
+  botRunnerRun BotRunnerRun @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunnerRunId, closedAt])
+  @@index([symbol, openedAt])
+}
+
+model BotRunnerSnapshot {
+  id             Int      @id @default(autoincrement())
+  botRunnerRunId Int
+  ts             DateTime @default(now())
+  equity         Decimal
+  drawdownPct    Float    @default(0)
+  openPositions  Int      @default(0)
+  extras         Json?
+
+  botRunnerRun BotRunnerRun @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunnerRunId, ts])
+}
+
+// --- Risk profiles + kill switch ---
+model RiskProfile {
+  id                 Int      @id @default(autoincrement())
+  ownerId            Int?
+  name               String
+  maxDrawdownPct     Float    @default(20)
+  maxDailyLossPct    Float    @default(5)
+  maxPositionSizePct Float    @default(10)
+  maxOpenPositions   Int      @default(5)
+  sizer              Json?    // { type: 'fixed-pct' | 'kelly' | 'atr-vol', config: {...} }
+  trailingStop       Json?    // TrailingStopConfig
+  tpLadder           Json?    // TpLadderConfig
+  enabled            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([enabled])
+}
+
+model KillSwitch {
+  id         Int      @id @default(autoincrement())
+  scope      String   // 'GLOBAL' | 'USER' | 'BOT'
+  targetId   String?  // userId or runId
+  enabled    Boolean  @default(false)
+  reason     String?
+  triggeredAt DateTime?
+  triggeredBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([scope, targetId])
+  @@index([enabled])
+}
+
+// --- Paper trading (virtual account) ---
+model PaperAccount {
+  id           Int      @id @default(autoincrement())
+  ownerId      Int?
+  name         String
+  quoteAsset   String   @default("USDT")
+  initialQuote Decimal
+  balances     Json     // { [asset: string]: { free: number, locked: number, avgEntry?: number } }
+  feesConfig   Json?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  fills        PaperFill[]
+
+  @@index([ownerId])
+  @@index([active])
+}
+
+model PaperFill {
+  id             Int        @id @default(autoincrement())
+  paperAccountId Int
+  orderId        String
+  symbol         String
+  side           OrderSide
+  type           String
+  price          Decimal
+  quantity       Decimal
+  quoteQuantity  Decimal
+  fee            Decimal    @default(0)
+  feeAsset       String?
+  reason         String?
+  filledAt       DateTime   @default(now())
+
+  paperAccount   PaperAccount @relation(fields: [paperAccountId], references: [id], onDelete: Cascade)
+
+  @@index([paperAccountId, filledAt])
+  @@index([symbol, filledAt])
+}
+
+model BacktestTrade {
+  id             Int          @id @default(autoincrement())
+  backtestRunId  Int
+  side           OrderSide
+  entryTime      DateTime
+  exitTime       DateTime
+  entryPrice     Decimal
+  exitPrice      Decimal
+  quantity       Decimal
+  pnl            Decimal
+  pnlPct         Decimal
+  fees           Decimal      @default(0)
+  reason         String?
+  bars           Int?         // bars held
+
+  backtestRun    BacktestRun  @relation(fields: [backtestRunId], references: [id], onDelete: Cascade)
+
+  @@index([backtestRunId, exitTime])
 }

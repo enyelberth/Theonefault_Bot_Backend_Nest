@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
 import { BinanceService } from './binance.service';
 import { BinanceController } from './binance.controller';
-import { CryptoPriceService } from 'src/crypto-price/crypto-price.service';
-import { CryptoPriceModule } from 'src/crypto-price/crypto-price.module';
+import { PaperExchangeService } from './paper-exchange.service';
+import { PaperExchangeController } from './paper-exchange.controller';
 
 @Module({
-
-  exports: [BinanceService],
-  controllers: [BinanceController],
-  providers: [BinanceService],
+  exports: [BinanceService, PaperExchangeService],
+  controllers: [BinanceController, PaperExchangeController],
+  providers: [BinanceService, PaperExchangeService, PrismaClient],
 })
 export class BinanceModule {}

@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OrderSide } from '@prisma/client';
 import { TradingStrategy } from './trading-strategy.interface';
 import { BinanceService } from '../binance/binance.service';
 import { LoggerMessages } from 'src/utils/logs';
 import { Order, OrderLevel } from 'src/interfaces/order';
+import { PnlTracker } from '../bot/pnl-tracker';
+import { StrategyPnlReporter } from '../bot/strategy-pnl-reporter';
 
 @Injectable()
 export class GridBuyMarginFixedStrategy implements TradingStrategy {
@@ -26,8 +29,13 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
 
   private openBuyOrders = new Map<number, Order>();
   private openSellOrders = new Map<number, Order>();
+  private pnl = new PnlTracker();
   private isRunning = true;
   private profitLoss = 0;
+
+  attachPnlReporter(reporter: StrategyPnlReporter): void {
+    this.pnl.attach(reporter);
+  }
 
   constructor(private readonly binanceService: BinanceService) {}
 
@@ -50,6 +58,10 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
         await this.placeBuyOrders(priceFilter, lotSizeFilter, currentPrice);
         await this.checkBuyOrders(priceFilter, lotSizeFilter, currentPrice);
         await this.checkSellOrders(priceFilter, lotSizeFilter, currentPrice);
+
+        await this.pnl.snapshot(this.openSellOrders.size, currentPrice, {
+          openBuys: this.openBuyOrders.size,
+        });
 
         const sleepDuration = this.calculateSleepDuration();
         this.logMessages.logInfo(`Sleeping ${sleepDuration} ms`);
@@ -194,6 +206,7 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
 
           const sellPrice = this.roundToStep(orderLevel.price * (1 + this.config.profitMargin), priceFilter.tickSize);
           const quantity = this.roundToStep(parseFloat(order.origQty), lotSizeFilter.stepSize);
+          this.pnl.openLeg(i, filledPrice, quantity, OrderSide.BUY);
           this.logMessages.logInfo(`Placing LIMIT SELL order level ${i} at price ${sellPrice}`);
           this.logMessages.logInfo(`Filled BUY at ${filledPrice}, placing SELL at ${sellPrice} for quantity ${quantity}`);
 
@@ -248,6 +261,7 @@ export class GridBuyMarginFixedStrategy implements TradingStrategy {
           const profit = (filledPrice - baseCost) * quantity;
 
           this.profitLoss += profit;
+          await this.pnl.closeLeg(i, filledPrice, order.orderId);
           this.logMessages.logInfo(`Profit/loss updated by ${profit} at level ${i}, total: ${this.profitLoss}`);
         } else if (Date.now() - order.timestamp > maxAgeMs) {
           this.logMessages.logWarn(`SELL order ID ${order.orderId} level ${i} stuck, canceling...`);

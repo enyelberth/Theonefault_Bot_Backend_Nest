@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { FrontendModule } from './frontend/frontend.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,7 +28,7 @@ async function bootstrap() {
         name: 'Authorization',
         in: 'header',
       },
-      'BearerAuth', // Nombre que usarás en @ApiBearerAuth()
+      'BearerAuth',
     )
     .build();
 
@@ -39,6 +40,14 @@ async function bootstrap() {
     },
   });
 
-  await app.listen(process.env.PORT || 4000);
+  const backendPort = Number(process.env.PORT) || 50000;
+  await app.listen(backendPort);
+  console.log(`[Backend] listening on http://localhost:${backendPort}  (Swagger: /api)`);
+
+  const frontApp = await NestFactory.create(FrontendModule);
+  frontApp.enableCors({ origin: '*' });
+  const frontPort = Number(process.env.FRONT_PORT) || 6000;
+  await frontApp.listen(frontPort);
+  console.log(`[KAIZEN Frontend] serving ./public on http://localhost:${frontPort}`);
 }
 bootstrap();
