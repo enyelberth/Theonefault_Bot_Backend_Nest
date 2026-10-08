@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ProfileController } from './profile/profile.controller';
-import { ProfileService } from './profile/profile.service';
 import { ProfileModule } from './profile/profile.module';
 
 import { PricecryptoModule } from './pricecrypto/pricecrypto.module';
@@ -26,7 +24,7 @@ import { StrategiesTradingModule } from './strategies-trading/strategies-trading
 import { AuthModule } from './authA/auth.module';
 import { NotificationModule } from './notification/notification.module';
 import { IndicatorsModule } from './indicators/indicators.module';
-import {TelegramBotModule} from './telegram/telegram.module'
+import { TelegramBotModule } from './telegram/telegram.module';
 import { CryptoGuardModule } from './crypto-guard/crypto-guard.module';
 import { AlertModule } from './alert/alert.module';
 import { GeminisModule } from './geminis/geminis.module';
@@ -43,9 +41,61 @@ import { RiskModule } from './risk/risk.module';
 import { CopyTradingModule } from './copy-trading/copy-trading.module';
 import { SessionModule } from './session/session.module';
 import { TradingExecutionModule } from './trading-execution/trading-execution.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { CurrencyModule } from './currency/currency.module';
+import { OperationalAlertsModule } from './operational-alerts/operational-alerts.module';
+import { CapitalLedgerModule } from './capital-ledger/capital-ledger.module';
+import { AuditModule } from './audit/audit.module';
+import { ConfluenceModule } from './confluence/confluence.module';
 @Module({
-  imports: [AuthModule,ScheduleModule.forRoot(),CryptoPriceWatcherModule,CryptoGuardModule,AlertModule,BotModule,TelegramBotModule,StrategiesTradingModule,TradingModule ,JournalEntryModule, ProfileModule,AccountModule, PricecryptoModule, BinanceModule, ExchangesModule, StrategiesV2Module, BacktestingModule, PaperExchangeModule, RiskModule, BotRunnerModule, CopyTradingModule, CryptoPairModule, CryptoPriceModule, PruebaModule, TransactionModule, UserModule, BankAccountTypeServiceModule, HttpconfigModule, NotificationModule, IndicatorsModule, GeminisModule, TelegramSofiaModule, MarketDataModule, DashboardModule, RiskManagerModule, SessionModule, TradingExecutionModule],
-  controllers: [AppController, ProfileController],
-  providers: [AppService, ProfileService, PruebaService],
+  imports: [
+    AuthModule,
+    ScheduleModule.forRoot(),
+    CryptoPriceWatcherModule,
+    CryptoGuardModule,
+    CurrencyModule,
+    AlertModule,
+    BotModule,
+    TelegramBotModule,
+    StrategiesTradingModule,
+    TradingModule,
+    JournalEntryModule,
+    ProfileModule,
+    AccountModule,
+    PricecryptoModule,
+    BinanceModule,
+    ExchangesModule,
+    StrategiesV2Module,
+    BacktestingModule,
+    PaperExchangeModule,
+    RiskModule,
+    BotRunnerModule,
+    CopyTradingModule,
+    CryptoPairModule,
+    CryptoPriceModule,
+    PruebaModule,
+    TransactionModule,
+    UserModule,
+    BankAccountTypeServiceModule,
+    HttpconfigModule,
+    NotificationModule,
+    IndicatorsModule,
+    GeminisModule,
+    TelegramSofiaModule,
+    MarketDataModule,
+    DashboardModule,
+    RiskManagerModule,
+    SessionModule,
+    TradingExecutionModule,
+    AnalyticsModule,
+    ReconciliationModule,
+    OperationalAlertsModule,
+    CapitalLedgerModule,
+    AuditModule,
+    ConfluenceModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService, PruebaService],
 })
 export class AppModule {}
