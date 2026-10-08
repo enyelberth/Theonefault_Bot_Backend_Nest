@@ -1,4 +1,8 @@
-import type { IPositionSizer, SizingInput, SizingResult } from './position-sizer.interface';
+import type {
+  IPositionSizer,
+  SizingInput,
+  SizingResult,
+} from './position-sizer.interface';
 
 export interface FixedPctConfig {
   riskPct: number;
@@ -17,7 +21,12 @@ export class FixedPctSizer implements IPositionSizer {
   compute(input: SizingInput): SizingResult {
     const { equity, price, stopPrice } = input;
     if (equity <= 0 || price <= 0) {
-      return { quoteQuantity: 0, quantity: 0, sizer: this.id, notes: 'invalid inputs' };
+      return {
+        quoteQuantity: 0,
+        quantity: 0,
+        sizer: this.id,
+        notes: 'invalid inputs',
+      };
     }
     if (stopPrice && stopPrice > 0 && stopPrice !== price) {
       const perUnitRisk = Math.abs(price - stopPrice);

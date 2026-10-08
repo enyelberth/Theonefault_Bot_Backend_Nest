@@ -16,7 +16,10 @@ export interface TrailingStopState {
   activated: boolean;
 }
 
-export function initTrailingStop(side: 'LONG' | 'SHORT', entryPrice: number): TrailingStopState {
+export function initTrailingStop(
+  side: 'LONG' | 'SHORT',
+  entryPrice: number,
+): TrailingStopState {
   return {
     side,
     entryPrice,
@@ -61,16 +64,22 @@ export function updateTrailingStop(
 
   const distance = atrValue * config.atrMultiplier;
   const candidate =
-    state.side === 'LONG' ? state.peakPrice - distance : state.troughPrice + distance;
+    state.side === 'LONG'
+      ? state.peakPrice - distance
+      : state.troughPrice + distance;
 
   if (state.side === 'LONG') {
     state.currentStop =
-      state.currentStop === null ? candidate : Math.max(state.currentStop, candidate);
+      state.currentStop === null
+        ? candidate
+        : Math.max(state.currentStop, candidate);
     const triggered = price <= state.currentStop;
     return { state, triggered, stopPrice: state.currentStop };
   } else {
     state.currentStop =
-      state.currentStop === null ? candidate : Math.min(state.currentStop, candidate);
+      state.currentStop === null
+        ? candidate
+        : Math.min(state.currentStop, candidate);
     const triggered = price >= state.currentStop;
     return { state, triggered, stopPrice: state.currentStop };
   }

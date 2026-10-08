@@ -20,6 +20,12 @@ const DEFAULT_CONFIG: Omit<RiskConfig, 'updatedAt' | 'createdAt'> = {
   minWinRatePct: null,
   minTradesForWinRateEval: 20,
   emergencyStopUntil: null,
+  guardBufferPct: 4,
+  guardConfirmTicks: 3,
+  guardCooldownMinutes: 15,
+  consecutiveLossLimit: null,
+  includeUnrealizedInDailyLoss: true,
+  maxCrossBotExposurePct: null,
 };
 
 @Injectable()
@@ -29,19 +35,24 @@ export class RiskManagerService {
 
   constructor(
     private readonly prisma: PrismaClient,
-    @Inject(forwardRef(() => BotService)) private readonly botService: BotService,
+    @Inject(forwardRef(() => BotService))
+    private readonly botService: BotService,
     private readonly dashboard: DashboardService,
   ) {}
 
   async getConfig(): Promise<RiskConfig> {
-    const existing = await this.prisma.riskConfig.findUnique({ where: { id: 1 } });
+    const existing = await this.prisma.riskConfig.findUnique({
+      where: { id: 1 },
+    });
     if (existing) return existing;
     return this.prisma.riskConfig.create({
       data: DEFAULT_CONFIG as any,
     });
   }
 
-  async updateConfig(input: Partial<Omit<RiskConfig, 'id' | 'updatedAt' | 'createdAt'>>): Promise<RiskConfig> {
+  async updateConfig(
+    input: Partial<Omit<RiskConfig, 'id' | 'updatedAt' | 'createdAt'>>,
+  ): Promise<RiskConfig> {
     await this.getConfig();
     return this.prisma.riskConfig.update({
       where: { id: 1 },
@@ -82,7 +93,10 @@ export class RiskManagerService {
         await this.botService.stopStrategy(r.symbol, r.strategyId);
         stopped += 1;
       } catch (err) {
-        this.logger.error(`emergencyStop: failed to stop ${r.symbol}/${r.strategyId}`, err as Error);
+        this.logger.error(
+          `emergencyStop: failed to stop ${r.symbol}/${r.strategyId}`,
+          err as Error,
+        );
       }
     }
 
@@ -98,7 +112,9 @@ export class RiskManagerService {
       metadata: { stoppedCount: stopped },
     });
 
-    this.logger.warn(`EMERGENCY STOP triggered: ${reason}. Stopped ${stopped} bots.`);
+    this.logger.warn(
+      `EMERGENCY STOP triggered: ${reason}. Stopped ${stopped} bots.`,
+    );
     return { stopped };
   }
 
@@ -138,7 +154,7 @@ export class RiskManagerService {
     const cfg = await this.getConfig();
     if (!cfg.enabled) return;
 
-    // Check global: maxDailyLoss
+    // Check global: maxDailyLoss (realized + optional unrealized)
     if (cfg.maxDailyLossQuote) {
       const since = new Date();
       since.setHours(0, 0, 0, 0);
@@ -146,13 +162,67 @@ export class RiskManagerService {
         where: { closedAt: { gte: since } },
         _sum: { pnl: true },
       });
-      const dailyPnl = (agg._sum.pnl ?? new Prisma.Decimal(0)).toNumber();
+      let dailyPnl = (agg._sum.pnl ?? new Prisma.Decimal(0)).toNumber();
+      let unrealizedTotal = 0;
+
+      if (cfg.includeUnrealizedInDailyLoss) {
+        const activeRuns = await this.prisma.botRun.findMany({
+          where: { status: BotRunStatus.RUNNING },
+          select: { id: true },
+        });
+        for (const r of activeRuns) {
+          const last = await this.prisma.botMetric.findFirst({
+            where: { botRunId: r.id },
+            orderBy: { ts: 'desc' },
+            select: { unrealizedPnl: true },
+          });
+          if (last?.unrealizedPnl) {
+            unrealizedTotal += new Prisma.Decimal(
+              last.unrealizedPnl,
+            ).toNumber();
+          }
+        }
+        dailyPnl += unrealizedTotal;
+      }
+
       const limit = cfg.maxDailyLossQuote.toNumber();
       if (dailyPnl <= -Math.abs(limit)) {
         await this.emergencyStopAll(
-          `Daily loss limit reached: ${dailyPnl} <= -${limit}`,
+          `Daily loss (realized+unrealized=${dailyPnl.toFixed(2)}) <= -${limit}`,
         );
         return;
+      }
+    }
+
+    // Cross-bot aggregated exposure
+    if (cfg.maxCrossBotExposurePct) {
+      const active = await this.prisma.botRun.findMany({
+        where: { status: BotRunStatus.RUNNING },
+        select: { id: true, initialQuote: true },
+      });
+      let equityBase = 0;
+      let openExposure = 0;
+      for (const r of active) {
+        const last = await this.prisma.botMetric.findFirst({
+          where: { botRunId: r.id },
+          orderBy: { ts: 'desc' },
+          select: { openPositions: true, lastPrice: true },
+        });
+        if (r.initialQuote)
+          equityBase += new Prisma.Decimal(r.initialQuote).toNumber();
+        if (last?.openPositions && last.lastPrice) {
+          openExposure +=
+            last.openPositions * new Prisma.Decimal(last.lastPrice).toNumber();
+        }
+      }
+      if (equityBase > 0) {
+        const pct = (openExposure / equityBase) * 100;
+        if (pct >= cfg.maxCrossBotExposurePct) {
+          await this.emergencyStopAll(
+            `Cross-bot exposure ${pct.toFixed(2)}% >= ${cfg.maxCrossBotExposurePct}%`,
+          );
+          return;
+        }
       }
     }
 
@@ -162,11 +232,13 @@ export class RiskManagerService {
         where: { status: BotRunStatus.RUNNING },
       });
       if (activeCount > cfg.maxOpenBots) {
-        this.logger.warn(`Too many bots active: ${activeCount} > ${cfg.maxOpenBots}`);
+        this.logger.warn(
+          `Too many bots active: ${activeCount} > ${cfg.maxOpenBots}`,
+        );
       }
     }
 
-    // Check per-bot: maxLossPerBot, maxDrawdown, minWinRate
+    // Check per-bot: maxLossPerBot, maxDrawdown, minWinRate, consecutiveLoss
     const runs = await this.prisma.botRun.findMany({
       where: { status: BotRunStatus.RUNNING },
     });
@@ -178,6 +250,24 @@ export class RiskManagerService {
         this.logger.error(`evaluateBot ${run.id} err`, err as Error);
       }
     }
+  }
+
+  private async countConsecutiveLosses(
+    botRunId: number,
+    lookback = 50,
+  ): Promise<number> {
+    const trades = await this.prisma.tradeResult.findMany({
+      where: { botRunId },
+      orderBy: { closedAt: 'desc' },
+      take: lookback,
+      select: { pnl: true },
+    });
+    let streak = 0;
+    for (const t of trades) {
+      if (new Prisma.Decimal(t.pnl).lte(0)) streak += 1;
+      else break;
+    }
+    return streak;
   }
 
   private async evaluateBot(
@@ -224,7 +314,10 @@ export class RiskManagerService {
     }
 
     // Min win rate (solo si tiene suficientes trades)
-    if (cfg.minWinRatePct && summary.tradesCount >= cfg.minTradesForWinRateEval) {
+    if (
+      cfg.minWinRatePct &&
+      summary.tradesCount >= cfg.minTradesForWinRateEval
+    ) {
       if (summary.winRate < cfg.minWinRatePct) {
         await this.stopWithEvent({
           botRunId,
@@ -233,6 +326,22 @@ export class RiskManagerService {
           type: 'WIN_RATE',
           message: `Bot ${botRunId} winRate ${summary.winRate.toFixed(1)}% < ${cfg.minWinRatePct}% (${summary.tradesCount} trades)`,
           metadata: { winRate: summary.winRate, trades: summary.tradesCount },
+        });
+        return;
+      }
+    }
+
+    // Consecutive-loss circuit breaker
+    if (cfg.consecutiveLossLimit && cfg.consecutiveLossLimit > 0) {
+      const streak = await this.countConsecutiveLosses(botRunId);
+      if (streak >= cfg.consecutiveLossLimit) {
+        await this.stopWithEvent({
+          botRunId,
+          symbol,
+          strategyId,
+          type: 'CONSECUTIVE_LOSS',
+          message: `Bot ${botRunId} consecutive losses ${streak} >= ${cfg.consecutiveLossLimit}`,
+          metadata: { streak, limit: cfg.consecutiveLossLimit },
         });
       }
     }

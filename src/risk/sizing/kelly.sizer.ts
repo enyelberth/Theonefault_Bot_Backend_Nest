@@ -1,4 +1,8 @@
-import type { IPositionSizer, SizingInput, SizingResult } from './position-sizer.interface';
+import type {
+  IPositionSizer,
+  SizingInput,
+  SizingResult,
+} from './position-sizer.interface';
 
 export interface KellyConfig {
   winRate: number;
@@ -23,7 +27,12 @@ export class KellySizer implements IPositionSizer {
     const { equity, price } = input;
     const { winRate, winLossRatio, fraction = 0.5, cap = 0.25 } = this.config;
     if (equity <= 0 || price <= 0) {
-      return { quoteQuantity: 0, quantity: 0, sizer: this.id, notes: 'invalid inputs' };
+      return {
+        quoteQuantity: 0,
+        quantity: 0,
+        sizer: this.id,
+        notes: 'invalid inputs',
+      };
     }
     const kelly = winRate - (1 - winRate) / winLossRatio;
     const applied = Math.max(0, Math.min(kelly * fraction, cap));

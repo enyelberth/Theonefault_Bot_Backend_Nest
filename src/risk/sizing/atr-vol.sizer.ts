@@ -1,5 +1,9 @@
 import { atr } from '../../strategies/v2/indicators/atr';
-import type { IPositionSizer, SizingInput, SizingResult } from './position-sizer.interface';
+import type {
+  IPositionSizer,
+  SizingInput,
+  SizingResult,
+} from './position-sizer.interface';
 
 export interface AtrVolConfig {
   riskPct: number;

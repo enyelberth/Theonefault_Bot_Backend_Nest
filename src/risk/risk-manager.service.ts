@@ -1,6 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, PrismaClient, RiskProfile } from '@prisma/client';
-import type { Candle, RiskContext, RiskDecision, Signal } from '../exchanges/domain';
+import type {
+  Candle,
+  RiskContext,
+  RiskDecision,
+  Signal,
+} from '../exchanges/domain';
 import { buildSizer, SizerSpec } from './sizing';
 import type { SizingResult } from './sizing/position-sizer.interface';
 import type { TrailingStopConfig } from './stops/trailing-stop';
@@ -30,7 +35,11 @@ export class RiskManagerService {
 
     if (context.killSwitchEnabled) {
       return {
-        decision: { allowed: false, reason: 'kill switch active', code: 'KILL_SWITCH' },
+        decision: {
+          allowed: false,
+          reason: 'kill switch active',
+          code: 'KILL_SWITCH',
+        },
       };
     }
     if (context.currentDrawdownPct >= context.maxDrawdownPct) {
@@ -43,7 +52,8 @@ export class RiskManagerService {
       };
     }
     if (context.dailyPnl < 0) {
-      const dailyLossPct = (Math.abs(context.dailyPnl) / context.accountEquity) * 100;
+      const dailyLossPct =
+        (Math.abs(context.dailyPnl) / context.accountEquity) * 100;
       if (dailyLossPct >= context.maxDailyLossPct) {
         return {
           decision: {
@@ -71,7 +81,10 @@ export class RiskManagerService {
     let adjustedSignal = signal;
     let sizing: SizingResult | undefined;
 
-    if ((signal.action === 'OPEN' || signal.action === 'ADJUST') && profile?.sizer) {
+    if (
+      (signal.action === 'OPEN' || signal.action === 'ADJUST') &&
+      profile?.sizer
+    ) {
       const spec = profile.sizer as unknown as SizerSpec;
       try {
         const sizer = buildSizer(spec);
@@ -97,7 +110,11 @@ export class RiskManagerService {
           ...signal,
           quoteQuantity: sizing.quoteQuantity,
           quantity: sizing.quantity,
-          metadata: { ...(signal.metadata ?? {}), sizer: sizing.sizer, sizerNotes: sizing.notes },
+          metadata: {
+            ...(signal.metadata ?? {}),
+            sizer: sizing.sizer,
+            sizerNotes: sizing.notes,
+          },
         };
       } catch (e: any) {
         this.logger.warn(`sizer failed: ${e.message}`);
@@ -106,13 +123,18 @@ export class RiskManagerService {
 
     const requestedQuote = adjustedSignal.quoteQuantity ?? 0;
     if (requestedQuote > 0) {
-      const maxQuote = context.accountEquity * (context.maxPositionSizePct / 100);
+      const maxQuote =
+        context.accountEquity * (context.maxPositionSizePct / 100);
       if (requestedQuote > maxQuote) {
         adjustedSignal = { ...adjustedSignal, quoteQuantity: maxQuote };
       }
       if (maxQuote <= 0) {
         return {
-          decision: { allowed: false, reason: 'maxPositionSize=0', code: 'MAX_POSITION_SIZE' },
+          decision: {
+            allowed: false,
+            reason: 'maxPositionSize=0',
+            code: 'MAX_POSITION_SIZE',
+          },
         };
       }
     }
@@ -162,16 +184,23 @@ export class RiskManagerService {
         maxDailyLossPct: input.maxDailyLossPct ?? 5,
         maxPositionSizePct: input.maxPositionSizePct ?? 10,
         maxOpenPositions: input.maxOpenPositions ?? 5,
-        sizer: input.sizer ? (input.sizer as unknown as Prisma.InputJsonValue) : undefined,
+        sizer: input.sizer
+          ? (input.sizer as unknown as Prisma.InputJsonValue)
+          : undefined,
         trailingStop: input.trailingStop
           ? (input.trailingStop as unknown as Prisma.InputJsonValue)
           : undefined,
-        tpLadder: input.tpLadder ? (input.tpLadder as unknown as Prisma.InputJsonValue) : undefined,
+        tpLadder: input.tpLadder
+          ? (input.tpLadder as unknown as Prisma.InputJsonValue)
+          : undefined,
       },
     });
   }
 
-  async updateProfile(id: number, data: Partial<RiskProfile>): Promise<RiskProfile> {
+  async updateProfile(
+    id: number,
+    data: Partial<RiskProfile>,
+  ): Promise<RiskProfile> {
     return this.prisma.riskProfile.update({
       where: { id },
       data: data as Prisma.RiskProfileUpdateInput,
@@ -188,7 +217,13 @@ export class RiskManagerService {
     });
   }
 
-  async setKillSwitch(scope: string, targetId: string | null, enabled: boolean, reason?: string, triggeredBy?: string) {
+  async setKillSwitch(
+    scope: string,
+    targetId: string | null,
+    enabled: boolean,
+    reason?: string,
+    triggeredBy?: string,
+  ) {
     return this.prisma.killSwitch.upsert({
       where: { scope_targetId: { scope, targetId: targetId ?? '' } },
       create: {

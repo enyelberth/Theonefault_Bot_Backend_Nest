@@ -49,7 +49,10 @@ export class RiskController {
   }
 
   @Patch('profiles/:id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRiskProfileDto) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRiskProfileDto,
+  ) {
     return this.risk.updateProfile(id, dto as any);
   }
 
@@ -60,7 +63,10 @@ export class RiskController {
   }
 
   @Get('kill-switch')
-  killStatus(@Query('scope') scope: string = 'GLOBAL', @Query('targetId') targetId?: string) {
+  killStatus(
+    @Query('scope') scope: string = 'GLOBAL',
+    @Query('targetId') targetId?: string,
+  ) {
     return this.risk.killSwitchStatus(scope, targetId);
   }
 

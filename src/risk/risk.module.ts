@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { RiskManagerService } from './risk-manager.service';
 import { RiskController } from './risk.controller';
+import { CapitalGuardResetService } from './capital-guard-reset.service';
 
 @Module({
-  providers: [RiskManagerService, PrismaClient],
+  providers: [RiskManagerService, CapitalGuardResetService, PrismaClient],
   controllers: [RiskController],
   exports: [RiskManagerService],
 })

@@ -5,24 +5,31 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { Public } from 'src/authA/auth.guard';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AuthGuard } from 'src/authA/auth.guard';
 import { RiskManagerService } from './risk-manager.service';
 
+@ApiBearerAuth('BearerAuth')
+@UseGuards(AuthGuard)
 @ApiTags('risk')
 @Controller('risk')
 export class RiskManagerController {
   constructor(private readonly risk: RiskManagerService) {}
 
-  @Public()
   @Get('config')
   @ApiOperation({ summary: 'Config actual de riesgo' })
   getConfig() {
     return this.risk.getConfig();
   }
 
-  @Public()
   @Patch('config')
   @ApiOperation({ summary: 'Actualizar límites de riesgo' })
   @ApiBody({
@@ -43,7 +50,6 @@ export class RiskManagerController {
     return this.risk.updateConfig(body);
   }
 
-  @Public()
   @Post('emergency-stop')
   @ApiOperation({ summary: 'Kill switch: para TODOS los bots activos' })
   @ApiBody({
@@ -58,14 +64,12 @@ export class RiskManagerController {
     return this.risk.emergencyStopAll(body?.reason || 'manual');
   }
 
-  @Public()
   @Post('emergency-clear')
   @ApiOperation({ summary: 'Limpia bandera de emergency-stop' })
   emergencyClear() {
     return this.risk.clearEmergencyStop();
   }
 
-  @Public()
   @Post('check-now')
   @ApiOperation({ summary: 'Forzar evaluación inmediata de todas las reglas' })
   async checkNow() {
@@ -73,7 +77,6 @@ export class RiskManagerController {
     return { ok: true };
   }
 
-  @Public()
   @Get('events')
   @ApiOperation({ summary: 'Historial de eventos de riesgo' })
   @ApiQuery({ name: 'limit', required: false, type: 'number' })
@@ -81,7 +84,6 @@ export class RiskManagerController {
     return this.risk.listEvents(limit ? Number(limit) : 100);
   }
 
-  @Public()
   @Get('status')
   @ApiOperation({ summary: 'Estado breve: enabled + emergencia' })
   async status() {
