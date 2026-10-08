@@ -6,6 +6,12 @@ import { TradingService } from 'src/trading/trading.service';
 import { BinanceService } from 'src/binance/binance.service';
 
 @Module({
-  providers: [PruebaService, BinanceService,CryptoPriceService, TradingService, PrismaClient],
+  providers: [
+    PruebaService,
+    BinanceService,
+    CryptoPriceService,
+    TradingService,
+    PrismaClient,
+  ],
 })
 export class PruebaModule {}
