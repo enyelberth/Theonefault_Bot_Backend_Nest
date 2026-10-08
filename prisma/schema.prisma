@@ -384,6 +384,7 @@ enum BotRunStatus {
 model BotRun {
   id             Int          @id @default(autoincrement())
   strategyId     String
+  ownerId        Int?
   symbol         String
   strategyType   String?
   status         BotRunStatus @default(RUNNING)
@@ -400,6 +401,30 @@ model BotRun {
   @@index([strategyId])
   @@index([symbol, status])
   @@index([startedAt])
+  @@index([ownerId])
+}
+
+// Motor de confluencia y confianza de señales: combina régimen de mercado,
+// alineación multi-timeframe e indicadores de momentum en un único score
+// direccional explicable. Informativo — no bloquea ni autoriza órdenes por
+// sí solo (ver src/confluence).
+model ConfluenceSnapshot {
+  id              Int      @id @default(autoincrement())
+  symbol          String
+  timeframe       String
+  candleCloseTime DateTime
+  score           Float // 0-100, 50 = neutral, >50 = sesgo alcista, <50 = sesgo bajista
+  bias            String // BULLISH | BEARISH | NEUTRAL
+  confidence      Float // 0-100, qué tanto coinciden los componentes entre sí
+  regimeScore     Float
+  mtfScore        Float
+  momentumScore   Float
+  breakdown       Json // detalle por componente para auditar la decisión
+  createdAt       DateTime @default(now())
+
+  @@unique([symbol, timeframe, candleCloseTime])
+  @@index([symbol, timeframe, candleCloseTime])
+  @@index([bias, candleCloseTime])
 }
 
 // Snapshot periódico de métricas por bot
