@@ -9,7 +9,7 @@ export interface BollingerResult {
   upper: number;
   lower: number;
   bandwidth: number; // (upper-lower)/middle
-  percentB: number;  // (price-lower)/(upper-lower)
+  percentB: number; // (price-lower)/(upper-lower)
 }
 
 export interface MacdResult {

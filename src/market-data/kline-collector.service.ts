@@ -1,10 +1,33 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { EventEmitter } from 'events';
 import * as WebSocket from 'ws';
 import { MarketDataService } from './market-data.service';
 import { SymbolRegistryService } from './symbol-registry.service';
 
 const INTERVALS = ['1m', '5m', '15m', '1h'] as const;
-type Interval = typeof INTERVALS[number];
+type Interval = (typeof INTERVALS)[number];
+
+export interface ClosedCandleEvent {
+  symbol: string;
+  interval: string;
+  openTime: number;
+  closeTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  trades: number;
+}
+
+export function klineEventName(symbol: string, interval: string): string {
+  return `kline:${symbol.toUpperCase()}:${interval}`;
+}
 
 interface KlineMessage {
   stream: string;
@@ -35,16 +58,37 @@ export class KlineCollectorService implements OnModuleInit, OnModuleDestroy {
   private currentSubscribed = new Set<string>();
   private resubscribeTimer: NodeJS.Timeout | null = null;
   private stopped = false;
+  private readonly emitter = new EventEmitter();
 
   constructor(
     private readonly marketData: MarketDataService,
     private readonly symbolRegistry: SymbolRegistryService,
-  ) {}
+  ) {
+    this.emitter.setMaxListeners(200);
+  }
+
+  onClosedCandle(
+    symbol: string,
+    interval: string,
+    handler: (candle: ClosedCandleEvent) => void,
+  ): () => void {
+    const event = klineEventName(symbol, interval);
+    this.emitter.on(event, handler);
+    return () => this.emitter.off(event, handler);
+  }
+
+  async requestSubscription(symbol: string): Promise<void> {
+    this.symbolRegistry.addSymbol(symbol);
+    await this.reconcileSubscriptions();
+  }
 
   async onModuleInit() {
     await this.reconcileSubscriptions();
     this.resubscribeTimer = setInterval(
-      () => this.reconcileSubscriptions().catch((e) => this.logger.error('reconcile err', e)),
+      () =>
+        this.reconcileSubscriptions().catch((e) =>
+          this.logger.error('reconcile err', e),
+        ),
       60_000,
     );
   }
@@ -80,6 +124,7 @@ export class KlineCollectorService implements OnModuleInit, OnModuleDestroy {
     if (this.ws) {
       try {
         this.ws.removeAllListeners();
+        this.ws.on('error', () => {}); // evita crash por 'error' no manejado al terminar un socket aún conectando
         this.ws.terminate();
       } catch {}
       this.ws = null;
@@ -91,7 +136,9 @@ export class KlineCollectorService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
-    this.logger.log(`Connecting kline WS (${this.currentSubscribed.size} streams)`);
+    this.logger.log(
+      `Connecting kline WS (${this.currentSubscribed.size} streams)`,
+    );
 
     const socket = new WebSocket(url);
     this.ws = socket;
@@ -105,18 +152,36 @@ export class KlineCollectorService implements OnModuleInit, OnModuleDestroy {
         const k = msg.data.k;
         if (!k.x) return; // ignora velas no cerradas
 
-        await this.marketData.upsertCandle({
+        const candle: ClosedCandleEvent = {
           symbol: k.s.toUpperCase(),
           interval: k.i,
-          openTime: new Date(k.t),
-          closeTime: new Date(k.T),
+          openTime: k.t,
+          closeTime: k.T,
           open: parseFloat(k.o),
           high: parseFloat(k.h),
           low: parseFloat(k.l),
           close: parseFloat(k.c),
           volume: parseFloat(k.v),
           trades: k.n,
+        };
+
+        await this.marketData.upsertCandle({
+          symbol: candle.symbol,
+          interval: candle.interval,
+          openTime: new Date(candle.openTime),
+          closeTime: new Date(candle.closeTime),
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+          trades: candle.trades,
         });
+
+        this.emitter.emit(
+          klineEventName(candle.symbol, candle.interval),
+          candle,
+        );
       } catch (err) {
         this.logger.error('kline msg err', err as Error);
       }

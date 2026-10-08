@@ -10,7 +10,8 @@ function mean(xs: number[]): number {
 function stdDev(xs: number[]): number {
   if (xs.length < 2) return 0;
   const m = mean(xs);
-  const variance = xs.reduce((acc, x) => acc + (x - m) ** 2, 0) / (xs.length - 1);
+  const variance =
+    xs.reduce((acc, x) => acc + (x - m) ** 2, 0) / (xs.length - 1);
   return Math.sqrt(variance);
 }
 
@@ -27,7 +28,11 @@ export function buildEquityCurve(
   const points: EquityPoint[] = [];
   let equity = initialEquity;
   let peak = initialEquity;
-  points.push({ t: trades[0]?.entryTime ?? Date.now(), equity, drawdownPct: 0 });
+  points.push({
+    t: trades[0]?.entryTime ?? Date.now(),
+    equity,
+    drawdownPct: 0,
+  });
   for (const trade of trades) {
     equity += trade.pnl;
     peak = Math.max(peak, equity);
@@ -45,24 +50,32 @@ export function computeMetrics(
   endTime: number,
 ): BacktestMetrics {
   const finalEquity =
-    equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].equity : initialQuote;
+    equityCurve.length > 0
+      ? equityCurve[equityCurve.length - 1].equity
+      : initialQuote;
   const totalReturnPct = ((finalEquity - initialQuote) / initialQuote) * 100;
 
-  const years = Math.max((endTime - startTime) / (365 * 24 * 60 * 60 * 1000), 1 / 365);
-  const cagr = initialQuote > 0 ? (Math.pow(finalEquity / initialQuote, 1 / years) - 1) * 100 : 0;
+  const years = Math.max(
+    (endTime - startTime) / (365 * 24 * 60 * 60 * 1000),
+    1 / 365,
+  );
+  const cagr =
+    initialQuote > 0
+      ? (Math.pow(finalEquity / initialQuote, 1 / years) - 1) * 100
+      : 0;
 
   const wins = trades.filter((t) => t.pnl > 0);
   const losses = trades.filter((t) => t.pnl < 0);
   const winRate = trades.length ? (wins.length / trades.length) * 100 : 0;
   const totalWin = wins.reduce((a, b) => a + b.pnl, 0);
   const totalLoss = Math.abs(losses.reduce((a, b) => a + b.pnl, 0));
-  const profitFactor = totalLoss > 0 ? totalWin / totalLoss : totalWin > 0 ? Infinity : 0;
+  const profitFactor =
+    totalLoss > 0 ? totalWin / totalLoss : totalWin > 0 ? Infinity : 0;
   const averageWin = wins.length ? totalWin / wins.length : 0;
   const averageLoss = losses.length ? totalLoss / losses.length : 0;
-  const expectancy =
-    trades.length
-      ? (winRate / 100) * averageWin - (1 - winRate / 100) * averageLoss
-      : 0;
+  const expectancy = trades.length
+    ? (winRate / 100) * averageWin - (1 - winRate / 100) * averageLoss
+    : 0;
 
   const returns: number[] = [];
   for (let i = 1; i < equityCurve.length; i++) {
@@ -73,10 +86,15 @@ export function computeMetrics(
   const rMean = mean(returns);
   const rStd = stdDev(returns);
   const rDown = downsideDev(returns);
-  const sharpeRatio = rStd > 0 ? (rMean / rStd) * Math.sqrt(PERIODS_PER_YEAR) : 0;
-  const sortinoRatio = rDown > 0 ? (rMean / rDown) * Math.sqrt(PERIODS_PER_YEAR) : 0;
+  const sharpeRatio =
+    rStd > 0 ? (rMean / rStd) * Math.sqrt(PERIODS_PER_YEAR) : 0;
+  const sortinoRatio =
+    rDown > 0 ? (rMean / rDown) * Math.sqrt(PERIODS_PER_YEAR) : 0;
 
-  const maxDrawdownPct = equityCurve.reduce((max, p) => Math.max(max, p.drawdownPct), 0);
+  const maxDrawdownPct = equityCurve.reduce(
+    (max, p) => Math.max(max, p.drawdownPct),
+    0,
+  );
   const averageBarsHeld = trades.length
     ? trades.reduce((a, t) => a + t.bars, 0) / trades.length
     : 0;

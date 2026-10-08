@@ -17,6 +17,6 @@ import { BinanceService } from '../binance/binance.service';
     RetentionService,
     BinanceService,
   ],
-  exports: [MarketDataService, SymbolRegistryService],
+  exports: [MarketDataService, SymbolRegistryService, KlineCollectorService],
 })
 export class MarketDataModule {}

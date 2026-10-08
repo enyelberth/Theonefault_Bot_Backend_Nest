@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { BacktestStatus, Prisma, PrismaClient } from '@prisma/client';
 import { CandleLoader } from './candle-loader';
 import { ExchangeFactory } from '../exchanges/exchange.factory';
@@ -25,7 +30,8 @@ export class BacktestingService {
     }
     const startTime = new Date(dto.startTime).getTime();
     const endTime = new Date(dto.endTime).getTime();
-    if (endTime <= startTime) throw new BadRequestException('endTime must be > startTime');
+    if (endTime <= startTime)
+      throw new BadRequestException('endTime must be > startTime');
 
     const run = await this.prisma.backtestRun.create({
       data: {
@@ -156,6 +162,8 @@ function finiteOrNull(n: number): number | null {
 
 function sanitizeJson<T>(obj: T): T {
   return JSON.parse(
-    JSON.stringify(obj, (_k, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v)),
+    JSON.stringify(obj, (_k, v) =>
+      typeof v === 'number' && !Number.isFinite(v) ? null : v,
+    ),
   );
 }

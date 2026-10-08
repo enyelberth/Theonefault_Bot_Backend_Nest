@@ -16,7 +16,11 @@ export function applyFee(notional: number, bps: number): number {
   return notional * (bps / 10_000);
 }
 
-export function applySlippage(price: number, side: 'BUY' | 'SELL', bps: number): number {
+export function applySlippage(
+  price: number,
+  side: 'BUY' | 'SELL',
+  bps: number,
+): number {
   const factor = bps / 10_000;
   return side === 'BUY' ? price * (1 + factor) : price * (1 - factor);
 }
@@ -27,6 +31,9 @@ export function fillPriceForMarket(
   fees: FeesConfig,
 ): number {
   const spread = (fees.spreadBps ?? 0) / 10_000;
-  const spreadAdjusted = side === 'BUY' ? reference * (1 + spread / 2) : reference * (1 - spread / 2);
+  const spreadAdjusted =
+    side === 'BUY'
+      ? reference * (1 + spread / 2)
+      : reference * (1 - spread / 2);
   return applySlippage(spreadAdjusted, side, fees.slippageBps);
 }

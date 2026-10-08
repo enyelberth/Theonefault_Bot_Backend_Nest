@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { FrontendController } from './frontend.controller';
 
 @Module({
   imports: [
@@ -9,5 +10,6 @@ import { join } from 'path';
       serveRoot: '/',
     }),
   ],
+  controllers: [FrontendController],
 })
 export class FrontendModule {}

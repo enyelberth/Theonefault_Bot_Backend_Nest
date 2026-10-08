@@ -48,15 +48,27 @@ export class CandleLoader {
     if (endTime <= startTime) return [];
 
     if (useCache) {
-      const cached = await this.readCache(symbol, timeframe, startTime, endTime);
+      const cached = await this.readCache(
+        symbol,
+        timeframe,
+        startTime,
+        endTime,
+      );
       const expected = this.expectedCount(timeframe, startTime, endTime);
       if (cached.length >= expected * 0.99) {
-        this.logger.log(`cache hit ${symbol} ${timeframe} ${cached.length}/${expected}`);
+        this.logger.log(
+          `cache hit ${symbol} ${timeframe} ${cached.length}/${expected}`,
+        );
         return cached;
       }
     }
 
-    const fetched = await this.fetchFromExchange(symbol, timeframe, startTime, endTime);
+    const fetched = await this.fetchFromExchange(
+      symbol,
+      timeframe,
+      startTime,
+      endTime,
+    );
     if (useCache && fetched.length > 0) {
       await this.writeCache(fetched);
     }

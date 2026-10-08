@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -42,7 +35,9 @@ export class IndicatorsController {
   @Get('crypto-price/:symbol')
   @ApiOperation({ summary: 'Precios históricos de un símbolo' })
   @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
-  async findPricesBySymbol(@Param('symbol') symbol: string): Promise<CryptoPrice[]> {
+  async findPricesBySymbol(
+    @Param('symbol') symbol: string,
+  ): Promise<CryptoPrice[]> {
     return this.indicatorsService.findPricesBySymbol(symbol);
   }
 
@@ -50,7 +45,9 @@ export class IndicatorsController {
   @Get('crypto-price/latest/:symbol')
   @ApiOperation({ summary: 'Último precio registrado' })
   @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
-  async findLatestPrice(@Param('symbol') symbol: string): Promise<CryptoPrice | null> {
+  async findLatestPrice(
+    @Param('symbol') symbol: string,
+  ): Promise<CryptoPrice | null> {
     return this.indicatorsService.findLatestPrice(symbol);
   }
 
@@ -65,7 +62,11 @@ export class IndicatorsController {
     @Query('interval') interval = '1m',
     @Query('period') period?: string,
   ) {
-    return this.indicatorsService.getRSI(symbol.toUpperCase(), interval, period ? Number(period) : 14);
+    return this.indicatorsService.getRSI(
+      symbol.toUpperCase(),
+      interval,
+      period ? Number(period) : 14,
+    );
   }
 
   @Public()
@@ -121,7 +122,11 @@ export class IndicatorsController {
     @Query('interval') interval = '1m',
     @Query('period') period?: string,
   ) {
-    return this.indicatorsService.getATR(symbol.toUpperCase(), interval, period ? Number(period) : 14);
+    return this.indicatorsService.getATR(
+      symbol.toUpperCase(),
+      interval,
+      period ? Number(period) : 14,
+    );
   }
 
   @Public()
@@ -169,7 +174,11 @@ export class IndicatorsController {
     @Query('interval') interval = '1m',
     @Query('period') period?: string,
   ) {
-    return this.indicatorsService.getEMA(symbol.toUpperCase(), interval, period ? Number(period) : 20);
+    return this.indicatorsService.getEMA(
+      symbol.toUpperCase(),
+      interval,
+      period ? Number(period) : 20,
+    );
   }
 
   @Public()
@@ -180,12 +189,18 @@ export class IndicatorsController {
     @Query('interval') interval = '1m',
     @Query('period') period?: string,
   ) {
-    return this.indicatorsService.getSMA(symbol.toUpperCase(), interval, period ? Number(period) : 20);
+    return this.indicatorsService.getSMA(
+      symbol.toUpperCase(),
+      interval,
+      period ? Number(period) : 20,
+    );
   }
 
   @Public()
   @Get('snapshot/:symbol')
-  @ApiOperation({ summary: 'Snapshot completo (RSI, Bollinger, MACD, ATR, VWAP, trend, EMAs)' })
+  @ApiOperation({
+    summary: 'Snapshot completo (RSI, Bollinger, MACD, ATR, VWAP, trend, EMAs)',
+  })
   @ApiParam({ name: 'symbol', example: 'BTCFDUSD' })
   @ApiQuery({ name: 'interval', required: false, example: '1m' })
   @ApiResponse({ status: 200, description: 'Indicadores agregados' })

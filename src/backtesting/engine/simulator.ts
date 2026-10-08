@@ -3,7 +3,11 @@ import type { IStrategy } from '../../strategies/v2/strategy.interface';
 import { InMemoryStrategyContext } from '../../strategies/v2/in-memory-context';
 import type { IExchange } from '../../exchanges/exchange.interface';
 import { buildEquityCurve, computeMetrics } from '../metrics/calculator';
-import type { BacktestMetrics, EquityPoint, SimulatedTrade } from '../metrics/types';
+import type {
+  BacktestMetrics,
+  EquityPoint,
+  SimulatedTrade,
+} from '../metrics/types';
 import { DEFAULT_FEES, FeesConfig, applyFee, fillPriceForMarket } from './fees';
 
 export interface SimulatorInput<TConfig> {
@@ -34,7 +38,9 @@ interface OpenPosition {
   entryFees: number;
 }
 
-export async function runBacktest<TConfig>(input: SimulatorInput<TConfig>): Promise<SimulatorResult> {
+export async function runBacktest<TConfig>(
+  input: SimulatorInput<TConfig>,
+): Promise<SimulatorResult> {
   const {
     strategy,
     strategyId,
@@ -102,7 +108,8 @@ export async function runBacktest<TConfig>(input: SimulatorInput<TConfig>): Prom
 
     if (signal.action === 'OPEN' && !openPosition && signal.side) {
       const price = fillPriceForMarket(candle.close, signal.side, fees);
-      const notional = signal.quoteQuantity ?? (signal.quantity ? signal.quantity * price : 0);
+      const notional =
+        signal.quoteQuantity ?? (signal.quantity ? signal.quantity * price : 0);
       if (notional <= 0 || notional > quote) continue;
       const feeAmt = applyFee(notional, fees.takerBps);
       const usable = notional - feeAmt;
@@ -135,7 +142,8 @@ export async function runBacktest<TConfig>(input: SimulatorInput<TConfig>): Prom
           openPosition.quantity -
         openPosition.entryFees -
         exitFee;
-      const pnlPct = (pnl / (openPosition.entryPrice * openPosition.quantity)) * 100;
+      const pnlPct =
+        (pnl / (openPosition.entryPrice * openPosition.quantity)) * 100;
       trades.push({
         side: openPosition.side,
         entryTime: openPosition.entryTime,
@@ -168,7 +176,8 @@ export async function runBacktest<TConfig>(input: SimulatorInput<TConfig>): Prom
         openPosition.quantity -
       openPosition.entryFees -
       exitFee;
-    const pnlPct = (pnl / (openPosition.entryPrice * openPosition.quantity)) * 100;
+    const pnlPct =
+      (pnl / (openPosition.entryPrice * openPosition.quantity)) * 100;
     trades.push({
       side: openPosition.side,
       entryTime: openPosition.entryTime,
@@ -189,7 +198,13 @@ export async function runBacktest<TConfig>(input: SimulatorInput<TConfig>): Prom
   const equityCurve = buildEquityCurve(initialQuote, trades);
   const startTime = candles[0].openTime;
   const endTime = candles[candles.length - 1].closeTime;
-  const metrics = computeMetrics(trades, equityCurve, initialQuote, startTime, endTime);
+  const metrics = computeMetrics(
+    trades,
+    equityCurve,
+    initialQuote,
+    startTime,
+    endTime,
+  );
 
   return { trades, equityCurve, metrics };
 }

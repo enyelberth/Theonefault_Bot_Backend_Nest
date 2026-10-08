@@ -1,7 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BotRunStatus, PrismaClient } from '@prisma/client';
 
-const DEFAULT_SYMBOLS = ['BTCFDUSD', 'ETHFDUSD', 'BNBFDUSD', 'SOLFDUSD', 'XRPFDUSD', 'DOGEFDUSD', 'LINKFDUSD'];
+const DEFAULT_SYMBOLS = [
+  'BTCFDUSD',
+  'ETHFDUSD',
+  'BNBFDUSD',
+  'SOLFDUSD',
+  'XRPFDUSD',
+  'DOGEFDUSD',
+  'LINKFDUSD',
+];
 
 @Injectable()
 export class SymbolRegistryService {

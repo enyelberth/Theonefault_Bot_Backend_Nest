@@ -1,7 +1,13 @@
 import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { OnGatewayInit, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
-import { Server } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
+import {
+  OnGatewayInit,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
 import { DashboardService } from './dashboard.service';
+import { jwtConstants } from '../authA/constantes';
 
 const BROADCAST_INTERVAL_MS = 1000;
 
@@ -18,7 +24,32 @@ export class DashboardGateway
   private timer: NodeJS.Timeout | null = null;
   private busy = false;
 
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  async handleConnection(client: Socket) {
+    const rawToken =
+      client.handshake.auth?.token ||
+      client.handshake.headers.authorization ||
+      '';
+    const token = String(rawToken)
+      .replace(/^Bearer\s+/i, '')
+      .trim();
+    if (!token) {
+      client.disconnect(true);
+      return;
+    }
+
+    try {
+      client.data.user = await this.jwtService.verifyAsync(token, {
+        secret: jwtConstants.secret,
+      });
+    } catch {
+      client.disconnect(true);
+    }
+  }
 
   afterInit() {
     this.logger.log('Dashboard WS gateway initialized');

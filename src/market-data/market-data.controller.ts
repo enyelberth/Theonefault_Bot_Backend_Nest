@@ -7,7 +7,13 @@ import {
   Query,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MarketDataService } from './market-data.service';
 import { SymbolRegistryService } from './symbol-registry.service';
 import { Public } from 'src/authA/auth.guard';
@@ -49,7 +55,10 @@ export class MarketDataController {
   @Get('candles/:symbol/latest')
   @ApiOperation({ summary: 'Última vela cerrada' })
   @ApiQuery({ name: 'interval', example: '1m' })
-  async getLatest(@Param('symbol') symbol: string, @Query('interval') interval: string) {
+  async getLatest(
+    @Param('symbol') symbol: string,
+    @Query('interval') interval: string,
+  ) {
     if (!interval) throw new BadRequestException('interval required');
     return this.marketData.getLatestCandle(symbol.toUpperCase(), interval);
   }
@@ -58,7 +67,10 @@ export class MarketDataController {
   @Get('prices/:symbol')
   @ApiOperation({ summary: 'Ticks de precio recientes' })
   @ApiQuery({ name: 'limit', required: false, type: 'number' })
-  async getPrices(@Param('symbol') symbol: string, @Query('limit') limit?: string) {
+  async getPrices(
+    @Param('symbol') symbol: string,
+    @Query('limit') limit?: string,
+  ) {
     return this.marketData.getRecentPrices(
       symbol.toUpperCase(),
       limit ? Number(limit) : 500,
@@ -75,7 +87,11 @@ export class MarketDataController {
   @Public()
   @Get('analytics')
   @ApiOperation({ summary: 'Estadísticas + correlación entre símbolos' })
-  @ApiQuery({ name: 'symbols', required: true, description: 'CSV: BTCUSDT,ETHUSDT,...' })
+  @ApiQuery({
+    name: 'symbols',
+    required: true,
+    description: 'CSV: BTCUSDT,ETHUSDT,...',
+  })
   @ApiQuery({ name: 'interval', required: false, example: '1h' })
   @ApiQuery({ name: 'limit', required: false, type: 'number', example: 168 })
   async analytics(
@@ -84,7 +100,10 @@ export class MarketDataController {
     @Query('limit') limit?: string,
   ) {
     if (!symbols) throw new BadRequestException('symbols requerido (CSV)');
-    const list = symbols.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+    const list = symbols
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
     if (!list.length) throw new BadRequestException('lista vacía');
     return this.marketData.analytics({
       symbols: list,
@@ -95,7 +114,9 @@ export class MarketDataController {
 
   @Public()
   @Post('backfill')
-  @ApiOperation({ summary: 'Descarga histórico de velas desde Binance y las guarda' })
+  @ApiOperation({
+    summary: 'Descarga histórico de velas desde Binance y las guarda',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -107,8 +128,11 @@ export class MarketDataController {
       required: ['symbol', 'interval', 'days'],
     },
   })
-  async backfill(@Body() body: { symbol: string; interval: string; days: number }) {
-    if (!body.symbol || !body.interval) throw new BadRequestException('symbol e interval requeridos');
+  async backfill(
+    @Body() body: { symbol: string; interval: string; days: number },
+  ) {
+    if (!body.symbol || !body.interval)
+      throw new BadRequestException('symbol e interval requeridos');
     const days = Number(body.days);
     if (!Number.isFinite(days) || days <= 0 || days > 365) {
       throw new BadRequestException('days debe ser 1..365');

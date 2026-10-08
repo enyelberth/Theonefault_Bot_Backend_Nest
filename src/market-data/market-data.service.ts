@@ -40,7 +40,13 @@ export class MarketDataService {
     symbol: string;
     interval: string;
     days: number;
-  }): Promise<{ symbol: string; interval: string; requested: number; inserted: number; batches: number }> {
+  }): Promise<{
+    symbol: string;
+    interval: string;
+    requested: number;
+    inserted: number;
+    batches: number;
+  }> {
     const symbol = input.symbol.toUpperCase();
     const interval = input.interval;
     const nowMs = Date.now();
@@ -52,7 +58,13 @@ export class MarketDataService {
     let batches = 0;
 
     while (cursor < nowMs) {
-      const batch = await this.binance.getCandles(symbol, interval, batchLimit, cursor, nowMs);
+      const batch = await this.binance.getCandles(
+        symbol,
+        interval,
+        batchLimit,
+        cursor,
+        nowMs,
+      );
       batches += 1;
       if (!batch.length) break;
       for (const c of batch) {
@@ -70,7 +82,9 @@ export class MarketDataService {
           });
           inserted += 1;
         } catch (e) {
-          this.logger.warn(`upsertCandle failed ${symbol} ${interval} ${c.openTime}: ${(e as Error).message}`);
+          this.logger.warn(
+            `upsertCandle failed ${symbol} ${interval} ${c.openTime}: ${(e as Error).message}`,
+          );
         }
       }
       const lastCloseTime = Number(batch[batch.length - 1].closeTime);
@@ -79,7 +93,9 @@ export class MarketDataService {
       if (batch.length < batchLimit) break;
     }
 
-    this.logger.log(`Backfill ${symbol} ${interval}: ${inserted} candles / ${batches} batches`);
+    this.logger.log(
+      `Backfill ${symbol} ${interval}: ${inserted} candles / ${batches} batches`,
+    );
     return {
       symbol,
       interval,
@@ -137,7 +153,10 @@ export class MarketDataService {
     });
   }
 
-  async getLatestCandle(symbol: string, interval: string): Promise<Candle | null> {
+  async getLatestCandle(
+    symbol: string,
+    interval: string,
+  ): Promise<Candle | null> {
     return this.prisma.candle.findFirst({
       where: { symbol, interval },
       orderBy: { closeTime: 'desc' },
@@ -164,7 +183,9 @@ export class MarketDataService {
     let candleCount = 0;
 
     if (config.priceRetentionDays) {
-      const cutoff = new Date(now.getTime() - config.priceRetentionDays * 24 * 3600 * 1000);
+      const cutoff = new Date(
+        now.getTime() - config.priceRetentionDays * 24 * 3600 * 1000,
+      );
       const res = await this.prisma.cryptoPrice.deleteMany({
         where: { timestamp: { lt: cutoff } },
       });
@@ -172,7 +193,9 @@ export class MarketDataService {
     }
 
     if (config.candleRetentionDays) {
-      for (const [interval, days] of Object.entries(config.candleRetentionDays)) {
+      for (const [interval, days] of Object.entries(
+        config.candleRetentionDays,
+      )) {
         const cutoff = new Date(now.getTime() - days * 24 * 3600 * 1000);
         const res = await this.prisma.candle.deleteMany({
           where: { interval, closeTime: { lt: cutoff } },
@@ -249,7 +272,9 @@ export class MarketDataService {
       const vols = asc.map((c) => Number(c.volume));
       const firstPrice = closes[0];
       const lastPrice = closes[closes.length - 1];
-      const changePct = firstPrice ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+      const changePct = firstPrice
+        ? ((lastPrice - firstPrice) / firstPrice) * 100
+        : 0;
       const high = Math.max(...highs);
       const low = Math.min(...lows);
       const volume = vols.reduce((a, b) => a + b, 0);
@@ -260,7 +285,8 @@ export class MarketDataService {
         if (prev > 0) rets.push((closes[i] - prev) / prev);
       }
       const mean = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
-      const variance = rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length || 1);
+      const variance =
+        rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length || 1);
       const volatilityPct = Math.sqrt(variance) * 100;
 
       stats.push({

@@ -80,7 +80,11 @@ export class IndicatorsService {
     volumes: number[];
     fallback: boolean;
   }> {
-    const candles = await this.marketData.getCandles({ symbol, interval, limit });
+    const candles = await this.marketData.getCandles({
+      symbol,
+      interval,
+      limit,
+    });
     if (candles.length > 0) {
       const ordered = candles.slice().reverse(); // asc
       return {
@@ -106,12 +110,20 @@ export class IndicatorsService {
     };
   }
 
-  async getRSI(symbol: string, interval = '1m', period = 14): Promise<number | null> {
+  async getRSI(
+    symbol: string,
+    interval = '1m',
+    period = 14,
+  ): Promise<number | null> {
     const key = `rsi:${symbol}:${interval}:${period}`;
     const cached = this.cache.get<number>(key);
     if (cached !== null) return cached;
 
-    const { closes } = await this.loadCloses(symbol, interval, Math.max(200, period * 3));
+    const { closes } = await this.loadCloses(
+      symbol,
+      interval,
+      Math.max(200, period * 3),
+    );
     const v = rsi(closes, period);
     if (v !== null) this.cache.set(key, v, DEFAULT_TTL_MS);
     return v;
@@ -127,7 +139,11 @@ export class IndicatorsService {
     const cached = this.cache.get<BollingerResult>(key);
     if (cached) return cached;
 
-    const { closes } = await this.loadCloses(symbol, interval, Math.max(200, period * 3));
+    const { closes } = await this.loadCloses(
+      symbol,
+      interval,
+      Math.max(200, period * 3),
+    );
     const v = bollinger(closes, period, k);
     if (v) this.cache.set(key, v, DEFAULT_TTL_MS);
     return v;
@@ -144,13 +160,21 @@ export class IndicatorsService {
     const cached = this.cache.get<MacdResult>(key);
     if (cached) return cached;
 
-    const { closes } = await this.loadCloses(symbol, interval, Math.max(300, slow * 5));
+    const { closes } = await this.loadCloses(
+      symbol,
+      interval,
+      Math.max(300, slow * 5),
+    );
     const v = macd(closes, fast, slow, signalPeriod);
     if (v) this.cache.set(key, v, DEFAULT_TTL_MS);
     return v;
   }
 
-  async getATR(symbol: string, interval = '1m', period = 14): Promise<number | null> {
+  async getATR(
+    symbol: string,
+    interval = '1m',
+    period = 14,
+  ): Promise<number | null> {
     const key = `atr:${symbol}:${interval}:${period}`;
     const cached = this.cache.get<number>(key);
     if (cached !== null) return cached;
@@ -166,7 +190,11 @@ export class IndicatorsService {
     return v;
   }
 
-  async getVWAP(symbol: string, interval = '1m', lookback = 96): Promise<number | null> {
+  async getVWAP(
+    symbol: string,
+    interval = '1m',
+    lookback = 96,
+  ): Promise<number | null> {
     const key = `vwap:${symbol}:${interval}:${lookback}`;
     const cached = this.cache.get<number>(key);
     if (cached !== null) return cached;
@@ -192,29 +220,49 @@ export class IndicatorsService {
     const cached = this.cache.get<TrendResult>(key);
     if (cached) return cached;
 
-    const { closes } = await this.loadCloses(symbol, interval, Math.max(200, slowPeriod * 3));
+    const { closes } = await this.loadCloses(
+      symbol,
+      interval,
+      Math.max(200, slowPeriod * 3),
+    );
     const v = trend(closes, fastPeriod, slowPeriod);
     if (v) this.cache.set(key, v, DEFAULT_TTL_MS);
     return v;
   }
 
-  async getEMA(symbol: string, interval = '1m', period = 20): Promise<number | null> {
+  async getEMA(
+    symbol: string,
+    interval = '1m',
+    period = 20,
+  ): Promise<number | null> {
     const key = `ema:${symbol}:${interval}:${period}`;
     const cached = this.cache.get<number>(key);
     if (cached !== null) return cached;
 
-    const { closes } = await this.loadCloses(symbol, interval, Math.max(200, period * 3));
+    const { closes } = await this.loadCloses(
+      symbol,
+      interval,
+      Math.max(200, period * 3),
+    );
     const v = ema(closes, period);
     if (v !== null) this.cache.set(key, v, DEFAULT_TTL_MS);
     return v;
   }
 
-  async getSMA(symbol: string, interval = '1m', period = 20): Promise<number | null> {
+  async getSMA(
+    symbol: string,
+    interval = '1m',
+    period = 20,
+  ): Promise<number | null> {
     const key = `sma:${symbol}:${interval}:${period}`;
     const cached = this.cache.get<number>(key);
     if (cached !== null) return cached;
 
-    const { closes } = await this.loadCloses(symbol, interval, Math.max(200, period * 3));
+    const { closes } = await this.loadCloses(
+      symbol,
+      interval,
+      Math.max(200, period * 3),
+    );
     const v = sma(closes, period);
     if (v !== null) this.cache.set(key, v, DEFAULT_TTL_MS);
     return v;
@@ -223,7 +271,10 @@ export class IndicatorsService {
   /**
    * Snapshot completo. Usado por Fase 5 (Claude analyst) y dashboards.
    */
-  async getSnapshot(symbol: string, interval = '1m'): Promise<IndicatorSnapshot> {
+  async getSnapshot(
+    symbol: string,
+    interval = '1m',
+  ): Promise<IndicatorSnapshot> {
     const key = `snapshot:${symbol}:${interval}`;
     const cached = this.cache.get<IndicatorSnapshot>(key);
     if (cached) return cached;
