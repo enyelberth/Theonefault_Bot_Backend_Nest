@@ -1,0 +1,1177 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>KAIZEN · Analytics</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #0d1117; --panel2: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff; --purple: #a371f7; --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .topbar { background: linear-gradient(90deg,#0d1117 0%,#161b22 100%); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; gap: 24px; }
+  .topbar h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; }
+  .topbar .spacer { flex: 1; }
+  .topbar a { color: var(--muted); text-decoration: none; font-size: 13px; margin-right: 12px; }
+  .topbar a:hover { color: var(--blue); }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 28px 60px; display: grid; gap: 24px; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .section h2 { margin: 0 0 14px 0; font-size: 15px; letter-spacing: 0.3px; color: var(--text); display: flex; align-items: center; gap: 10px; }
+  .section h2 .sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.pos { color: var(--green); }
+  td.neg { color: var(--red); }
+  .loading { color: var(--muted); font-size: 12px; padding: 8px 0; }
+  .heatmap { display: grid; gap: 2px; grid-template-columns: 80px repeat(auto-fill, minmax(60px, 1fr)); font-size: 11px; }
+  .heatmap .cell { padding: 6px 4px; border-radius: 3px; text-align: center; font-variant-numeric: tabular-nums; }
+  .heatmap .label { color: var(--muted); text-align: right; padding-right: 8px; }
+  .hourbars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 120px; align-items: end; margin-top: 8px; }
+  .hourbars .bar { border-radius: 2px 2px 0 0; position: relative; min-height: 2px; }
+  .hourbars .bar span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
+  button.reload { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: #21262d; color: var(--text); cursor: pointer; font-size: 12px; }
+  button.reload:hover { background: #30363d; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>KAIZEN · Analytics</h1>
+    <div class="spacer"></div>
+    <span id="auth-status" style="font-size:12px;color:var(--muted);margin-right:12px;"></span>
+    <button class="reload" onclick="setAuthToken()">🔑 Token</button>
+    <a href="/">← Dashboard</a>
+    <button class="reload" onclick="loadAll()">↻ Recargar</button>
+  </div>
+
+  <div class="wrap">
+    <div class="section">
+      <h2>System health <span class="sub">DB · crons · alertas · runners</span></h2>
+      <div id="system-health" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>ROI real <span class="sub">netReturn / netCapital · desde ledger</span></h2>
+      <div id="roi" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Posiciones abiertas <span class="sub">unrealized PnL · R actual · edad</span></h2>
+      <div id="open-positions" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Time-of-day heatmap <span class="sub">horas UTC · por símbolo</span></h2>
+      <div id="time-of-day" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Day-of-week <span class="sub">PnL/winRate por día · UTC</span></h2>
+      <div id="day-of-week" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Sizing history <span class="sub">distribución tamaños posición usados</span></h2>
+      <div id="sizing-history" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Holding time <span class="sub">edge por duración trade</span></h2>
+      <div id="holding-time" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Rolling metrics <span class="sub">Sharpe/Sortino/WR sobre ventana móvil · detecta degradación</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <select id="rolling-window" class="reload" style="padding:6px 10px;">
+          <option value="20">Window 20</option>
+          <option value="50" selected>Window 50</option>
+          <option value="100">Window 100</option>
+        </select>
+        <button class="reload" onclick="loadRollingMetrics()">Cargar</button>
+      </div>
+      <div id="rolling-metrics" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Drawdown recovery <span class="sub">tiempo underwater · streaks · risk of ruin</span></h2>
+      <div id="drawdown-recovery" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Attribution PnL <span class="sub">gross · slippage · fees · ideal frictionless</span></h2>
+      <div id="attribution" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Fees breakdown <span class="sub">por símbolo · feeBps · % del gross</span></h2>
+      <div id="fees-breakdown" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Calidad ejecución <span class="sub">slippage · latencia · spread · feeBps</span></h2>
+      <div id="execution" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Wallet sync <span class="sub">estado captura por tipo · cron horario</span></h2>
+      <div id="sync-status" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Capital ledger <span class="sub">todo lo ganado y perdido — pnl, fees, funding, interest, deposits</span></h2>
+      <div id="capital-ledger" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Rollup por periodo <span class="sub">día · semana · mes · con drawdown acumulado</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <select id="rollup-period" class="reload" style="padding:6px 10px;">
+          <option value="day">Día</option>
+          <option value="week">Semana</option>
+          <option value="month">Mes</option>
+        </select>
+        <button class="reload" onclick="loadRollup()">Cargar</button>
+      </div>
+      <div id="rollup" class="loading">Elige periodo y presiona Cargar</div>
+    </div>
+
+    <div class="section">
+      <h2>Alertas operativas <span class="sub">dedupe · kill-switch, órdenes fallidas</span></h2>
+      <div id="op-alerts" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Backtest vs Paper vs Real <span class="sub">detecta drift entre simulación y realidad</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <input id="cmp-strategy" placeholder="strategyId (ej: sma-cross)" style="flex:1;min-width:180px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <input id="cmp-symbol" placeholder="symbol opt. (ej: BTCUSDT)" style="width:180px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <button class="reload" onclick="loadCompareModes()">Comparar</button>
+      </div>
+      <div id="cmp-modes" class="loading">Ingresa strategyId y presiona Comparar</div>
+    </div>
+
+    <div class="section">
+      <h2>R-multiple <span class="sub">pnl / riesgo-al-abrir · sizing normalizado</span></h2>
+      <div id="r-multiple" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Fees drift <span class="sub">comisiones acumuladas vs pnl bruto — detecta sangría del exchange</span></h2>
+      <div id="fees-drift" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Régimen de mercado <span class="sub">win-rate y expectancy por tendencia/volatilidad — decidir cuándo apagar bot</span></h2>
+      <div id="by-regime" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Edge por símbolo <span class="sub">detectar pares tóxicos</span></h2>
+      <div id="by-symbol" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Performance por estrategia <span class="sub">Profit factor, expectancy, Sharpe, avg hold</span></h2>
+      <div id="strategy-perf" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Excursión MAE / MFE <span class="sub">Edge ratio = MFE / |MAE| — mayor es mejor</span></h2>
+      <div id="excursion" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Mejores horas del día <span class="sub">UTC — PnL agregado por hora</span></h2>
+      <div id="best-hours" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Correlación de símbolos <span class="sub">Pearson diario · últimos 30d</span></h2>
+      <div id="correlation" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Correlación cross-runner <span class="sub">equity horario · runners que se mueven juntos = mismo riesgo</span></h2>
+      <div id="runner-corr" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Exposición cartera <span class="sub">notional agregado por asset — detecta concentración</span></h2>
+      <div id="portfolio-exposure" class="loading">Cargando…</div>
+    </div>
+  </div>
+
+<script>
+const TOKEN_KEY = 'kaizen_jwt';
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setAuthToken() {
+  const cur = getToken();
+  const val = prompt('Pega tu JWT (Bearer). Vacío para borrar.', cur);
+  if (val === null) return;
+  if (val.trim() === '') { localStorage.removeItem(TOKEN_KEY); }
+  else { localStorage.setItem(TOKEN_KEY, val.trim()); }
+  renderAuthStatus();
+  loadAll();
+}
+function renderAuthStatus() {
+  const el = document.getElementById('auth-status');
+  const t = getToken();
+  el.textContent = t ? '✓ token · ' + t.slice(0, 10) + '…' : '⚠ sin token';
+  el.style.color = t ? 'var(--green)' : 'var(--yellow)';
+}
+async function authFetch(url, init = {}) {
+  const token = getToken();
+  const headers = Object.assign({}, init.headers || {});
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, Object.assign({}, init, { headers }));
+  if (res.status === 401) throw new Error('401 sin autorización — pulsa 🔑 Token');
+  return res;
+}
+window.fetch = ((origFetch) => (url, init) => {
+  if (typeof url === 'string' && url.startsWith('/')) return authFetch(url, init);
+  return origFetch(url, init);
+})(window.fetch);
+
+const fmt = (v, dec = 2) => {
+  const n = Number(v);
+  if (!isFinite(n)) return '-';
+  return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+};
+const pnlClass = (v) => Number(v) > 0 ? 'pos' : Number(v) < 0 ? 'neg' : '';
+
+async function loadStrategyPerf() {
+  const el = document.getElementById('strategy-perf');
+  try {
+    const res = await fetch('/stats/analytics/strategy-performance');
+    const data = await res.json();
+    if (!data.length) { el.innerHTML = '<div class="loading">Sin datos</div>'; return; }
+    let html = '<table><thead><tr>' +
+      '<th>Strategy</th><th>Symbols</th><th class="num">Trades</th><th class="num">Win %</th>' +
+      '<th class="num">PF</th><th class="num">Expectancy</th><th class="num">Avg win</th>' +
+      '<th class="num">Avg loss</th><th class="num">Hold (min)</th><th class="num">Sharpe</th><th class="num">PnL</th></tr></thead><tbody>';
+    for (const r of data) {
+      html += `<tr>
+        <td><span class="badge">${r.strategyId}</span> ${r.strategyType ?? ''}</td>
+        <td>${r.symbols.join(', ')}</td>
+        <td class="num">${r.trades}</td>
+        <td class="num">${fmt(r.winRate, 1)}</td>
+        <td class="num">${r.profitFactor === null ? '∞' : fmt(r.profitFactor)}</td>
+        <td class="num ${pnlClass(r.expectancy)}">${fmt(r.expectancy, 4)}</td>
+        <td class="num pos">${fmt(r.avgWin, 4)}</td>
+        <td class="num neg">${fmt(r.avgLoss, 4)}</td>
+        <td class="num">${fmt(r.avgHoldMinutes, 1)}</td>
+        <td class="num">${r.sharpe === null ? '-' : fmt(r.sharpe)}</td>
+        <td class="num ${pnlClass(r.realizedPnl)}">${fmt(r.realizedPnl, 2)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadExcursion() {
+  const el = document.getElementById('excursion');
+  try {
+    const res = await fetch('/stats/analytics/excursion');
+    const data = await res.json();
+    if (!data.length) { el.innerHTML = '<div class="loading">Sin trades con MAE/MFE registrados</div>'; return; }
+    let html = '<table><thead><tr>' +
+      '<th>Strategy</th><th class="num">Trades</th><th class="num">Avg MAE</th>' +
+      '<th class="num">Avg MFE</th><th class="num">MAE %</th><th class="num">MFE %</th>' +
+      '<th class="num">Edge ratio</th></tr></thead><tbody>';
+    for (const r of data) {
+      html += `<tr>
+        <td><span class="badge">${r.strategyId}</span></td>
+        <td class="num">${r.trades}</td>
+        <td class="num neg">${fmt(r.avgMae, 4)}</td>
+        <td class="num pos">${fmt(r.avgMfe, 4)}</td>
+        <td class="num neg">${fmt(r.avgMaePct, 2)}%</td>
+        <td class="num pos">${fmt(r.avgMfePct, 2)}%</td>
+        <td class="num"><b>${r.edgeRatio === null ? '-' : fmt(r.edgeRatio, 2)}</b></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadBestHours() {
+  const el = document.getElementById('best-hours');
+  try {
+    const res = await fetch('/stats/analytics/best-hours');
+    const data = await res.json();
+    const maxAbs = Math.max(...data.map(d => Math.abs(Number(d.realizedPnl))), 1);
+    let html = '<div class="hourbars">';
+    for (const h of data) {
+      const pnl = Number(h.realizedPnl);
+      const heightPct = Math.min(100, (Math.abs(pnl) / maxAbs) * 100);
+      const color = pnl > 0 ? 'var(--green)' : pnl < 0 ? 'var(--red)' : 'var(--panel2)';
+      html += `<div class="bar" style="height:${heightPct}%;background:${color};" title="H${h.hour}: PnL=${fmt(pnl, 2)}, trades=${h.trades}, wr=${fmt(h.winRate,1)}%"><span>${h.hour}</span></div>`;
+    }
+    html += '</div>';
+    html += '<div style="margin-top:32px; font-size:12px; color:var(--muted)">Hover barras para detalle. Verde = ganancia, rojo = pérdida.</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadCorrelation() {
+  const el = document.getElementById('correlation');
+  try {
+    const res = await fetch('/stats/analytics/symbol-correlation?days=30');
+    const data = await res.json();
+    if (!data.symbols?.length) { el.innerHTML = '<div class="loading">Sin datos</div>'; return; }
+    const heatColor = (v) => {
+      if (v > 0.7) return 'rgba(63,185,80,0.55)';
+      if (v > 0.3) return 'rgba(63,185,80,0.25)';
+      if (v < -0.7) return 'rgba(248,81,73,0.55)';
+      if (v < -0.3) return 'rgba(248,81,73,0.25)';
+      return 'rgba(139,148,158,0.12)';
+    };
+    let html = `<div class="heatmap" style="grid-template-columns:80px repeat(${data.symbols.length}, 1fr);">`;
+    html += '<div></div>';
+    for (const s of data.symbols) html += `<div class="cell label">${s}</div>`;
+    for (let i = 0; i < data.symbols.length; i++) {
+      html += `<div class="cell label">${data.symbols[i]}</div>`;
+      for (let j = 0; j < data.symbols.length; j++) {
+        const v = data.matrix[i][j];
+        html += `<div class="cell" style="background:${heatColor(v)}">${fmt(v, 2)}</div>`;
+      }
+    }
+    html += '</div>';
+    html += '<div style="margin-top:12px; font-size:12px; color:var(--muted)">Alto positivo (verde) = bots correlacionados, riesgo concentrado. Diversifica.</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadRMultiple() {
+  const el = document.getElementById('r-multiple');
+  try {
+    const res = await fetch('/analytics/summary');
+    const data = await res.json();
+    const m = data.metrics ?? {};
+    if (!m.tradesWithRisk) {
+      el.innerHTML = '<div class="loading">Sin trades con stopLoss registrado. Configura stopLossPrice en las señales para habilitar R-multiple.</div>';
+      return;
+    }
+    const kpi = (label, value, cls = '') =>
+      `<div style="flex:1;min-width:120px;padding:12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div class="${cls}" style="font-size:20px;font-variant-numeric:tabular-nums;margin-top:4px;">${value}</div>
+      </div>`;
+    el.innerHTML =
+      `<div style="display:flex;gap:12px;flex-wrap:wrap;">` +
+      kpi('Trades con riesgo', m.tradesWithRisk) +
+      kpi('Total R', fmt(m.totalR, 2), pnlClass(m.totalR)) +
+      kpi('Avg R', fmt(m.averageR, 2), pnlClass(m.averageR)) +
+      kpi('Best R', fmt(m.bestR, 2), 'pos') +
+      kpi('Worst R', fmt(m.worstR, 2), 'neg') +
+      kpi('Fee drag %', m.feeDragPct === null ? '-' : fmt(m.feeDragPct, 2) + '%', Number(m.feeDragPct) > 25 ? 'neg' : '') +
+      `</div>`;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadFeesDrift() {
+  const el = document.getElementById('fees-drift');
+  try {
+    const res = await fetch('/analytics/equity-curve');
+    const data = await res.json();
+    const points = data.points ?? [];
+    if (points.length <= 1) {
+      el.innerHTML = '<div class="loading">Sin datos suficientes</div>';
+      return;
+    }
+    const last = points[points.length - 1];
+    const maxAbs = Math.max(
+      ...points.map(p => Math.max(Math.abs(p.cumulativeGross ?? 0), Math.abs(p.cumulativeFees ?? 0))),
+      1,
+    );
+    const w = 800, h = 200, pad = 30;
+    const xStep = (w - 2 * pad) / Math.max(points.length - 1, 1);
+    const yScale = (v) => h - pad - (v / maxAbs) * ((h - 2 * pad) / 2) - (h - 2 * pad) / 2;
+    const pathFor = (accessor) =>
+      points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${pad + i * xStep} ${yScale(accessor(p))}`).join(' ');
+    const svg = `
+      <svg viewBox="0 0 ${w} ${h}" width="100%" style="max-height:240px;">
+        <line x1="${pad}" y1="${h / 2}" x2="${w - pad}" y2="${h / 2}" stroke="var(--border)" stroke-dasharray="2 3"/>
+        <path d="${pathFor(p => p.cumulativeGross ?? 0)}" fill="none" stroke="var(--blue)" stroke-width="1.5"/>
+        <path d="${pathFor(p => p.netPnl ?? 0)}" fill="none" stroke="var(--green)" stroke-width="1.5"/>
+        <path d="${pathFor(p => -(p.cumulativeFees ?? 0))}" fill="none" stroke="var(--red)" stroke-width="1.5"/>
+      </svg>`;
+    const legend = `
+      <div style="display:flex;gap:20px;font-size:12px;color:var(--muted);margin-top:8px;">
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--blue);vertical-align:middle;"></span> Gross pnl (sin fees)</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--green);vertical-align:middle;"></span> Net pnl (con fees)</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--red);vertical-align:middle;"></span> Fees acumuladas</span>
+      </div>`;
+    const summary = `
+      <div style="margin-top:12px;font-size:12px;">
+        Gross <b>${fmt(last.cumulativeGross, 2)}</b> ·
+        Fees <b class="neg">${fmt(last.cumulativeFees, 2)}</b> ·
+        Net <b class="${pnlClass(last.netPnl)}">${fmt(last.netPnl, 2)}</b>
+      </div>`;
+    el.innerHTML = svg + legend + summary;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadBreakdown(url, elId, extraCols = []) {
+  const el = document.getElementById(elId);
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const rows = data.groups ?? [];
+    if (!rows.length) { el.innerHTML = '<div class="loading">Sin datos</div>'; return; }
+    const baseCols = [
+      { label: 'Trades', k: 'totalTrades' },
+      { label: 'Win %', k: 'winRatePct', dec: 1 },
+      { label: 'PF', k: 'profitFactor', dec: 2, dash: true },
+      { label: 'Expectancy', k: 'expectancy', dec: 4, colored: true },
+      { label: 'Net PnL', k: 'netPnl', dec: 2, colored: true },
+    ];
+    const cols = [...baseCols.slice(0, 3), ...extraCols, ...baseCols.slice(3)];
+    let html = '<table><thead><tr><th>Key</th>' +
+      cols.map(c => `<th class="num">${c.label}</th>`).join('') +
+      '</tr></thead><tbody>';
+    for (const r of rows) {
+      html += `<tr><td><span class="badge">${r.key}</span></td>` +
+        cols.map(c => {
+          const v = r[c.k];
+          if (v === null || v === undefined) return `<td class="num">${c.dash ? '∞' : '-'}</td>`;
+          const cls = c.colored ? pnlClass(v) : '';
+          return `<td class="num ${cls}">${fmt(v, c.dec ?? 0)}</td>`;
+        }).join('') + '</tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+const loadByRegime = () =>
+  loadBreakdown('/analytics/breakdown?groupBy=regime', 'by-regime');
+
+const loadBySymbol = () =>
+  loadBreakdown('/analytics/breakdown?groupBy=symbol', 'by-symbol', [
+    { label: 'Avg win', k: 'averageWin', dec: 4 },
+    { label: 'Avg loss', k: 'averageLoss', dec: 4 },
+    { label: 'Payoff', k: 'payoffRatio', dec: 2, dash: true },
+  ]);
+
+async function loadRollup() {
+  const el = document.getElementById('rollup');
+  const period = document.getElementById('rollup-period').value;
+  el.innerHTML = '<div class="loading">Cargando…</div>';
+  try {
+    const res = await fetch(`/analytics/rollup?period=${period}`);
+    const data = await res.json();
+    const rows = data.rows ?? [];
+    if (!rows.length) { el.innerHTML = '<div class="loading">Sin trades cerrados</div>'; return; }
+    let html = '<table><thead><tr>' +
+      '<th>Periodo</th><th class="num">Trades</th><th class="num">Win %</th>' +
+      '<th class="num">Net PnL</th><th class="num">Fees</th><th class="num">Expectancy</th>' +
+      '<th class="num">Avg R</th><th class="num">Cum. PnL</th><th class="num">DD</th>' +
+      '</tr></thead><tbody>';
+    for (const r of rows) {
+      html += `<tr>
+        <td><code style="font-size:11px;">${r.period}</code></td>
+        <td class="num">${r.trades}</td>
+        <td class="num">${fmt(r.winRatePct, 1)}</td>
+        <td class="num ${pnlClass(r.netPnl)}">${fmt(r.netPnl, 2)}</td>
+        <td class="num neg">${fmt(r.fees, 2)}</td>
+        <td class="num ${pnlClass(r.expectancy)}">${fmt(r.expectancy, 4)}</td>
+        <td class="num ${r.averageR === null ? '' : pnlClass(r.averageR)}">${r.averageR === null ? '-' : fmt(r.averageR, 2)}</td>
+        <td class="num ${pnlClass(r.cumulativeNetPnl)}">${fmt(r.cumulativeNetPnl, 2)}</td>
+        <td class="num neg">${fmt(r.drawdownAfter, 2)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    const totals = data.totals ?? {};
+    html += `<div style="margin-top:10px;font-size:12px;color:var(--muted);">Total: ${totals.trades} trades · Net ${fmt(totals.netPnl,2)} · Max DD rollup ${fmt(totals.maxRollupDrawdown,2)}</div>`;
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadCompareModes() {
+  const el = document.getElementById('cmp-modes');
+  const strategyId = document.getElementById('cmp-strategy').value.trim();
+  const symbol = document.getElementById('cmp-symbol').value.trim();
+  if (!strategyId) { el.innerHTML = '<div class="loading">strategyId requerido</div>'; return; }
+  el.innerHTML = '<div class="loading">Cargando…</div>';
+  try {
+    const params = new URLSearchParams({ strategyId });
+    if (symbol) params.set('symbol', symbol);
+    const res = await fetch(`/analytics/compare-modes?${params.toString()}`);
+    const data = await res.json();
+    const modes = data.modes ?? {};
+    const rows = [
+      ['Trades', 'trades', 0, false],
+      ['Net PnL', 'netPnl', 2, true],
+      ['Gross PnL', 'grossPnlBeforeFees', 2, true],
+      ['Fees', 'totalFees', 2, false],
+      ['Win %', 'winRatePct', 1, false],
+      ['Profit factor', 'profitFactor', 2, false, '∞'],
+      ['Expectancy', 'expectancy', 4, true],
+      ['Payoff', 'payoffRatio', 2, false, '∞'],
+      ['Sharpe', 'sharpeRatio', 2, false],
+      ['Sortino', 'sortinoRatio', 2, false],
+      ['Max DD', 'maxDrawdown', 2, false],
+      ['Max DD %', 'maxDrawdownPct', 2, false],
+      ['Avg R', 'averageR', 2, true],
+      ['Total R', 'totalR', 2, true],
+      ['Fee drag %', 'feeDragPct', 2, false],
+    ];
+    const cell = (mode, k, dec, colored, dashLabel) => {
+      const m = modes[mode];
+      if (!m) return `<td class="num">-</td>`;
+      if (k === 'trades') return `<td class="num">${m.trades}</td>`;
+      if (!m.metrics) return `<td class="num">-</td>`;
+      const v = m.metrics[k];
+      if (v === null || v === undefined) return `<td class="num">${dashLabel ?? '-'}</td>`;
+      const cls = colored ? pnlClass(v) : '';
+      return `<td class="num ${cls}">${fmt(v, dec)}</td>`;
+    };
+    let html = '<table><thead><tr><th>Métrica</th><th class="num">Backtest</th><th class="num">Paper</th><th class="num">Real</th></tr></thead><tbody>';
+    for (const [label, k, dec, colored, dashLabel] of rows) {
+      html += `<tr><td>${label}</td>${cell('backtest', k, dec, colored, dashLabel)}${cell('paper', k, dec, colored, dashLabel)}${cell('real', k, dec, colored, dashLabel)}</tr>`;
+    }
+    html += '</tbody></table>';
+    html += '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Diferencias grandes entre columnas = drift. Real << paper suele indicar slippage/fees no modeladas.</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadSystemHealth() {
+  const el = document.getElementById('system-health');
+  try {
+    const res = await fetch('/analytics/system-health');
+    const data = await res.json();
+    const dot = (color) => `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle;"></span>`;
+    const kpi = (label, value, color = 'var(--text)') =>
+      `<div style="flex:0 0 auto;padding:10px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;min-width:140px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div style="font-size:15px;color:${color};margin-top:2px;">${value}</div>
+      </div>`;
+    const walletColor = data.walletSync.stale ? 'var(--yellow)' : (data.walletSync.lastAt ? 'var(--green)' : 'var(--muted)');
+    const reconColor = data.reconciliation.stale ? 'var(--yellow)' : (data.reconciliation.lastAt ? 'var(--green)' : 'var(--muted)');
+    const dbColor = data.db === 'ok' ? 'var(--green)' : 'var(--red)';
+    const alertColor = data.alerts.unackedCritical > 0 ? 'var(--red)' : data.alerts.unackedTotal > 0 ? 'var(--yellow)' : 'var(--green)';
+    el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      kpi('DB', `${dot(dbColor)}${data.db}`) +
+      kpi('Runners activos', data.activeRuns) +
+      kpi('Alertas', `${dot(alertColor)}${data.alerts.unackedTotal} · <span style="color:var(--red);">${data.alerts.unackedCritical} críticas</span>`) +
+      kpi('Wallet sync', `${dot(walletColor)}${data.walletSync.ageMinutes === null ? 'sin datos' : Math.round(data.walletSync.ageMinutes) + ' min'}`) +
+      kpi('Reconciliation', `${dot(reconColor)}${data.reconciliation.ageMinutes === null ? 'sin datos' : Math.round(data.reconciliation.ageMinutes) + ' min'}`) +
+      '</div>';
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadROI() {
+  const el = document.getElementById('roi');
+  try {
+    const res = await fetch('/analytics/capital-ledger/roi');
+    const data = await res.json();
+    const kpi = (label, value, cls = '') =>
+      `<div style="flex:0 0 auto;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;min-width:130px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div class="${cls}" style="font-size:18px;font-variant-numeric:tabular-nums;margin-top:2px;">${value}</div>
+      </div>`;
+    el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      kpi('ROI %', data.roiPct === null ? '-' : fmt(data.roiPct, 2) + '%', pnlClass(data.roiPct)) +
+      kpi('Net capital (' + data.currency + ')', fmt(data.netCapitalInjected, 2)) +
+      kpi('Net return', fmt(data.netReturn, 2), pnlClass(data.netReturn)) +
+      kpi('Gross trade PnL', fmt(data.grossTradePnl, 2), pnlClass(data.grossTradePnl)) +
+      kpi('Fees', fmt(data.fees, 2), 'neg') +
+      kpi('Interest', fmt(data.interest, 2), 'neg') +
+      kpi('Rebates', fmt(data.rebates, 2), 'pos') +
+      '</div>' +
+      '<div style="margin-top:10px;font-size:12px;color:var(--muted);">ROI = (grossPnl + fees + interest + rebates + funding + adjustments) / (deposits + withdrawals). Null si no hay capital neto inyectado.</div>';
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadOpenPositions() {
+  const el = document.getElementById('open-positions');
+  try {
+    const res = await fetch('/analytics/open-positions');
+    const data = await res.json();
+    const positions = data.positions ?? [];
+    if (!positions.length) { el.innerHTML = '<div class="loading">Sin posiciones abiertas.</div>'; return; }
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Total unrealized PnL: <b class="${pnlClass(data.totalUnrealizedPnl)}">${fmt(data.totalUnrealizedPnl, 2)}</b></div>`;
+    html += '<table><thead><tr>' +
+      '<th>Symbol</th><th>Side</th><th>Mode</th><th class="num">Entry</th><th class="num">Current</th>' +
+      '<th class="num">Qty</th><th class="num">Unrealized</th><th class="num">%</th><th class="num">R actual</th>' +
+      '<th class="num">MFE</th><th class="num">MAE</th><th class="num">Edad (min)</th>' +
+      '</tr></thead><tbody>';
+    for (const p of positions) {
+      html += `<tr>
+        <td><span class="badge">${p.symbol}</span></td>
+        <td>${p.side}</td>
+        <td><code style="font-size:11px;">${p.mode}</code></td>
+        <td class="num">${fmt(p.entryPrice, 4)}</td>
+        <td class="num">${p.currentPrice === null ? '-' : fmt(p.currentPrice, 4)}</td>
+        <td class="num">${fmt(p.quantity, 6)}</td>
+        <td class="num ${pnlClass(p.unrealizedPnl)}">${p.unrealizedPnl === null ? '-' : fmt(p.unrealizedPnl, 4)}</td>
+        <td class="num ${pnlClass(p.unrealizedPnlPct)}">${p.unrealizedPnlPct === null ? '-' : fmt(p.unrealizedPnlPct, 2)}</td>
+        <td class="num ${pnlClass(p.unrealizedR)}">${p.unrealizedR === null ? '-' : fmt(p.unrealizedR, 2)}</td>
+        <td class="num pos">${fmt(p.currentMfe, 4)}</td>
+        <td class="num neg">${fmt(p.currentMae, 4)}</td>
+        <td class="num">${fmt(p.ageMinutes, 0)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadTimeOfDay() {
+  const el = document.getElementById('time-of-day');
+  try {
+    const res = await fetch('/analytics/time-of-day?groupBy=symbol');
+    const data = await res.json();
+    const global = data.global ?? [];
+    const groups = data.groups ?? [];
+    if (!global.some((g) => g.trades > 0)) {
+      el.innerHTML = '<div class="loading">Sin trades cerrados.</div>';
+      return;
+    }
+    const pnlColor = (pnl, max) => {
+      if (max === 0 || pnl === 0) return 'rgba(139,148,158,0.08)';
+      const intensity = Math.min(1, Math.abs(pnl) / max);
+      if (pnl > 0) return `rgba(63,185,80,${0.15 + intensity * 0.55})`;
+      return `rgba(248,81,73,${0.15 + intensity * 0.55})`;
+    };
+    let html = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Global (todas estrategias)</div>';
+    const gMax = Math.max(...global.map((g) => Math.abs(g.netPnl)), 1);
+    html += '<div style="display:grid;grid-template-columns:120px repeat(24,1fr);gap:2px;">';
+    html += '<div class="cell label">Global</div>';
+    for (const g of global) {
+      html += `<div class="cell" style="background:${pnlColor(g.netPnl, gMax)};" title="H${g.hour} · ${g.trades} trades · ${fmt(g.netPnl,2)}">${g.trades > 0 ? fmt(g.netPnl, 0) : ''}</div>`;
+    }
+    html += '</div>';
+    if (groups.length) {
+      html += '<div style="height:12px;"></div><div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Por símbolo (top 10 por PnL)</div>';
+      html += '<div style="display:grid;grid-template-columns:120px repeat(24,1fr);gap:2px;">';
+      html += '<div></div>';
+      for (let h = 0; h < 24; h++) html += `<div class="cell label" style="text-align:center;">${h}</div>`;
+      for (const g of groups.slice(0, 10)) {
+        const max = Math.max(...g.hours.map((h) => Math.abs(h.netPnl)), 1);
+        html += `<div class="cell label" title="${g.key} · total ${fmt(g.totalNetPnl, 2)}">${g.key}</div>`;
+        for (const h of g.hours) {
+          html += `<div class="cell" style="background:${pnlColor(h.netPnl, max)};" title="H${h.hour} · ${h.trades} trades · ${fmt(h.netPnl, 2)}">${h.trades || ''}</div>`;
+        }
+      }
+      html += '</div>';
+    }
+    html += '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Verde = ganancia neta esa hora. Rojo = pérdida. Números = trades (color = pnl).</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadDayOfWeek() {
+  const el = document.getElementById('day-of-week');
+  try {
+    const res = await fetch('/analytics/day-of-week');
+    const data = await res.json();
+    const days = data.days ?? [];
+    if (!days.some((d) => d.trades > 0)) {
+      el.innerHTML = '<div class="loading">Sin datos.</div>';
+      return;
+    }
+    let html = '<table><thead><tr>' +
+      '<th>Día</th><th class="num">Trades</th><th class="num">Win %</th>' +
+      '<th class="num">Net PnL</th><th class="num">Expectancy</th><th class="num">Fees</th>' +
+      '</tr></thead><tbody>';
+    for (const d of days) {
+      html += `<tr>
+        <td><span class="badge">${d.dayName}</span></td>
+        <td class="num">${d.trades}</td>
+        <td class="num">${fmt(d.winRatePct, 1)}</td>
+        <td class="num ${pnlClass(d.netPnl)}">${fmt(d.netPnl, 2)}</td>
+        <td class="num ${pnlClass(d.expectancy)}">${fmt(d.expectancy, 4)}</td>
+        <td class="num neg">${fmt(d.fees, 2)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadSizingHistory() {
+  const el = document.getElementById('sizing-history');
+  try {
+    const res = await fetch('/analytics/sizing-history?limit=200');
+    const data = await res.json();
+    const entries = data.entries ?? [];
+    if (!entries.length) {
+      el.innerHTML = '<div class="loading">Sin traces RISK_ALLOWED registrados.</div>';
+      return;
+    }
+    const d = data.distribution;
+    let html = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="padding:8px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;"><div style="font-size:10px;color:var(--muted);">Min</div><div style="font-variant-numeric:tabular-nums;">${fmt(d.min, 2)}</div></div>
+      <div style="padding:8px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;"><div style="font-size:10px;color:var(--muted);">Median</div><div style="font-variant-numeric:tabular-nums;">${fmt(d.median, 2)}</div></div>
+      <div style="padding:8px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;"><div style="font-size:10px;color:var(--muted);">Avg</div><div style="font-variant-numeric:tabular-nums;">${fmt(d.average, 2)}</div></div>
+      <div style="padding:8px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;"><div style="font-size:10px;color:var(--muted);">Max</div><div style="font-variant-numeric:tabular-nums;">${fmt(d.max, 2)}</div></div>
+    </div>`;
+    html += '<table><thead><tr><th>Fecha</th><th>Symbol</th><th>Sizer</th><th class="num">Quote qty</th><th>Notes</th></tr></thead><tbody>';
+    for (const e of entries.slice(0, 30)) {
+      html += `<tr>
+        <td style="font-size:11px;">${new Date(e.occurredAt).toLocaleString()}</td>
+        <td><span class="badge">${e.symbol}</span></td>
+        <td><code style="font-size:11px;">${e.sizer ?? '-'}</code></td>
+        <td class="num">${e.quoteQuantity === null ? '-' : fmt(e.quoteQuantity, 4)}</td>
+        <td style="font-size:11px;color:var(--muted);">${e.notes ?? ''}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadHoldingTime() {
+  const el = document.getElementById('holding-time');
+  try {
+    const res = await fetch('/analytics/holding-time');
+    const data = await res.json();
+    const buckets = data.buckets ?? [];
+    const hasData = buckets.some((b) => b.trades > 0);
+    if (!hasData) { el.innerHTML = '<div class="loading">Sin trades cerrados.</div>'; return; }
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Duración media: <b>${fmt(data.averageHoldingMinutes, 1)} min</b></div>`;
+    html += '<table><thead><tr>' +
+      '<th>Bucket</th><th class="num">Trades</th><th class="num">Win %</th>' +
+      '<th class="num">Net PnL</th><th class="num">Expectancy</th><th class="num">Avg R</th>' +
+      '</tr></thead><tbody>';
+    for (const b of buckets) {
+      html += `<tr>
+        <td><span class="badge">${b.key}</span></td>
+        <td class="num">${b.trades}</td>
+        <td class="num">${fmt(b.winRatePct, 1)}</td>
+        <td class="num ${pnlClass(b.netPnl)}">${fmt(b.netPnl, 2)}</td>
+        <td class="num ${pnlClass(b.expectancy)}">${fmt(b.expectancy, 4)}</td>
+        <td class="num ${b.averageR === null ? '' : pnlClass(b.averageR)}">${b.averageR === null ? '-' : fmt(b.averageR, 2)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadRollingMetrics() {
+  const el = document.getElementById('rolling-metrics');
+  const window = document.getElementById('rolling-window').value;
+  try {
+    const res = await fetch(`/analytics/rolling-metrics?window=${window}`);
+    const data = await res.json();
+    if (data.insufficient) {
+      el.innerHTML = `<div class="loading">Necesitas ≥${data.window} trades. Actual: ${data.tradeCount}.</div>`;
+      return;
+    }
+    const points = data.points ?? [];
+    if (!points.length) { el.innerHTML = '<div class="loading">Sin datos.</div>'; return; }
+    const maxSharpe = Math.max(...points.map((p) => Math.abs(p.sharpe ?? 0)), 1);
+    const w = 800, h = 180, pad = 30;
+    const xStep = (w - 2 * pad) / Math.max(points.length - 1, 1);
+    const yZero = h - pad - (h - 2 * pad) / 2;
+    const yScale = (v) => yZero - (v / maxSharpe) * ((h - 2 * pad) / 2);
+    const path = points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${pad + i * xStep} ${p.sharpe === null ? yZero : yScale(p.sharpe)}`)
+      .join(' ');
+    const wrPath = points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${pad + i * xStep} ${h - pad - (p.winRatePct / 100) * (h - 2 * pad)}`)
+      .join(' ');
+    const svg = `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-height:220px;">
+      <line x1="${pad}" y1="${yZero}" x2="${w - pad}" y2="${yZero}" stroke="var(--border)" stroke-dasharray="2 3"/>
+      <path d="${path}" fill="none" stroke="var(--blue)" stroke-width="1.5"/>
+      <path d="${wrPath}" fill="none" stroke="var(--purple)" stroke-width="1" opacity="0.7"/>
+    </svg>`;
+    const last = points[points.length - 1];
+    el.innerHTML = svg + `<div style="display:flex;gap:20px;font-size:12px;color:var(--muted);margin-top:8px;">
+      <span><span style="display:inline-block;width:10px;height:2px;background:var(--blue);vertical-align:middle;"></span> Sharpe (rolling)</span>
+      <span><span style="display:inline-block;width:10px;height:2px;background:var(--purple);vertical-align:middle;"></span> Win %</span>
+    </div>
+    <div style="margin-top:6px;font-size:12px;">Último punto: Sharpe <b>${last.sharpe === null ? '-' : fmt(last.sharpe, 2)}</b> · Sortino <b>${last.sortino === null ? '-' : fmt(last.sortino, 2)}</b> · WR <b>${fmt(last.winRatePct, 1)}%</b> · Cum PnL <b class="${pnlClass(last.cumulativeNetPnl)}">${fmt(last.cumulativeNetPnl, 2)}</b></div>`;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadDrawdownRecovery() {
+  const el = document.getElementById('drawdown-recovery');
+  try {
+    const res = await fetch('/analytics/drawdown-recovery');
+    const data = await res.json();
+    const dds = data.drawdowns ?? [];
+    const cur = data.currentUnderwater;
+    const streaks = data.streaks ?? {};
+    let html = '';
+    if (cur) {
+      html += `<div style="padding:10px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:6px;margin-bottom:12px;font-size:12px;">
+        <b class="neg">Underwater ahora</b> · desde ${new Date(cur.startedAt).toLocaleString()} · trough ${fmt(cur.drawdown, 2)} (${fmt(cur.drawdownPct, 2)}%) · ${cur.tradesUnderwater} trades · ${fmt(cur.minutesUnderwater, 0)} min
+      </div>`;
+    }
+    html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Longest win streak: <b class="pos">${streaks.longestWin}</b> · Longest loss: <b class="neg">${streaks.longestLoss}</b></div>`;
+    if (!dds.length) {
+      html += '<div class="loading">Sin drawdowns recuperados aún.</div>';
+    } else {
+      html += '<table><thead><tr>' +
+        '<th>Peak</th><th>Trough</th><th>Recovered</th><th class="num">Drawdown</th>' +
+        '<th class="num">%</th><th class="num">Recovery (min)</th><th class="num">Trades</th>' +
+        '</tr></thead><tbody>';
+      for (const d of dds.slice(-20).reverse()) {
+        html += `<tr>
+          <td style="font-size:11px;">${new Date(d.startedAt).toLocaleString()}</td>
+          <td style="font-size:11px;">${new Date(d.troughAt).toLocaleString()}</td>
+          <td style="font-size:11px;">${new Date(d.recoveredAt).toLocaleString()}</td>
+          <td class="num neg">${fmt(d.drawdown, 2)}</td>
+          <td class="num neg">${fmt(d.drawdownPct, 2)}</td>
+          <td class="num">${fmt(d.recoveryMinutes, 0)}</td>
+          <td class="num">${d.tradesUnderwater}</td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    if (streaks.lossDistribution?.length) {
+      html += '<div style="margin-top:12px;font-size:12px;color:var(--muted);">Distribución rachas perdedoras:</div>';
+      html += '<div style="display:flex;gap:2px;align-items:end;height:60px;margin-top:4px;">';
+      const maxCount = Math.max(...streaks.lossDistribution.map((d) => d.count), 1);
+      for (const d of streaks.lossDistribution) {
+        const heightPct = (d.count / maxCount) * 100;
+        html += `<div style="flex:1;min-width:20px;background:var(--red);opacity:0.6;height:${heightPct}%;border-radius:2px 2px 0 0;text-align:center;font-size:10px;color:var(--text);position:relative;">
+          <span style="position:absolute;bottom:-16px;left:0;right:0;color:var(--muted);">${d.length}</span>
+          <span style="font-size:10px;">${d.count}</span>
+        </div>`;
+      }
+      html += '</div><div style="height:20px;"></div>';
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadAttribution() {
+  const el = document.getElementById('attribution');
+  try {
+    const res = await fetch('/analytics/attribution?groupBy=symbol');
+    const data = await res.json();
+    const rows = data.groups ?? [];
+    if (!rows.length) { el.innerHTML = '<div class="loading">Sin datos.</div>'; return; }
+    let html = '<table><thead><tr>' +
+      '<th>Symbol</th><th class="num">Trades</th><th class="num">Ideal PnL</th>' +
+      '<th class="num">Slippage</th><th class="num">Fees</th><th class="num">Friction</th>' +
+      '<th class="num">Friction %</th><th class="num">Net</th>' +
+      '</tr></thead><tbody>';
+    for (const r of rows) {
+      const risky = (r.frictionPctOfIdeal ?? 0) > 30 ? 'neg' : '';
+      html += `<tr>
+        <td><span class="badge">${r.key}</span></td>
+        <td class="num">${r.trades}</td>
+        <td class="num ${pnlClass(r.idealPnl)}">${fmt(r.idealPnl, 2)}</td>
+        <td class="num neg">${fmt(r.slippageCost, 2)}</td>
+        <td class="num neg">${fmt(r.fees, 2)}</td>
+        <td class="num neg">${fmt(r.frictionCost, 2)}</td>
+        <td class="num ${risky}"><b>${r.frictionPctOfIdeal === null ? '-' : fmt(r.frictionPctOfIdeal, 1) + '%'}</b></td>
+        <td class="num ${pnlClass(r.netEconomic)}">${fmt(r.netEconomic, 2)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    html += '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Ideal = pnl si no hubiera slippage. Friction >30% rojo = ejecución cara vs edge.</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadFeesBreakdown() {
+  const el = document.getElementById('fees-breakdown');
+  try {
+    const res = await fetch('/analytics/fees-breakdown');
+    const data = await res.json();
+    const rows = data.bySymbol ?? [];
+    if (!rows.length) { el.innerHTML = '<div class="loading">Sin trades.</div>'; return; }
+    const t = data.totals ?? {};
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Total fees <b class="neg">${fmt(t.totalFees, 2)}</b> · Gross PnL <b class="${pnlClass(t.totalGrossPnl)}">${fmt(t.totalGrossPnl, 2)}</b> · Fee <b>${t.overallFeePctOfGross === null ? '-' : fmt(t.overallFeePctOfGross, 2) + '%'}</b> del gross</div>`;
+    html += '<table><thead><tr>' +
+      '<th>Symbol</th><th class="num">Trades</th><th class="num">Fees</th>' +
+      '<th class="num">Notional</th><th class="num">Fee bps</th>' +
+      '<th class="num">Gross PnL</th><th class="num">Fee % del gross</th>' +
+      '</tr></thead><tbody>';
+    for (const r of rows) {
+      const bad = (r.feePctOfGross ?? 0) > 50 ? 'neg' : '';
+      html += `<tr>
+        <td><span class="badge">${r.symbol}</span></td>
+        <td class="num">${r.trades}</td>
+        <td class="num neg">${fmt(r.totalFees, 2)}</td>
+        <td class="num">${fmt(r.notional, 2)}</td>
+        <td class="num">${r.feeBps === null ? '-' : fmt(r.feeBps, 2)}</td>
+        <td class="num ${pnlClass(r.grossPnl)}">${fmt(r.grossPnl, 2)}</td>
+        <td class="num ${bad}"><b>${r.feePctOfGross === null ? '-' : fmt(r.feePctOfGross, 1) + '%'}</b></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadExecution() {
+  const el = document.getElementById('execution');
+  try {
+    const res = await fetch('/analytics/execution?groupBy=symbol');
+    const data = await res.json();
+    const rows = data.groups ?? [];
+    if (!rows.length) { el.innerHTML = '<div class="loading">Sin ejecuciones registradas.</div>'; return; }
+    let html = '<table><thead><tr>' +
+      '<th>Symbol</th><th class="num">Intentos</th><th class="num">Fill %</th><th class="num">Reject %</th>' +
+      '<th class="num">Notional</th><th class="num">Fees</th><th class="num">Fee bps</th>' +
+      '<th class="num">Avg slip bps</th><th class="num">P95 slip</th><th class="num">Worst slip</th>' +
+      '<th class="num">Spread bps</th><th class="num">Latencia ms</th><th class="num">P95 ms</th>' +
+      '</tr></thead><tbody>';
+    for (const r of rows) {
+      const slipBad = (r.averageSlippageBps ?? 0) > 5 ? 'neg' : '';
+      html += `<tr>
+        <td><span class="badge">${r.key}</span></td>
+        <td class="num">${r.attempts}</td>
+        <td class="num">${fmt(r.fillRatePct, 1)}</td>
+        <td class="num neg">${fmt(r.rejectionRatePct, 1)}</td>
+        <td class="num">${fmt(r.totalNotional, 2)}</td>
+        <td class="num neg">${fmt(r.totalFees, 2)}</td>
+        <td class="num">${r.feeBps === null ? '-' : fmt(r.feeBps, 2)}</td>
+        <td class="num ${slipBad}">${r.averageSlippageBps === null ? '-' : fmt(r.averageSlippageBps, 2)}</td>
+        <td class="num">${r.p95SlippageBps === null ? '-' : fmt(r.p95SlippageBps, 2)}</td>
+        <td class="num neg">${r.worstSlippageBps === null ? '-' : fmt(r.worstSlippageBps, 2)}</td>
+        <td class="num">${r.averageSpreadBps === null ? '-' : fmt(r.averageSpreadBps, 2)}</td>
+        <td class="num">${r.averageLatencyMs === null ? '-' : fmt(r.averageLatencyMs, 0)}</td>
+        <td class="num">${r.p95LatencyMs === null ? '-' : fmt(r.p95LatencyMs, 0)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadSyncStatus() {
+  const el = document.getElementById('sync-status');
+  try {
+    const res = await fetch('/analytics/capital-ledger/sync-status');
+    const data = await res.json();
+    const rows = data.types ?? [];
+    let html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">';
+    for (const r of rows) {
+      const stale = r.lastOccurredAt && (Date.now() - Date.parse(r.lastOccurredAt) > 3 * 3600 * 1000);
+      const color = r.count === 0 ? 'var(--muted)' : stale ? 'var(--yellow)' : 'var(--green)';
+      html += `<div style="flex:0 0 auto;padding:8px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;min-width:130px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${r.type}</div>
+        <div style="font-size:14px;color:${color};font-variant-numeric:tabular-nums;">${r.count}</div>
+        <div style="font-size:10px;color:var(--muted);">${r.lastOccurredAt ? new Date(r.lastOccurredAt).toLocaleString() : 'sin datos'}</div>
+      </div>`;
+    }
+    html += '</div>';
+    html += '<button class="reload" onclick="triggerSync()">↻ Forzar sync ahora</button> <span id="sync-result" style="margin-left:10px;font-size:12px;color:var(--muted);"></span>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function triggerSync() {
+  const rs = document.getElementById('sync-result');
+  rs.textContent = 'Sincronizando…';
+  try {
+    const res = await fetch('/analytics/capital-ledger/sync-now', { method: 'POST' });
+    const data = await res.json();
+    rs.textContent = `OK · interest=${data.interest} deposits=${data.deposits} withdrawals=${data.withdrawals} rebates=${data.rebates}`;
+    loadSyncStatus();
+    loadCapitalLedger();
+  } catch (e) { rs.textContent = 'Error: ' + e.message; }
+}
+
+async function loadCapitalLedger() {
+  const el = document.getElementById('capital-ledger');
+  try {
+    const [sumRes, dailyRes] = await Promise.all([
+      fetch('/analytics/capital-ledger/summary').then(r => r.json()),
+      fetch('/analytics/capital-ledger/daily').then(r => r.json()),
+    ]);
+    if (!Array.isArray(sumRes) || !sumRes.length) {
+      el.innerHTML = '<div class="loading">Sin eventos registrados aún. Cierra un trade para poblar.</div>';
+      return;
+    }
+    const totalNet = sumRes.reduce((a, r) => a + Number(r.total), 0);
+    let html = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;">';
+    html += `<div style="flex:0 0 auto;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Net total</div>
+      <div class="${pnlClass(totalNet)}" style="font-size:22px;font-variant-numeric:tabular-nums;margin-top:2px;">${fmt(totalNet, 2)}</div>
+    </div>`;
+    for (const r of sumRes) {
+      html += `<div style="flex:0 0 auto;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;min-width:140px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${r.type} <span style="opacity:0.6;">${r.currency}</span></div>
+        <div class="${pnlClass(r.total)}" style="font-size:18px;font-variant-numeric:tabular-nums;margin-top:2px;">${fmt(r.total, 2)}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">${r.count} eventos</div>
+      </div>`;
+    }
+    html += '</div>';
+    if (Array.isArray(dailyRes) && dailyRes.length) {
+      const maxAbs = Math.max(...dailyRes.map(d => Math.max(Math.abs(d.gains), Math.abs(d.losses))), 1);
+      html += '<div style="margin-top:12px;font-size:12px;color:var(--muted);">Diario · gains verde · losses rojo</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(' + dailyRes.length + ',1fr);gap:3px;margin-top:6px;height:100px;align-items:end;">';
+      for (const d of dailyRes) {
+        const gh = Math.max(1, (d.gains / maxAbs) * 45);
+        const lh = Math.max(1, (Math.abs(d.losses) / maxAbs) * 45);
+        html += `<div title="${d.day} · +${fmt(d.gains,2)} / ${fmt(d.losses,2)} · net ${fmt(d.total,2)}" style="display:flex;flex-direction:column;justify-content:end;height:100%;">
+          <div style="height:${gh}%;background:var(--green);border-radius:2px 2px 0 0;"></div>
+          <div style="height:${lh}%;background:var(--red);border-radius:0 0 2px 2px;"></div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadOpAlerts() {
+  const el = document.getElementById('op-alerts');
+  try {
+    const res = await fetch('/alerts?limit=20');
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) {
+      el.innerHTML = '<div class="loading">Sin alertas registradas</div>';
+      return;
+    }
+    const badge = (sev) => {
+      const map = {
+        CRITICAL: 'background:rgba(248,81,73,0.25);color:var(--red);border-color:var(--red);',
+        ERROR: 'background:rgba(248,81,73,0.15);color:var(--red);',
+        WARN: 'background:rgba(210,153,34,0.15);color:var(--yellow);',
+        INFO: '',
+      };
+      return `<span class="badge" style="${map[sev] ?? ''}">${sev}</span>`;
+    };
+    let html = '<table><thead><tr>' +
+      '<th>Sev</th><th>Kind</th><th>Asunto</th><th class="num">Count</th>' +
+      '<th>Última</th><th>Ack</th><th></th></tr></thead><tbody>';
+    for (const a of data) {
+      const last = new Date(a.lastOccurredAt).toLocaleString();
+      const ack = a.acknowledgedAt
+        ? `<span style="color:var(--muted);font-size:11px;">${new Date(a.acknowledgedAt).toLocaleString()}</span>`
+        : `<span style="color:var(--red);font-size:11px;">pendiente</span>`;
+      const ackBtn = a.acknowledgedAt
+        ? ''
+        : `<button class="reload" onclick="ackAlert(${a.id})">ack</button>`;
+      html += `<tr>
+        <td>${badge(a.severity)}</td>
+        <td><code style="font-size:11px;">${a.kind}</code></td>
+        <td>${a.subject}<div style="color:var(--muted);font-size:11px;">${a.message}</div></td>
+        <td class="num">${a.occurrenceCount}</td>
+        <td style="font-size:11px;">${last}</td>
+        <td>${ack}</td>
+        <td>${ackBtn}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function ackAlert(id) {
+  try {
+    await fetch(`/alerts/${id}/ack`, { method: 'POST' });
+    loadOpAlerts();
+  } catch (e) { alert('Error ack: ' + e.message); }
+}
+
+async function loadRunnerCorr() {
+  const el = document.getElementById('runner-corr');
+  try {
+    const res = await fetch('/analytics/runner-correlation?hoursBack=168');
+    const data = await res.json();
+    const runners = data.runners ?? [];
+    if (runners.length < 2) {
+      el.innerHTML = '<div class="loading">Necesitas ≥2 runners con snapshots recientes.</div>';
+      return;
+    }
+    const heatColor = (v) => {
+      if (v > 0.7) return 'rgba(63,185,80,0.55)';
+      if (v > 0.3) return 'rgba(63,185,80,0.25)';
+      if (v < -0.7) return 'rgba(248,81,73,0.55)';
+      if (v < -0.3) return 'rgba(248,81,73,0.25)';
+      return 'rgba(139,148,158,0.12)';
+    };
+    const label = (r) => `${r.runId.slice(0, 8)}·${r.symbol}`;
+    let html = `<div class="heatmap" style="grid-template-columns:120px repeat(${runners.length},1fr);">`;
+    html += '<div></div>';
+    for (const r of runners) html += `<div class="cell label" title="${r.runId}">${label(r)}</div>`;
+    for (let i = 0; i < runners.length; i++) {
+      html += `<div class="cell label" title="${runners[i].runId}">${label(runners[i])}</div>`;
+      for (let j = 0; j < runners.length; j++) {
+        const v = data.matrix[i][j];
+        html += `<div class="cell" style="background:${heatColor(v)}">${fmt(v, 2)}</div>`;
+      }
+    }
+    html += '</div>';
+    html += '<div style="margin-top:10px;font-size:12px;color:var(--muted);">Verde alto = runners correlacionados (mismo riesgo real). Diversifica.</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadPortfolioExposure() {
+  const el = document.getElementById('portfolio-exposure');
+  try {
+    const res = await fetch('/analytics/portfolio-exposure');
+    const data = await res.json();
+    const byAsset = data.byAsset ?? [];
+    if (!byAsset.length) {
+      el.innerHTML = '<div class="loading">Sin posiciones abiertas.</div>';
+      return;
+    }
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Total gross notional: <b class="pos">${fmt(data.totalGrossNotional, 2)}</b></div>`;
+    html += '<table><thead><tr>' +
+      '<th>Asset</th><th class="num">Long</th><th class="num">Short</th><th class="num">Gross</th>' +
+      '<th class="num">Net</th><th class="num">Concentración</th><th class="num">Runners</th><th class="num">Posiciones</th></tr></thead><tbody>';
+    for (const a of byAsset) {
+      const risky = a.concentrationPct > 40 ? 'neg' : '';
+      html += `<tr>
+        <td><span class="badge">${a.asset}</span></td>
+        <td class="num pos">${fmt(a.longNotional, 2)}</td>
+        <td class="num neg">${fmt(a.shortNotional, 2)}</td>
+        <td class="num">${fmt(a.grossNotional, 2)}</td>
+        <td class="num ${pnlClass(a.netNotional)}">${fmt(a.netNotional, 2)}</td>
+        <td class="num ${risky}"><b>${fmt(a.concentrationPct, 1)}%</b></td>
+        <td class="num">${a.runnersInvolved}</td>
+        <td class="num">${a.positions}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    html += '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Concentración >40% rojo = un asset domina cartera.</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+function loadAll() {
+  loadSystemHealth();
+  loadROI();
+  loadOpenPositions();
+  loadTimeOfDay();
+  loadDayOfWeek();
+  loadSizingHistory();
+  loadHoldingTime();
+  loadRollingMetrics();
+  loadDrawdownRecovery();
+  loadAttribution();
+  loadFeesBreakdown();
+  loadExecution();
+  loadSyncStatus();
+  loadCapitalLedger();
+  loadOpAlerts();
+  loadRMultiple();
+  loadFeesDrift();
+  loadByRegime();
+  loadBySymbol();
+  loadStrategyPerf();
+  loadExcursion();
+  loadBestHours();
+  loadCorrelation();
+  loadRunnerCorr();
+  loadPortfolioExposure();
+}
+
+renderAuthStatus();
+loadAll();
+setInterval(loadAll, 30000);
+</script>
+</body>
+</html>

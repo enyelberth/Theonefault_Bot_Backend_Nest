@@ -27,6 +27,36 @@
       #log { margin-top: 16px; font-family: monospace; font-size: 12px; color: #8b949e; max-height: 240px; overflow-y: auto; }
       .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
       .warn { background: #3b1f1f; border: 1px solid #da3633; border-radius: 6px; padding: 8px 12px; margin-top: 8px; color: #f85149; }
+      .portfolio-card {
+        display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+        background: linear-gradient(135deg, #0f2a1a 0%, #123a24 100%);
+        border: 1px solid #2ea043; border-radius: 8px;
+        padding: 14px 18px; margin: 12px 0 6px 0;
+      }
+      .portfolio-card .label { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; }
+      .portfolio-card .amount { color: #3fb950; font-size: 26px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .portfolio-card .meta { color: #8b949e; font-size: 12px; }
+      table td.num, table th.num { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      table tfoot td { border-top: 2px solid #2ea043; font-weight: 700; background: #10251a; }
+      .dust { opacity: 0.55; }
+      .btn-detail { background: #6f42c1; color: #fff; border-color: #6f42c1; }
+      .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; z-index: 100; }
+      .modal-mask.open { display: flex; align-items: flex-start; justify-content: center; padding-top: 40px; }
+      .modal { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; width: min(1100px, 96vw); max-height: 90vh; overflow-y: auto; padding: 20px; }
+      .modal h2 { margin: 0 0 6px 0; }
+      .modal .close { float: right; background: transparent; border: none; color: #8b949e; font-size: 20px; cursor: pointer; }
+      .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+      .stat { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; }
+      .stat .k { color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; }
+      .stat .v { font-family: ui-monospace, monospace; font-size: 20px; font-weight: 700; margin-top: 4px; }
+      .stat.filled .v { color: #3fb950; }
+      .stat.canceled .v { color: #f85149; }
+      .stat.open .v { color: #58a6ff; }
+      .levels-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      @media (max-width: 900px) { .levels-tables { grid-template-columns: 1fr; } }
+      .lvl-table { max-height: 340px; overflow-y: auto; border: 1px solid #30363d; border-radius: 6px; }
+      .lvl-table table { margin: 0; }
+      .add-level-box { background: #10251a; border: 1px solid #2ea043; border-radius: 6px; padding: 12px; margin-top: 12px; }
     </style>
   </head>
   <body>
@@ -45,11 +75,40 @@
       <div id="binance-warn" class="warn" style="display:none">
         MODO TEST (testnet) activo. Órdenes NO afectan cuenta real. Para trading real: <code>PRODUCTION=true</code> en <code>.env</code>.
       </div>
+
+      <div class="portfolio-card">
+        <div>
+          <div class="label">Valor total cuenta</div>
+          <div class="amount"><span id="portfolio-total">0.00</span> <span style="font-size:14px;color:#8b949e">USDT</span></div>
+        </div>
+        <div class="meta">
+          Activos: <span id="portfolio-count">0</span> ·
+          Actualizado: <span id="portfolio-updated">-</span>
+        </div>
+      </div>
+
       <table id="balances">
         <thead>
-          <tr><th>Asset</th><th>Free</th><th>Locked</th><th>Total</th><th>Acciones</th></tr>
+          <tr>
+            <th>Asset</th>
+            <th class="num">Free</th>
+            <th class="num">Locked</th>
+            <th class="num">Total</th>
+            <th class="num">Precio (USDT)</th>
+            <th class="num">Valor (USDT)</th>
+            <th class="num">%</th>
+            <th>Acciones</th>
+          </tr>
         </thead>
         <tbody></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5">TOTAL CARTERA</td>
+            <td class="num" id="balances-total">0.00</td>
+            <td class="num">100%</td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
 
       <h3>Vender rápido (Market)</h3>
@@ -93,6 +152,67 @@
       </table>
     </section>
 
+    <!-- Modal Detalle Bot -->
+    <div id="bot-detail-modal" class="modal-mask" onclick="if(event.target===this) closeBotDetail()">
+      <div class="modal">
+        <button class="close" onclick="closeBotDetail()">×</button>
+        <h2>Detalle bot: <span id="dt-title">-</span></h2>
+        <div class="row" style="gap:8px;color:#8b949e;font-size:12px">
+          <span>BotRunId: <b id="dt-runid">-</b></span>
+          <span>Symbol: <b id="dt-symbol">-</b></span>
+          <span>Strategy: <b id="dt-strategy">-</b></span>
+          <span>Type: <b id="dt-type">-</b></span>
+          <button class="btn-refresh" onclick="refreshBotDetail()">Refrescar</button>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat filled"><div class="k">Órdenes completadas</div><div class="v" id="dt-filled">0</div></div>
+          <div class="stat canceled"><div class="k">Órdenes canceladas</div><div class="v" id="dt-canceled">0</div></div>
+          <div class="stat open"><div class="k">BUY abiertas</div><div class="v" id="dt-openbuy">0</div></div>
+          <div class="stat open"><div class="k">SELL abiertas</div><div class="v" id="dt-opensell">0</div></div>
+          <div class="stat"><div class="k">Stop-Loss abiertas</div><div class="v" id="dt-opensl">0</div></div>
+          <div class="stat"><div class="k">Niveles saltados</div><div class="v" id="dt-skipped">0</div></div>
+          <div class="stat"><div class="k">Niveles manuales</div><div class="v" id="dt-manual">0</div></div>
+          <div class="stat"><div class="k">P/L estimado</div><div class="v" id="dt-pnl">0</div></div>
+        </div>
+
+        <div class="add-level-box">
+          <b>Agregar nivel manual (LIMIT BUY)</b>
+          <div class="row" style="margin-top:8px">
+            <input id="al-price" type="number" step="0.0001" placeholder="Precio" style="width:130px" />
+            <input id="al-qty" type="number" step="0.0001" placeholder="Qty (opcional)" style="width:150px" />
+            <button class="btn-refresh" onclick="addLevel()">Agregar</button>
+            <span style="color:#8b949e;font-size:11px">Qty vacía → usa minOrderNotional del config</span>
+          </div>
+        </div>
+
+        <h3 style="margin-top:16px">Niveles abiertos</h3>
+        <div class="levels-tables">
+          <div>
+            <b style="color:#3fb950">BUY</b>
+            <div class="lvl-table">
+              <table>
+                <thead><tr><th>Nivel</th><th>OrderId</th><th class="num">Precio</th><th class="num">Qty</th><th class="num">Edad</th><th></th></tr></thead>
+                <tbody id="dt-buy-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <b style="color:#f85149">SELL</b>
+            <div class="lvl-table">
+              <table>
+                <thead><tr><th>Nivel</th><th>OrderId</th><th class="num">Precio</th><th class="num">Qty</th><th class="num">Edad</th><th></th></tr></thead>
+                <tbody id="dt-sell-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="margin-top:16px">Config actual</h3>
+        <pre id="dt-config" style="background:#161b22;padding:10px;border-radius:6px;overflow:auto;max-height:200px;font-size:12px">-</pre>
+      </div>
+    </div>
+
     <div id="log"></div>
 
     <script>
@@ -129,29 +249,39 @@
             ? `<span class="pos">OK canTrade=${ping.canTrade}</span>`
             : `<span class="neg">FAIL ${ping.error}</span>`;
 
-          const balances = await fetch(`${API}/binance/balances-public`).then((r) => r.json());
+          const data = await fetch(`${API}/binance/balances-usdt`, { headers: authHeaders() }).then((r) => r.json());
           const tbody = document.querySelector('#balances tbody');
           tbody.innerHTML = '';
-          if (!Array.isArray(balances)) {
-            log(`Balances error: ${JSON.stringify(balances)}`);
+          if (!data || !Array.isArray(data.assets)) {
+            log(`Balances error: ${JSON.stringify(data)}`);
             return;
           }
-          balances
-            .map((b) => ({ asset: b.asset, free: Number(b.free), locked: Number(b.locked) }))
-            .filter((b) => b.free + b.locked > 0)
-            .sort((a, b) => (b.free + b.locked) - (a.free + a.locked))
-            .forEach((b) => {
-              const tr = document.createElement('tr');
-              tr.innerHTML = `
-                <td><b>${b.asset}</b></td>
-                <td>${b.free.toFixed(8)}</td>
-                <td>${b.locked.toFixed(8)}</td>
-                <td>${(b.free + b.locked).toFixed(8)}</td>
-                <td>
-                  ${b.asset !== 'USDT' && b.free > 0 ? `<button onclick="quickSellAsset('${b.asset}', ${b.free})">Vender ${b.asset}→USDT</button>` : ''}
-                </td>`;
-              tbody.appendChild(tr);
-            });
+          const total = Number(data.totalUsdt || 0);
+          const fmt2 = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const fmt8 = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+
+          data.assets.forEach((b) => {
+            const pct = total > 0 ? (b.usdtValue / total) * 100 : 0;
+            const dust = b.usdtValue < 1 ? 'dust' : '';
+            const tr = document.createElement('tr');
+            tr.className = dust;
+            tr.innerHTML = `
+              <td><b>${b.asset}</b></td>
+              <td class="num">${fmt8(b.free)}</td>
+              <td class="num">${fmt8(b.locked)}</td>
+              <td class="num">${fmt8(b.total)}</td>
+              <td class="num">${b.priceUsdt ? fmt8(b.priceUsdt) : '-'}</td>
+              <td class="num"><b>${fmt2(b.usdtValue)}</b></td>
+              <td class="num">${pct.toFixed(2)}%</td>
+              <td>
+                ${b.asset !== 'USDT' && b.free > 0 ? `<button onclick="quickSellAsset('${b.asset}', ${b.free})">Vender ${b.asset}→USDT</button>` : ''}
+              </td>`;
+            tbody.appendChild(tr);
+          });
+          document.getElementById('balances-total').textContent = fmt2(total);
+          document.getElementById('portfolio-total').textContent = fmt2(total);
+          document.getElementById('portfolio-count').textContent = data.assets.length;
+          document.getElementById('portfolio-updated').textContent = new Date().toLocaleTimeString();
         } catch (e) {
           log(`Binance error: ${e.message}`);
         }
@@ -172,7 +302,7 @@
         try {
           const res = await fetch(`${API}/binance/quick-sell`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ symbol, quantity, confirm: true, dryRun }),
           }).then((r) => r.json());
           log(`QUICK-SELL ${dryRun ? '(dry)' : ''} ${symbol} → ${JSON.stringify(res)}`);
@@ -225,6 +355,7 @@
               <td class="${uCls}">${unrealized.toFixed(4)}</td>
               <td>${summary.tradesCount} (${summary.winCount}/${summary.lossCount})</td>
               <td>
+                <a class="btn-detail" style="text-decoration:none;padding:6px 12px;border-radius:4px;display:inline-block" href="/dashboard/bot/${run.id}">Detalle</a>
                 <button class="btn-restart" onclick="restartBot('${run.symbol}','${run.strategyId}')">Restart</button>
                 <button class="btn-stop" onclick="stopBot('${run.symbol}','${run.strategyId}')">Stop</button>
               </td>`;
@@ -255,6 +386,102 @@
         } catch (e) {
           log(`Stop error: ${e.message}`);
         }
+      }
+
+      const detailState = { runId: null, symbol: null, id: null, type: null, timer: null };
+
+      function openBotDetail(runId, symbol, id, type) {
+        detailState.runId = runId;
+        detailState.symbol = symbol;
+        detailState.id = id;
+        detailState.type = type;
+        document.getElementById('dt-title').textContent = `${symbol} · ${id}`;
+        document.getElementById('dt-runid').textContent = runId;
+        document.getElementById('dt-symbol').textContent = symbol;
+        document.getElementById('dt-strategy').textContent = id;
+        document.getElementById('dt-type').textContent = type;
+        document.getElementById('bot-detail-modal').classList.add('open');
+        refreshBotDetail();
+        detailState.timer = setInterval(refreshBotDetail, 5000);
+      }
+
+      function closeBotDetail() {
+        document.getElementById('bot-detail-modal').classList.remove('open');
+        if (detailState.timer) { clearInterval(detailState.timer); detailState.timer = null; }
+      }
+
+      async function refreshBotDetail() {
+        if (!detailState.symbol || !detailState.id) return;
+        try {
+          const [runtime, cfg] = await Promise.all([
+            fetch(`${API}/bot/runtime/${detailState.symbol}/${detailState.id}`).then(r => r.json()).catch(() => null),
+            fetch(`${API}/bot/config/${detailState.symbol}/${detailState.id}`).then(r => r.json()).catch(() => null),
+          ]);
+          if (runtime && !runtime.warning) {
+            document.getElementById('dt-filled').textContent = runtime.filledCount ?? 0;
+            document.getElementById('dt-canceled').textContent = runtime.canceledCount ?? 0;
+            document.getElementById('dt-openbuy').textContent = runtime.openBuyOrders ?? 0;
+            document.getElementById('dt-opensell').textContent = runtime.openSellOrders ?? 0;
+            document.getElementById('dt-opensl').textContent = runtime.openStopLossOrders ?? 0;
+            document.getElementById('dt-skipped').textContent = runtime.skippedLevels ?? 0;
+            document.getElementById('dt-manual').textContent = runtime.manualLevels ?? 0;
+            document.getElementById('dt-pnl').textContent = (runtime.profitLoss ?? 0).toFixed(6);
+            renderLevels('dt-buy-tbody', runtime.buyLevels || []);
+            renderLevels('dt-sell-tbody', runtime.sellLevels || []);
+          }
+          document.getElementById('dt-config').textContent = JSON.stringify(cfg?.config ?? cfg, null, 2);
+        } catch (e) {
+          log(`Detail error: ${e.message}`);
+        }
+      }
+
+      function renderLevels(tbodyId, levels) {
+        const tb = document.getElementById(tbodyId);
+        tb.innerHTML = '';
+        if (!levels.length) { tb.innerHTML = '<tr><td colspan="6" style="color:#8b949e">Sin órdenes</td></tr>'; return; }
+        levels.sort((a, b) => Number(a.price) - Number(b.price));
+        for (const l of levels) {
+          const ageS = Math.floor((l.ageMs || 0) / 1000);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${l.level}</td>
+            <td>${l.orderId}</td>
+            <td class="num">${Number(l.price).toFixed(4)}</td>
+            <td class="num">${Number(l.qty).toFixed(6)}</td>
+            <td class="num">${ageS}s</td>
+            <td><button class="btn-danger" onclick="removeLevel(${l.level})">×</button></td>`;
+          tb.appendChild(tr);
+        }
+      }
+
+      async function addLevel() {
+        const price = Number(document.getElementById('al-price').value);
+        const qtyRaw = document.getElementById('al-qty').value;
+        const qty = qtyRaw ? Number(qtyRaw) : undefined;
+        if (!price || price <= 0) { alert('Precio requerido'); return; }
+        const body = { price, ...(qty ? { quantity: qty } : {}) };
+        try {
+          const res = await fetch(`${API}/bot/orderLevel/${detailState.symbol}/${detailState.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }).then(r => r.json());
+          log(`AddLevel ${JSON.stringify(res)}`);
+          document.getElementById('al-price').value = '';
+          document.getElementById('al-qty').value = '';
+          refreshBotDetail();
+        } catch (e) { log(`AddLevel err: ${e.message}`); }
+      }
+
+      async function removeLevel(idx) {
+        if (!confirm(`Eliminar nivel ${idx}?`)) return;
+        try {
+          const res = await fetch(`${API}/bot/orderLevel/${detailState.symbol}/${detailState.id}/${idx}`, {
+            method: 'DELETE',
+          }).then(r => r.json());
+          log(`RemoveLevel ${JSON.stringify(res)}`);
+          refreshBotDetail();
+        } catch (e) { log(`RemoveLevel err: ${e.message}`); }
       }
 
       const savedTok = localStorage.getItem('kaizen_token');

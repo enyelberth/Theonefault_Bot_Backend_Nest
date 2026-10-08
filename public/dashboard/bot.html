@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>KAIZEN · Detalle Bot</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #0d1117;
+    --panel2: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --purple: #a371f7;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+    margin: 0; background: var(--bg); color: var(--text);
+    min-height: 100vh;
+  }
+  .topbar {
+    background: linear-gradient(90deg, #0d1117 0%, #161b22 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  }
+  .topbar h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; }
+  .topbar .meta { color: var(--muted); font-size: 12px; display: flex; gap: 18px; flex-wrap: wrap; }
+  .topbar .meta b { color: var(--text); }
+  .topbar .spacer { flex: 1; }
+  .status-pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .status-RUNNING { background: rgba(46,160,67,0.15); color: var(--green); border: 1px solid rgba(46,160,67,0.4); }
+  .status-STOPPED { background: rgba(139,148,158,0.15); color: var(--muted); border: 1px solid var(--border); }
+  .status-ERROR { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.4); }
+  button {
+    padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: #21262d; color: var(--text); cursor: pointer; font-size: 13px;
+    transition: 0.15s;
+  }
+  button:hover { background: #30363d; }
+  .btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  .btn-primary:hover { background: #388bfd; border-color: #388bfd; }
+  .btn-danger  { background: #da3633; border-color: #da3633; color: #fff; }
+  .btn-danger:hover { background: #f85149; }
+  .btn-green   { background: #238636; border-color: #238636; color: #fff; }
+  .btn-green:hover { background: #2ea043; }
+  .btn-ghost   { background: transparent; }
+  a.back { color: var(--muted); text-decoration: none; font-size: 13px; }
+  a.back:hover { color: var(--blue); }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 28px 60px; }
+  .grid { display: grid; gap: 16px; }
+  .cards { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--blue);
+  }
+  .card.filled::before { background: var(--green); }
+  .card.canceled::before { background: var(--red); }
+  .card.pnl-pos::before { background: var(--green); }
+  .card.pnl-neg::before { background: var(--red); }
+  .card.warn::before { background: var(--yellow); }
+  .card.purple::before { background: var(--purple); }
+  .card .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; }
+  .card .v {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 30px; font-weight: 700; margin-top: 6px; line-height: 1.1;
+  }
+  .card.filled .v { color: var(--green); }
+  .card.canceled .v { color: var(--red); }
+  .card.pnl-pos .v { color: var(--green); }
+  .card.pnl-neg .v { color: var(--red); }
+  .card .sub { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+  .section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-top: 16px;
+  }
+  .section h2 { margin: 0 0 12px 0; font-size: 15px; letter-spacing: 0.4px; color: var(--muted); text-transform: uppercase; }
+
+  .add-box {
+    background: linear-gradient(135deg, #0f2a1a 0%, #123a24 100%);
+    border: 1px solid rgba(46,160,67,0.5);
+    border-radius: 10px; padding: 16px 18px; margin-top: 16px;
+  }
+  .add-box h3 { margin: 0 0 10px 0; color: var(--green); font-size: 14px; }
+  .add-box .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  input[type="number"], input[type="text"] {
+    background: #0d1117; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, monospace;
+    font-size: 13px; min-width: 130px;
+  }
+  input[type="number"]:focus, input[type="text"]:focus { outline: none; border-color: var(--blue); }
+  .hint { color: var(--muted); font-size: 11px; }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 10px; letter-spacing: 0.6px; background: var(--panel2); position: sticky; top: 0; }
+  td.num, th.num { font-family: ui-monospace, monospace; text-align: right; }
+  tr:hover td { background: rgba(88,166,255,0.05); }
+  .table-wrap { max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .levels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .levels-grid { grid-template-columns: 1fr; } }
+  .side-buy { color: var(--green); font-weight: 600; }
+  .side-sell { color: var(--red); font-weight: 600; }
+  .manual-tag { display: inline-block; padding: 2px 6px; border-radius: 4px; background: rgba(163,113,247,0.2); color: var(--purple); font-size: 10px; margin-left: 6px; }
+
+  pre.json {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px; overflow: auto; font-size: 12px; margin: 0; max-height: 360px;
+  }
+  .empty { color: var(--muted); text-align: center; padding: 24px; font-size: 13px; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 200;
+    background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--blue);
+    border-radius: 6px; padding: 12px 16px; font-size: 13px; max-width: 400px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .toast.err { border-left-color: var(--red); }
+  .toast.ok { border-left-color: var(--green); }
+  .last-updated { color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>KAIZEN · Bot <span id="bot-symbol" style="color:var(--blue)">-</span></h1>
+    <div class="meta">
+      <a class="back" href="/">← Volver al dashboard</a>
+      <span>BotRunId: <b id="bot-runid">-</b></span>
+      <span>Strategy: <b id="bot-strategyid">-</b></span>
+      <span>Type: <b id="bot-strategytype">-</b></span>
+      <span>Iniciado: <b id="bot-started">-</b></span>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <span id="bot-status" class="status-pill status-RUNNING">-</span>
+  <button class="btn-primary" onclick="refresh()">↻ Refrescar</button>
+  <button class="btn-danger" onclick="stopBot()">■ Stop</button>
+  <button class="btn-green" onclick="restartBot()">↻ Restart</button>
+</div>
+
+<div class="wrap">
+  <div class="last-updated">Última actualización: <span id="last-updated">-</span></div>
+
+  <div class="grid cards" style="margin-top:8px">
+    <div class="card filled">
+      <div class="k">Órdenes completadas</div>
+      <div class="v" id="c-filled">0</div>
+      <div class="sub"><span id="c-filledbuy">0</span> buy · <span id="c-filledsell">0</span> sell</div>
+    </div>
+    <div class="card canceled">
+      <div class="k">Órdenes canceladas</div>
+      <div class="v" id="c-canceled">0</div>
+      <div class="sub">Cancelaciones acumuladas</div>
+    </div>
+    <div class="card">
+      <div class="k">BUY abiertas</div>
+      <div class="v" id="c-openbuy">0</div>
+    </div>
+    <div class="card">
+      <div class="k">SELL abiertas</div>
+      <div class="v" id="c-opensell">0</div>
+    </div>
+    <div class="card warn">
+      <div class="k">Stop-Loss abiertas</div>
+      <div class="v" id="c-opensl">0</div>
+    </div>
+    <div class="card warn">
+      <div class="k">Niveles saltados</div>
+      <div class="v" id="c-skipped">0</div>
+    </div>
+    <div class="card purple">
+      <div class="k">Niveles manuales</div>
+      <div class="v" id="c-manual">0</div>
+    </div>
+    <div class="card" id="c-pnl-card">
+      <div class="k">P/L estimado</div>
+      <div class="v" id="c-pnl">0</div>
+      <div class="sub">Suma teórica al fill</div>
+    </div>
+    <div class="card">
+      <div class="k">Realized PnL (DB)</div>
+      <div class="v" id="c-realizedpnl">0</div>
+      <div class="sub">Trades cerrados</div>
+    </div>
+    <div class="card">
+      <div class="k">Trades W / L</div>
+      <div class="v"><span id="c-wincount">0</span> / <span id="c-losscount">0</span></div>
+      <div class="sub">Winrate: <span id="c-winrate">0</span>%</div>
+    </div>
+  </div>
+
+  <div class="add-box">
+    <h3>+ Agregar nivel manual (LIMIT BUY)</h3>
+    <div class="row">
+      <input id="al-price" type="number" step="0.0001" placeholder="Precio" />
+      <input id="al-qty" type="number" step="0.0001" placeholder="Qty (opcional)" />
+      <button class="btn-green" onclick="addLevel()">Colocar orden</button>
+      <span class="hint">Qty vacía → usa <code>minOrderNotional</code> del config</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Niveles abiertos</h2>
+    <div class="levels-grid">
+      <div>
+        <div style="margin-bottom:6px"><span class="side-buy">▲ BUY</span> · <span class="hint" id="buy-count">0 órdenes</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Nivel</th><th>OrderId</th><th class="num">Precio</th><th class="num">Qty</th><th class="num">Notional</th><th class="num">Edad</th><th></th></tr>
+            </thead>
+            <tbody id="tbody-buy"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div style="margin-bottom:6px"><span class="side-sell">▼ SELL</span> · <span class="hint" id="sell-count">0 órdenes</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Nivel</th><th>OrderId</th><th class="num">Precio</th><th class="num">Qty</th><th class="num">Notional</th><th class="num">Edad</th><th></th></tr>
+            </thead>
+            <tbody id="tbody-sell"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Config actual</h2>
+    <pre class="json" id="cfg-json">-</pre>
+  </div>
+</div>
+
+<div id="toast" class="toast" style="display:none"></div>
+
+<script>
+  const API = window.location.origin.replace(/:\d+$/, ':50000');
+  const path = window.location.pathname.match(/\/dashboard\/bot\/(\d+)/);
+  const botRunId = path ? Number(path[1]) : null;
+  const state = { symbol: null, id: null, type: null };
+
+  function toast(msg, kind) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + (kind || '');
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3500);
+  }
+
+  function fmt(n, d) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: d ?? 2, maximumFractionDigits: d ?? 2 }); }
+
+  async function loadRun() {
+    if (!botRunId) { toast('BotRunId no válido en la URL', 'err'); return null; }
+    const run = await fetch(`${API}/bot/runs/active`).then(r => r.json()).then(list => list.find(r => r.id === botRunId));
+    if (!run) {
+      const summary = await fetch(`${API}/bot/runs/${botRunId}/summary`).then(r => r.json());
+      state.symbol = summary.symbol;
+      state.id = summary.strategyId;
+      state.type = summary.strategyType || '';
+      applyRunMeta(summary);
+      return summary;
+    }
+    state.symbol = run.symbol;
+    state.id = run.strategyId;
+    state.type = run.strategyType || '';
+    applyRunMeta(run);
+    return run;
+  }
+
+  function applyRunMeta(run) {
+    document.getElementById('bot-symbol').textContent = state.symbol;
+    document.getElementById('bot-runid').textContent = botRunId;
+    document.getElementById('bot-strategyid').textContent = state.id;
+    document.getElementById('bot-strategytype').textContent = state.type;
+    document.getElementById('bot-started').textContent = run.startedAt ? new Date(run.startedAt).toLocaleString() : '-';
+    const pill = document.getElementById('bot-status');
+    pill.textContent = run.status || 'RUNNING';
+    pill.className = 'status-pill status-' + (run.status || 'RUNNING');
+  }
+
+  async function refresh() {
+    try {
+      const [runtimeR, summaryR, cfgR] = await Promise.all([
+        state.symbol ? fetch(`${API}/bot/runtime/${state.symbol}/${state.id}`).then(r => r.json()).catch(() => null) : null,
+        fetch(`${API}/bot/runs/${botRunId}/summary`).then(r => r.json()).catch(() => null),
+        state.symbol ? fetch(`${API}/bot/config/${state.symbol}/${state.id}`).then(r => r.json()).catch(() => null) : null,
+      ]);
+
+      if (runtimeR && !runtimeR.warning) {
+        setV('c-filled', runtimeR.filledCount ?? 0);
+        setV('c-filledbuy', runtimeR.filledBuyCount ?? 0);
+        setV('c-filledsell', runtimeR.filledSellCount ?? 0);
+        setV('c-canceled', runtimeR.canceledCount ?? 0);
+        setV('c-openbuy', runtimeR.openBuyOrders ?? 0);
+        setV('c-opensell', runtimeR.openSellOrders ?? 0);
+        setV('c-opensl', runtimeR.openStopLossOrders ?? 0);
+        setV('c-skipped', runtimeR.skippedLevels ?? 0);
+        setV('c-manual', runtimeR.manualLevels ?? 0);
+        const pnl = Number(runtimeR.profitLoss || 0);
+        setV('c-pnl', pnl.toFixed(6));
+        document.getElementById('c-pnl-card').className = 'card ' + (pnl >= 0 ? 'pnl-pos' : 'pnl-neg');
+        renderLevels('tbody-buy', runtimeR.buyLevels || [], 'buy-count');
+        renderLevels('tbody-sell', runtimeR.sellLevels || [], 'sell-count');
+      } else if (summaryR) {
+        setV('c-filled', summaryR.filledOrders ?? 0);
+        setV('c-canceled', summaryR.canceledOrders ?? 0);
+        setV('c-openbuy', summaryR.openOrders ?? 0);
+      }
+
+      if (summaryR) {
+        setV('c-realizedpnl', fmt(summaryR.realizedPnl, 4));
+        setV('c-wincount', summaryR.winCount ?? 0);
+        setV('c-losscount', summaryR.lossCount ?? 0);
+        setV('c-winrate', (summaryR.winRate ?? 0).toFixed(1));
+        if (summaryR.status) applyRunMeta(summaryR);
+      }
+
+      if (cfgR) {
+        document.getElementById('cfg-json').textContent = JSON.stringify(cfgR.config ?? cfgR, null, 2);
+      }
+
+      document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+    } catch (e) {
+      toast('Error refresh: ' + e.message, 'err');
+    }
+  }
+
+  function setV(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+
+  function renderLevels(tbodyId, levels, countId) {
+    const tb = document.getElementById(tbodyId);
+    document.getElementById(countId).textContent = `${levels.length} órdenes`;
+    tb.innerHTML = '';
+    if (!levels.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">Sin órdenes abiertas</td></tr>';
+      return;
+    }
+    levels.sort((a, b) => Number(a.price) - Number(b.price));
+    for (const l of levels) {
+      const ageS = Math.floor((l.ageMs || 0) / 1000);
+      const notional = Number(l.price) * Number(l.qty);
+      const isManual = Number(l.level) < 0;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${l.level}${isManual ? '<span class="manual-tag">manual</span>' : ''}</td>
+        <td>${l.orderId}</td>
+        <td class="num">${fmt(l.price, 4)}</td>
+        <td class="num">${fmt(l.qty, 6)}</td>
+        <td class="num">${fmt(notional, 2)}</td>
+        <td class="num">${ageS}s</td>
+        <td><button class="btn-danger" style="padding:4px 10px" onclick="removeLevel(${l.level})">×</button></td>`;
+      tb.appendChild(tr);
+    }
+  }
+
+  async function addLevel() {
+    const price = Number(document.getElementById('al-price').value);
+    const qtyRaw = document.getElementById('al-qty').value;
+    const qty = qtyRaw ? Number(qtyRaw) : undefined;
+    if (!price || price <= 0) { toast('Precio requerido', 'err'); return; }
+    const body = { price, ...(qty ? { quantity: qty } : {}) };
+    try {
+      const res = await fetch(`${API}/bot/orderLevel/${state.symbol}/${state.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(r => r.json());
+      if (res?.result?.ok) {
+        toast(`Nivel ${res.result.level} colocado @ ${res.result.price} · qty ${res.result.quantity}`, 'ok');
+      } else {
+        toast('Respuesta: ' + JSON.stringify(res), 'err');
+      }
+      document.getElementById('al-price').value = '';
+      document.getElementById('al-qty').value = '';
+      refresh();
+    } catch (e) { toast('AddLevel err: ' + e.message, 'err'); }
+  }
+
+  async function removeLevel(idx) {
+    if (!confirm(`Cancelar orden nivel ${idx}?`)) return;
+    try {
+      const res = await fetch(`${API}/bot/orderLevel/${state.symbol}/${state.id}/${idx}`, {
+        method: 'DELETE',
+      }).then(r => r.json());
+      toast(`Nivel ${idx} eliminado`, 'ok');
+      refresh();
+    } catch (e) { toast('Remove err: ' + e.message, 'err'); }
+  }
+
+  async function stopBot() {
+    if (!confirm(`Parar ${state.symbol}/${state.id}?`)) return;
+    try {
+      await fetch(`${API}/bot/stop/${state.symbol}/${state.id}`, { method: 'DELETE' });
+      toast('Bot detenido', 'ok');
+      setTimeout(refresh, 800);
+    } catch (e) { toast('Stop err: ' + e.message, 'err'); }
+  }
+
+  async function restartBot() {
+    if (!confirm(`Reiniciar ${state.symbol}/${state.id}?`)) return;
+    try {
+      await fetch(`${API}/bot/restart/${state.symbol}/${state.id}`, { method: 'POST' });
+      toast('Bot reiniciado', 'ok');
+      setTimeout(refresh, 1500);
+    } catch (e) { toast('Restart err: ' + e.message, 'err'); }
+  }
+
+  (async () => {
+    await loadRun();
+    await refresh();
+    setInterval(refresh, 5000);
+  })();
+</script>
+</body>
+</html>
