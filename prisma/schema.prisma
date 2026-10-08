@@ -283,17 +283,24 @@ model CryptoPrice {
 
 // Configuración global de riesgo (singleton, id=1)
 model RiskConfig {
-  id                      Int      @id @default(1)
-  enabled                 Boolean  @default(true)
-  maxDailyLossQuote       Decimal? // pérdida absoluta día (quote)
-  maxDrawdownPct          Float?   // % drawdown per-bot
-  maxOpenBots             Int?     // máximo bots simultáneos
-  maxLossPerBotQuote      Decimal? // pérdida absoluta per-bot
-  minWinRatePct           Float?   // si baja, stop
-  minTradesForWinRateEval Int      @default(20)
-  emergencyStopUntil      DateTime?
-  updatedAt               DateTime @updatedAt
-  createdAt               DateTime @default(now())
+  id                          Int       @id @default(1)
+  enabled                     Boolean   @default(true)
+  maxDailyLossQuote           Decimal? // pérdida absoluta día (quote)
+  maxDrawdownPct              Float? // % drawdown per-bot
+  maxOpenBots                 Int? // máximo bots simultáneos
+  maxLossPerBotQuote          Decimal? // pérdida absoluta per-bot
+  minWinRatePct               Float? // si baja, stop
+  minTradesForWinRateEval     Int       @default(20)
+  emergencyStopUntil          DateTime?
+  // Nuevos guards
+  guardBufferPct              Float     @default(4) // % buffer sobre balance FDUSD/quote para CryptoGuard
+  guardConfirmTicks           Int       @default(3) // ticks consecutivos bajo threshold para disparar
+  guardCooldownMinutes        Int       @default(15) // cooldown tras disparar guard
+  consecutiveLossLimit        Int? // N trades perdedores seguidos → stop
+  includeUnrealizedInDailyLoss Boolean  @default(true) // sumar unrealized al daily loss check
+  maxCrossBotExposurePct      Float? // % equity global máximo abierto entre todos los bots
+  updatedAt                   DateTime  @updatedAt
+  createdAt                   DateTime  @default(now())
 }
 
 // Paper trading — órdenes simuladas
@@ -357,6 +364,69 @@ model Candle {
   @@index([symbol, interval, closeTime])
 }
 
+model MarketRegimeSnapshot {
+  id                Int      @id @default(autoincrement())
+  symbol            String
+  timeframe         String
+  candleCloseTime   DateTime
+  regime            String
+  trend             String
+  volatility        String
+  volume            String
+  confidence        Float
+  trendStrengthPct  Float?
+  atrPct             Float?
+  efficiencyRatio   Float?
+  volumeRatio        Float?
+  indicators         Json?
+  createdAt          DateTime @default(now())
+
+  @@unique([symbol, timeframe, candleCloseTime])
+  @@index([symbol, timeframe, candleCloseTime])
+  @@index([regime, candleCloseTime])
+}
+
+// Motor de confluencia y confianza de señales: combina régimen de mercado,
+// alineación multi-timeframe e indicadores de momentum en un único score
+// direccional explicable. Informativo — no bloquea ni autoriza órdenes por
+// sí solo (ver src/confluence).
+model ConfluenceSnapshot {
+  id              Int      @id @default(autoincrement())
+  symbol          String
+  timeframe       String
+  candleCloseTime DateTime
+  score           Float // 0-100, 50 = neutral, >50 = sesgo alcista, <50 = sesgo bajista
+  bias            String // BULLISH | BEARISH | NEUTRAL
+  confidence      Float // 0-100, qué tanto coinciden los componentes entre sí
+  regimeScore     Float
+  mtfScore        Float
+  momentumScore   Float
+  breakdown       Json // detalle por componente para auditar la decisión
+  createdAt       DateTime @default(now())
+
+  @@unique([symbol, timeframe, candleCloseTime])
+  @@index([symbol, timeframe, candleCloseTime])
+  @@index([bias, candleCloseTime])
+}
+
+model MultiTimeframeEvaluation {
+  id               Int       @id @default(autoincrement())
+  botRunnerRunId   Int
+  correlationId    String    @unique
+  symbol           String
+  primaryTimeframe String
+  side             OrderSide
+  score            Float
+  aligned          Boolean
+  contexts         Json
+  createdAt        DateTime  @default(now())
+
+  botRunnerRun BotRunnerRun @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunnerRunId, createdAt])
+  @@index([symbol, createdAt])
+}
+
 model Alert {
   id        Int      @id @default(autoincrement())
   symbol    String // Símbolo del activo (ejemplo: "BTCUSDT")
@@ -404,29 +474,6 @@ model BotRun {
   @@index([ownerId])
 }
 
-// Motor de confluencia y confianza de señales: combina régimen de mercado,
-// alineación multi-timeframe e indicadores de momentum en un único score
-// direccional explicable. Informativo — no bloquea ni autoriza órdenes por
-// sí solo (ver src/confluence).
-model ConfluenceSnapshot {
-  id              Int      @id @default(autoincrement())
-  symbol          String
-  timeframe       String
-  candleCloseTime DateTime
-  score           Float // 0-100, 50 = neutral, >50 = sesgo alcista, <50 = sesgo bajista
-  bias            String // BULLISH | BEARISH | NEUTRAL
-  confidence      Float // 0-100, qué tanto coinciden los componentes entre sí
-  regimeScore     Float
-  mtfScore        Float
-  momentumScore   Float
-  breakdown       Json // detalle por componente para auditar la decisión
-  createdAt       DateTime @default(now())
-
-  @@unique([symbol, timeframe, candleCloseTime])
-  @@index([symbol, timeframe, candleCloseTime])
-  @@index([bias, candleCloseTime])
-}
-
 // Snapshot periódico de métricas por bot
 model BotMetric {
   id            Int      @id @default(autoincrement())
@@ -459,6 +506,10 @@ model TradeResult {
   pnl             Decimal // en quote currency
   pnlPct          Decimal // porcentaje
   fees            Decimal  @default(0)
+  mae             Decimal? // max adverse excursion (pérdida máxima intra-trade en quote)
+  maePct          Decimal? // MAE %
+  mfe             Decimal? // max favorable excursion (ganancia máxima intra-trade en quote)
+  mfePct          Decimal? // MFE %
   openedAt        DateTime
   closedAt        DateTime @default(now())
 
@@ -643,10 +694,128 @@ model BotRunnerRun {
 
   trades    BotRunnerTrade[]
   snapshots BotRunnerSnapshot[]
+  traces    BotRunnerTrace[]
+  executions ExecutionMetric[]
+  reconciliationBatches ReconciliationBatch[]
+  reconciliationIssues  ReconciliationIssue[]
+  timeframeEvaluations  MultiTimeframeEvaluation[]
 
   @@index([status])
   @@index([ownerId])
   @@index([symbol, startedAt])
+}
+
+// Calidad y costo observado entre la intención de orden y la respuesta del exchange.
+model ExecutionMetric {
+  id                Int      @id @default(autoincrement())
+  botRunnerRunId    Int
+  correlationId     String   @unique
+  orderId           String?
+  exchange           String
+  mode               String
+  symbol             String
+  side               OrderSide
+  orderType          String
+  market             String   @default("SPOT")
+  status              String
+  expectedPrice      Decimal?
+  bestBid            Decimal?
+  bestAsk            Decimal?
+  spreadBps          Decimal?
+  requestedQuantity Decimal?
+  filledQuantity    Decimal?
+  fillPrice          Decimal?
+  notional           Decimal?
+  fee                Decimal  @default(0)
+  feeCurrency        String?
+  slippageBps        Decimal?
+  slippageQuote      Decimal?
+  latencyMs          Int?
+  errorCode          String?
+  errorMessage       String?
+  requestedAt        DateTime
+  respondedAt        DateTime
+  createdAt          DateTime @default(now())
+
+  botRunnerRun BotRunnerRun @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunnerRunId, requestedAt])
+  @@index([symbol, requestedAt])
+  @@index([status, requestedAt])
+  @@index([mode, requestedAt])
+}
+
+model ReconciliationBatch {
+  id               Int      @id @default(autoincrement())
+  botRunnerRunId   Int
+  trigger          String
+  status           String   @default("RUNNING")
+  exchange         String
+  mode             String
+  ordersChecked    Int      @default(0)
+  positionsChecked Int      @default(0)
+  balancesChecked  Int      @default(0)
+  issuesFound      Int      @default(0)
+  repairsApplied   Int      @default(0)
+  balanceSnapshot  Json?
+  positionSnapshot Json?
+  errorMessage     String?
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+
+  botRunnerRun BotRunnerRun         @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+  issues       ReconciliationIssue[]
+
+  @@index([botRunnerRunId, startedAt])
+  @@index([status, startedAt])
+}
+
+model ReconciliationIssue {
+  id               Int      @id @default(autoincrement())
+  fingerprint      String   @unique
+  batchId          Int
+  botRunnerRunId   Int
+  type             String
+  severity         String
+  entityType       String
+  entityId         String?
+  localState       Json?
+  remoteState      Json?
+  action           String   @default("REQUIRES_MANUAL")
+  status           String   @default("OPEN")
+  occurrenceCount  Int      @default(1)
+  resolution       String?
+  firstSeenAt      DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  resolvedAt       DateTime?
+
+  batch        ReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  botRunnerRun BotRunnerRun         @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunnerRunId, status, lastSeenAt])
+  @@index([severity, status, lastSeenAt])
+  @@index([type, status])
+}
+
+// Historial append-only que conecta estrategia, riesgo, orden y resultado.
+// correlationId agrupa todos los eventos producidos por una misma señal.
+model BotRunnerTrace {
+  id             Int      @id @default(autoincrement())
+  botRunnerRunId Int
+  correlationId  String
+  eventType      String
+  symbol         String
+  orderId        String?
+  tradeId        Int?
+  payload        Json?
+  occurredAt     DateTime @default(now())
+
+  botRunnerRun BotRunnerRun @relation(fields: [botRunnerRunId], references: [id], onDelete: Cascade)
+
+  @@index([botRunnerRunId, occurredAt])
+  @@index([correlationId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([orderId])
 }
 
 model BotRunnerTrade {
@@ -661,7 +830,21 @@ model BotRunnerTrade {
   fee            Decimal   @default(0)
   pnl            Decimal?
   pnlPct         Decimal?
+  mae            Decimal?
+  maePct         Decimal?
+  mfe            Decimal?
+  mfePct         Decimal?
+  peakPrice      Decimal?
+  troughPrice    Decimal?
+  stopLossPrice  Decimal?
+  initialRisk    Decimal?
+  rMultiple      Decimal?
   reason         String?
+  marketRegime   String?
+  regimeConfidence Float?
+  regimeSnapshot Json?
+  timeframeScore Float?
+  timeframeSnapshot Json?
   openedAt       DateTime  @default(now())
   closedAt       DateTime?
 
@@ -718,6 +901,68 @@ model KillSwitch {
 
   @@unique([scope, targetId])
   @@index([enabled])
+}
+
+model CapitalEvent {
+  id             Int      @id @default(autoincrement())
+  type           String   // TRADE_PNL | FEE | FUNDING | INTEREST | REBATE | DEPOSIT | WITHDRAWAL | ADJUSTMENT
+  amount         Decimal
+  currency       String   @default("USDT")
+  botRunnerRunId Int?
+  tradeId        Int?
+  correlationId  String?
+  source         String?  // exchange id or 'CAPITAL_GUARD' etc.
+  externalId     String?
+  occurredAt     DateTime @default(now())
+  payload        Json?
+
+  @@unique([source, externalId], name: "CapitalEvent_source_externalId_key")
+  @@index([type, occurredAt])
+  @@index([botRunnerRunId, occurredAt])
+  @@index([tradeId])
+  @@index([correlationId])
+}
+
+model OperationalAlert {
+  id               Int      @id @default(autoincrement())
+  kind             String
+  severity         String   @default("INFO") // INFO | WARN | ERROR | CRITICAL
+  subject          String
+  message          String
+  dedupeKey        String   @unique
+  occurrenceCount  Int      @default(1)
+  botRunnerRunId   Int?
+  payload          Json?
+  firstOccurredAt  DateTime @default(now())
+  lastOccurredAt   DateTime @default(now())
+  acknowledgedAt   DateTime?
+  acknowledgedBy   String?
+
+  @@index([kind, lastOccurredAt])
+  @@index([severity, acknowledgedAt])
+  @@index([botRunnerRunId])
+}
+
+// Registro técnico append-only de solicitudes HTTP para medir cobertura,
+// latencia, errores y contexto operativo sin guardar secretos ni cuerpos.
+model AuditEvent {
+  id          Int      @id @default(autoincrement())
+  requestId   String   @db.VarChar(80)
+  eventType   String   @default("HTTP_REQUEST") @db.VarChar(64)
+  userId      Int?
+  method      String   @db.VarChar(12)
+  path        String   @db.VarChar(512)
+  statusCode  Int
+  durationMs  Int
+  ipAddress   String?  @db.VarChar(128)
+  userAgent   String?  @db.VarChar(512)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([requestId])
+  @@index([path, createdAt])
 }
 
 // --- Paper trading (virtual account) ---
