@@ -10,9 +10,23 @@ import { BotRunnerRepository } from './bot-runner.repository';
 import { BotRunnerReconciler } from './bot-runner.reconciler';
 import { ExchangeSelector } from './exchange-selector.service';
 import { CopyTradingModule } from '../copy-trading/copy-trading.module';
+import { MarketRegimeModule } from '../market-regime/market-regime.module';
+import { MarketDataModule } from '../market-data/market-data.module';
+import { OperationalAlertsModule } from '../operational-alerts/operational-alerts.module';
+import { CapitalLedgerModule } from '../capital-ledger/capital-ledger.module';
 
 @Module({
-  imports: [ExchangesModule, PaperExchangeModule, StrategiesV2Module, RiskModule, CopyTradingModule],
+  imports: [
+    ExchangesModule,
+    PaperExchangeModule,
+    StrategiesV2Module,
+    RiskModule,
+    CopyTradingModule,
+    MarketRegimeModule,
+    MarketDataModule,
+    OperationalAlertsModule,
+    CapitalLedgerModule,
+  ],
   providers: [
     BotRunnerService,
     BotRunnerRepository,

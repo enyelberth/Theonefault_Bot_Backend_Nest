@@ -21,7 +21,9 @@ export class BotRunnerReconciler implements OnModuleInit {
       this.logger.log('reconciler: no orphan runs');
       return;
     }
-    this.logger.log(`reconciler: attempting to resurrect ${orphans.length} run(s)`);
+    this.logger.log(
+      `reconciler: attempting to resurrect ${orphans.length} run(s)`,
+    );
     for (const run of orphans) {
       try {
         await this.runner.start({
