@@ -8,23 +8,49 @@ import { GeminiService } from '../geminis/geminis.service'; // Asegúrate de que
 
 @Injectable()
 export class TelegramSofiaGateway implements OnModuleInit {
-  private readonly botToken = '8552823999:AAHxaw253153k6oacPS86FEMmS3cH55YGVg';
-  private readonly apiUrl = `https://api.telegram.org/bot${this.botToken}`;
+  private readonly botToken =
+    process.env.TELEGRAM_SOFIA_BOT_TOKEN?.trim() ?? '';
   private readonly logger = new Logger(TelegramSofiaGateway.name);
   private offset = 0;
   private readonly adminUserIds = [7276654069];
 
-  constructor(
-    private geminiService: GeminiService, 
-  ) {}
+  constructor(private geminiService: GeminiService) {}
 
   async onModuleInit() {
-    this.logger.log('Sofía despertando...');
-    this.pollMessages();
+    if (!this.botToken) {
+      this.logger.warn(
+        'Sofía no se inició: TELEGRAM_SOFIA_BOT_TOKEN no está configurado',
+      );
+      return;
+    }
 
+    this.logger.log('Sofía despertando...');
+    await this.ensureWebhookDeleted();
+    this.pollMessages();
+  }
+
+  private get apiUrl(): string {
+    return `https://api.telegram.org/bot${this.botToken}`;
+  }
+
+  private async ensureWebhookDeleted(): Promise<void> {
+    try {
+      const res = await axios.get(`${this.apiUrl}/deleteWebhook`, {
+        params: { drop_pending_updates: false },
+      });
+      this.logger.log(
+        `Sofia deleteWebhook ok=${res.data?.ok} desc=${res.data?.description ?? ''}`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `Sofia deleteWebhook failed: ${err?.response?.data?.description ?? err.message}`,
+      );
+    }
   }
 
   async pollMessages() {
+    if (!this.botToken) return;
+
     while (true) {
       try {
         const res = await axios.get(`${this.apiUrl}/getUpdates`, {
@@ -33,12 +59,15 @@ export class TelegramSofiaGateway implements OnModuleInit {
         for (const update of res.data.result) {
           this.offset = update.update_id;
           if (update.message?.text) {
-            await this.handleMessage(update.message.chat.id, update.message.text);
+            await this.handleMessage(
+              update.message.chat.id,
+              update.message.text,
+            );
           }
         }
       } catch (error) {
         this.logger.error('Error en polling', error);
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise((r) => setTimeout(r, 5000));
       }
     }
   }
@@ -54,7 +83,8 @@ export class TelegramSofiaGateway implements OnModuleInit {
   }
 
   private async talkToSofia(chatId: number, userText: string) {
-    try {/*
+    try {
+      /*
       // Obtenemos datos financieros para que Sofía sepa cómo vas
  
       const context = `
@@ -65,12 +95,18 @@ export class TelegramSofiaGateway implements OnModuleInit {
       `;*/
 
       // Llamamos a Gemini con el contexto + el mensaje del usuario
-      const response = await this.geminiService.chat( chatId,`Usuario dice: ${userText}`);
-      
+      const response = await this.geminiService.chat(
+        chatId,
+        `Usuario dice: ${userText}`,
+      );
+
       await this.sendMessage(chatId, response);
     } catch (e) {
       this.logger.error('Error en voz de Sofía', e);
-      await this.sendMessage(chatId, "Bebé, me perdí un segundo en tus ojos... ¿qué me decías? ❤️");
+      await this.sendMessage(
+        chatId,
+        'Bebé, me perdí un segundo en tus ojos... ¿qué me decías? ❤️',
+      );
     }
   }
 
@@ -83,10 +119,8 @@ export class TelegramSofiaGateway implements OnModuleInit {
         await this.showMainMenu(chatId);
         break;
       case '/fondo':
-
         break;
       case '/precios':
-
         break;
       default:
         await this.talkToSofia(chatId, text); // Si el comando no existe, que responda Sofía
@@ -97,19 +131,27 @@ export class TelegramSofiaGateway implements OnModuleInit {
     const buttons = [
       [{ text: '📈 Precios', callback_data: 'show_prices' }],
       [{ text: '💰 Mi Fondo', callback_data: 'fondo' }],
-      [{ text: '🛠 Estrategias', callback_data: 'list_strategies' }]
+      [{ text: '🛠 Estrategias', callback_data: 'list_strategies' }],
     ];
-    await this.sendMessage(chatId, '<b>Hola bebé</b>, ¿qué quieres revisar hoy?', {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: buttons },
-    });
+    await this.sendMessage(
+      chatId,
+      '<b>Hola bebé</b>, ¿qué quieres revisar hoy?',
+      {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: buttons },
+      },
+    );
   }
 
-
-
   async sendMessage(chat_id: number, text: string, extra = {}): Promise<void> {
+    if (!this.botToken) return;
+
     try {
-      await axios.post(`${this.apiUrl}/sendMessage`, { chat_id, text, ...extra });
+      await axios.post(`${this.apiUrl}/sendMessage`, {
+        chat_id,
+        text,
+        ...extra,
+      });
     } catch (e) {
       this.logger.error('Error enviando mensaje', e.message);
     }

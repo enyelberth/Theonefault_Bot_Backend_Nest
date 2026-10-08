@@ -4,7 +4,7 @@ import { TelegramSofiaGateway } from './telegram-sofia.gateway';
 import { GeminisModule } from 'src/geminis/geminis.module';
 
 @Module({
-  imports:[GeminisModule],
+  imports: [GeminisModule],
   providers: [TelegramSofiaGateway, TelegramSofiaService],
 })
 export class TelegramSofiaModule {}

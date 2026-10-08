@@ -10,8 +10,7 @@ describe('GeminisController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [GeminisController],
       providers: [GeminiService],
-        imports: [ConfigModule.forRoot()],
-      
+      imports: [ConfigModule.forRoot()],
     }).compile();
 
     controller = module.get<GeminisController>(GeminisController);

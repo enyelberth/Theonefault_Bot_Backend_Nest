@@ -12,10 +12,10 @@ describe('GeminisService', () => {
     }).compile();
 
     service = module.get<GeminiService>(GeminiService);
-    
-    // ¡ESTA ES LA CLAVE! 
+
+    // ¡ESTA ES LA CLAVE!
     // Manualmente ejecutamos la lógica de conexión a Google antes de los tests
-    await service.onModuleInit(); 
+    await service.onModuleInit();
   });
 
   it('Sofía debería responder con palabras cariñosas', async () => {
@@ -25,15 +25,26 @@ describe('GeminisService', () => {
       const response = await service.generateText('Hola Sofi, ¿me quieres?');
       console.log('Respuesta de Sofía:', response);
 
-      const palabrasCarinosas = ['bebe', 'amor', 'corazón', 'corazon', 'vida', 'cielo', 'cariño'];
-      const contienePalabra = palabrasCarinosas.some(palabra => 
-        response.toLowerCase().includes(palabra)
+      const palabrasCarinosas = [
+        'bebe',
+        'amor',
+        'corazón',
+        'corazon',
+        'vida',
+        'cielo',
+        'cariño',
+      ];
+      const contienePalabra = palabrasCarinosas.some((palabra) =>
+        response.toLowerCase().includes(palabra),
       );
 
       expect(contienePalabra).toBe(true);
     } catch (error) {
       // Si falla por cuota (429), el test no debería marcar error de código, sino de cuota
-      console.error('Error durante el test (posiblemente cuota):', error.message);
+      console.error(
+        'Error durante el test (posiblemente cuota):',
+        error.message,
+      );
     }
   });
 });

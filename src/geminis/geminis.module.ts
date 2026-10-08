@@ -8,6 +8,6 @@ import { ConfigModule } from '@nestjs/config';
   imports: [ConfigModule.forRoot()],
   controllers: [GeminisController],
   providers: [GeminiService],
-  exports:[GeminiService]
+  exports: [GeminiService],
 })
 export class GeminisModule {}

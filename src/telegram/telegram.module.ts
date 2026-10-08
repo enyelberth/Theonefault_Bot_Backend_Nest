@@ -14,9 +14,19 @@ import { BotModule } from 'src/bot/bot.module';
 import { AlertService } from 'src/alert/alert.service';
 
 @Module({
-  imports: [CryptoPriceModule,BotModule], // Aquí se importan módulos
+  imports: [CryptoPriceModule, BotModule], // Aquí se importan módulos
   controllers: [BotTelegramController],
-  providers: [BotTelegramService,AccountService,AlertService,BinanceService,PrismaClient,CryptoPairService,CryptoPriceService,ProfileService,TradingService],
+  providers: [
+    BotTelegramService,
+    AccountService,
+    AlertService,
+    BinanceService,
+    PrismaClient,
+    CryptoPairService,
+    CryptoPriceService,
+    ProfileService,
+    TradingService,
+  ],
   exports: [BotTelegramService],
 })
 export class TelegramBotModule {}
