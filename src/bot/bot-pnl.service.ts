@@ -20,6 +20,7 @@ export interface StartBotRunInput {
   strategyType?: string;
   initialQuote?: number | string;
   configSnapshot?: Prisma.InputJsonValue;
+  ownerId?: number;
 }
 
 export interface RecordMetricInput {
@@ -45,6 +46,9 @@ export interface RecordTradeResultInput {
   fees?: number | string;
   openedAt: Date;
   closedAt?: Date;
+  // Excursion máxima observada durante el trade (opcional)
+  peakPrice?: number | string;
+  troughPrice?: number | string;
 }
 
 export interface BotRunSummary {
@@ -88,6 +92,7 @@ export class BotPnlService {
       return await this.prisma.botRun.create({
         data: {
           strategyId: input.strategyId,
+          ownerId: input.ownerId,
           symbol: input.symbol,
           strategyType: input.strategyType,
           initialQuote:
@@ -168,9 +173,7 @@ export class BotPnlService {
     }
   }
 
-  async recordTradeResult(
-    input: RecordTradeResultInput,
-  ): Promise<TradeResult> {
+  async recordTradeResult(input: RecordTradeResultInput): Promise<TradeResult> {
     try {
       const entry = new Prisma.Decimal(input.entryPrice);
       const exit = new Prisma.Decimal(input.exitPrice);
@@ -185,6 +188,28 @@ export class BotPnlService {
         ? new Prisma.Decimal(0)
         : pnl.div(denom).mul(100);
 
+      let mae: Prisma.Decimal | undefined;
+      let mfe: Prisma.Decimal | undefined;
+      let maePct: Prisma.Decimal | undefined;
+      let mfePct: Prisma.Decimal | undefined;
+      if (input.peakPrice !== undefined && input.troughPrice !== undefined) {
+        const peak = new Prisma.Decimal(input.peakPrice);
+        const trough = new Prisma.Decimal(input.troughPrice);
+        if (input.side === OrderSide.BUY) {
+          mfe = peak.minus(entry).mul(qty);
+          mae = trough.minus(entry).mul(qty);
+        } else {
+          mfe = entry.minus(trough).mul(qty);
+          mae = entry.minus(peak).mul(qty);
+        }
+        mfePct = denom.isZero()
+          ? new Prisma.Decimal(0)
+          : mfe.div(denom).mul(100);
+        maePct = denom.isZero()
+          ? new Prisma.Decimal(0)
+          : mae.div(denom).mul(100);
+      }
+
       return await this.prisma.tradeResult.create({
         data: {
           botRunId: input.botRunId,
@@ -197,6 +222,10 @@ export class BotPnlService {
           fees,
           pnl,
           pnlPct,
+          mae,
+          maePct,
+          mfe,
+          mfePct,
           openedAt: input.openedAt,
           closedAt: input.closedAt ?? new Date(),
         },
@@ -217,30 +246,67 @@ export class BotPnlService {
       throw new BadRequestException(`BotRun ${botRunId} no existe.`);
     }
 
-    const [agg, feesAgg, grossProfitAgg, grossLossAgg, winCount, lossCount, openOrders, filledOrders, canceledOrders] = await Promise.all([
-      this.prisma.tradeResult.aggregate({
-        where: { botRunId },
-        _sum: { pnl: true },
-        _count: { _all: true },
-      }),
-      this.prisma.tradeResult.aggregate({
-        where: { botRunId },
-        _sum: { fees: true },
-      }),
-      this.prisma.tradeResult.aggregate({
-        where: { botRunId, pnl: { gt: 0 } },
-        _sum: { pnl: true },
-      }),
-      this.prisma.tradeResult.aggregate({
-        where: { botRunId, pnl: { lt: 0 } },
-        _sum: { pnl: true },
-      }),
-      this.prisma.tradeResult.count({ where: { botRunId, pnl: { gt: 0 } } }),
-      this.prisma.tradeResult.count({ where: { botRunId, pnl: { lte: 0 } } }),
-      this.prisma.paperOrder.count({ where: { botRunId, status: 'OPEN' } }),
-      this.prisma.paperOrder.count({ where: { botRunId, status: 'FILLED' } }),
-      this.prisma.paperOrder.count({ where: { botRunId, status: 'CANCELED' } }),
-    ]);
+    const cfg = (run.configSnapshot as any) ?? {};
+    const isDryRun = !!cfg.dryRun;
+
+    const [agg, feesAgg, grossProfitAgg, grossLossAgg, winCount, lossCount] =
+      await Promise.all([
+        this.prisma.tradeResult.aggregate({
+          where: { botRunId },
+          _sum: { pnl: true },
+          _count: { _all: true },
+        }),
+        this.prisma.tradeResult.aggregate({
+          where: { botRunId },
+          _sum: { fees: true },
+        }),
+        this.prisma.tradeResult.aggregate({
+          where: { botRunId, pnl: { gt: 0 } },
+          _sum: { pnl: true },
+        }),
+        this.prisma.tradeResult.aggregate({
+          where: { botRunId, pnl: { lt: 0 } },
+          _sum: { pnl: true },
+        }),
+        this.prisma.tradeResult.count({ where: { botRunId, pnl: { gt: 0 } } }),
+        this.prisma.tradeResult.count({ where: { botRunId, pnl: { lte: 0 } } }),
+      ]);
+
+    // Contadores de órdenes: PaperOrder si dryRun, TradingOrder si real.
+    let openOrders = 0;
+    let filledOrders = 0;
+    let canceledOrders = 0;
+    if (isDryRun) {
+      [openOrders, filledOrders, canceledOrders] = await Promise.all([
+        this.prisma.paperOrder.count({ where: { botRunId, status: 'OPEN' } }),
+        this.prisma.paperOrder.count({ where: { botRunId, status: 'FILLED' } }),
+        this.prisma.paperOrder.count({
+          where: { botRunId, status: 'CANCELED' },
+        }),
+      ]);
+    } else {
+      const timeWindow: any = { gte: run.startedAt };
+      if (run.stoppedAt) timeWindow.lte = run.stoppedAt;
+      [openOrders, filledOrders, canceledOrders] = await Promise.all([
+        this.prisma.tradingOrder.count({
+          where: { symbol: run.symbol, status: 'OPEN', createdAt: timeWindow },
+        }),
+        this.prisma.tradingOrder.count({
+          where: {
+            symbol: run.symbol,
+            status: 'FILLED',
+            createdAt: timeWindow,
+          },
+        }),
+        this.prisma.tradingOrder.count({
+          where: {
+            symbol: run.symbol,
+            status: 'CANCELED',
+            createdAt: timeWindow,
+          },
+        }),
+      ]);
+    }
 
     const tradesCount = agg._count._all;
     const winRate = tradesCount === 0 ? 0 : (winCount / tradesCount) * 100;
@@ -248,27 +314,55 @@ export class BotPnlService {
     const elapsedMs = now - run.startedAt.getTime();
     const grossLossValue = grossLossAgg._sum.pnl ?? new Prisma.Decimal(0);
 
-    const filledOrdersRaw = await this.prisma.paperOrder.findMany({
-      where: { botRunId, status: 'FILLED' },
-      select: { side: true, quantity: true, filledPrice: true, price: true },
-    });
     let buyQty = new Prisma.Decimal(0);
     let sellQty = new Prisma.Decimal(0);
     let buyNotional = new Prisma.Decimal(0);
     let sellNotional = new Prisma.Decimal(0);
-    for (const o of filledOrdersRaw) {
-      const qty = o.quantity ?? new Prisma.Decimal(0);
-      const price = o.filledPrice ?? o.price ?? new Prisma.Decimal(0);
-      const notional = qty.mul(price);
-      if (o.side === 'BUY') {
-        buyQty = buyQty.plus(qty);
-        buyNotional = buyNotional.plus(notional);
-      } else {
-        sellQty = sellQty.plus(qty);
-        sellNotional = sellNotional.plus(notional);
+    if (isDryRun) {
+      const filledOrdersRaw = await this.prisma.paperOrder.findMany({
+        where: { botRunId, status: 'FILLED' },
+        select: { side: true, quantity: true, filledPrice: true, price: true },
+      });
+      for (const o of filledOrdersRaw) {
+        const qty = o.quantity ?? new Prisma.Decimal(0);
+        const price = o.filledPrice ?? o.price ?? new Prisma.Decimal(0);
+        const notional = qty.mul(price);
+        if (o.side === 'BUY') {
+          buyQty = buyQty.plus(qty);
+          buyNotional = buyNotional.plus(notional);
+        } else {
+          sellQty = sellQty.plus(qty);
+          sellNotional = sellNotional.plus(notional);
+        }
+      }
+    } else {
+      const timeWindow: any = { gte: run.startedAt };
+      if (run.stoppedAt) timeWindow.lte = run.stoppedAt;
+      const filledOrdersRaw = await this.prisma.tradingOrder.findMany({
+        where: { symbol: run.symbol, status: 'FILLED', createdAt: timeWindow },
+        select: {
+          side: true,
+          quantityExecuted: true,
+          quantity: true,
+          price: true,
+        },
+      });
+      for (const o of filledOrdersRaw) {
+        const qty = o.quantityExecuted ?? o.quantity ?? new Prisma.Decimal(0);
+        const price = o.price ?? new Prisma.Decimal(0);
+        const notional = qty.mul(price);
+        if (o.side === 'BUY') {
+          buyQty = buyQty.plus(qty);
+          buyNotional = buyNotional.plus(notional);
+        } else {
+          sellQty = sellQty.plus(qty);
+          sellNotional = sellNotional.plus(notional);
+        }
       }
     }
-    const avgBuyPrice = buyQty.gt(0) ? buyNotional.div(buyQty) : new Prisma.Decimal(0);
+    const avgBuyPrice = buyQty.gt(0)
+      ? buyNotional.div(buyQty)
+      : new Prisma.Decimal(0);
     const outstandingQty = buyQty.minus(sellQty);
 
     return {
@@ -282,7 +376,9 @@ export class BotPnlService {
       initialQuote: run.initialQuote?.toString() ?? null,
       configSnapshot: run.configSnapshot,
       realizedPnl: (agg._sum.pnl ?? new Prisma.Decimal(0)).toString(),
-      grossProfit: (grossProfitAgg._sum.pnl ?? new Prisma.Decimal(0)).toString(),
+      grossProfit: (
+        grossProfitAgg._sum.pnl ?? new Prisma.Decimal(0)
+      ).toString(),
       grossLoss: grossLossValue.abs().toString(),
       feesTotal: (feesAgg._sum.fees ?? new Prisma.Decimal(0)).toString(),
       tradesCount,
@@ -309,10 +405,7 @@ export class BotPnlService {
     });
   }
 
-  async listBotRunMetrics(
-    botRunId: number,
-    limit = 100,
-  ): Promise<BotMetric[]> {
+  async listBotRunMetrics(botRunId: number, limit = 100): Promise<BotMetric[]> {
     return this.prisma.botMetric.findMany({
       where: { botRunId },
       orderBy: { ts: 'desc' },

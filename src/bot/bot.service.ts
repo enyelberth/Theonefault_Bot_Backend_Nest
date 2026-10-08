@@ -1,4 +1,12 @@
-import { forwardRef, Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import {
+  ForbiddenException,
+  forwardRef,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { TradingStrategy } from 'src/strategies/trading-strategy.interface';
 import { StrategyFactory } from './strategy.factory';
 import { BinanceService } from 'src/binance/binance.service';
@@ -23,6 +31,49 @@ export class BotService implements OnModuleInit {
     private readonly indicatorsService: IndicatorsService,
     private readonly prisma: PrismaClient,
   ) {}
+
+  /**
+   * El modo real debe ser explícito (regla de negocio de KAIZEN): `dryRun`
+   * ausente o `undefined` NUNCA debe caer en real por default. El caller
+   * tiene que mandar `true` o `false` a propósito.
+   */
+  private resolveDryRun(cfg: any, context: string): boolean {
+    const value = cfg?.dryRun;
+    if (typeof value !== 'boolean') {
+      throw new Error(
+        `Config inválida (${context}): "dryRun" debe especificarse explícitamente como true o false (recibido: ${JSON.stringify(value)}). No se asume modo real por omisión.`,
+      );
+    }
+    return value;
+  }
+
+  /**
+   * Chequeo de ownership para el borde HTTP (controller). A propósito NO se
+   * invoca desde dentro de los métodos de negocio (startStrategy,
+   * stopStrategy, etc.): esos también los llaman subsistemas internos de
+   * confianza sin usuario autenticado (kill switch en crypto-guard,
+   * emergency-stop en risk-manager, comandos de telegram), que deben poder
+   * actuar sobre cualquier bot. El controller es quien debe llamar esto
+   * ANTES de delegar al service, nunca el service mismo.
+   */
+  async assertOwnership(
+    symbol: string,
+    id: string,
+    ownerId: number,
+  ): Promise<void> {
+    const run =
+      (await this.botPnlService.findActiveBotRun(id, symbol)) ??
+      (await this.prisma.botRun.findFirst({
+        where: { strategyId: id, symbol },
+        orderBy: { startedAt: 'desc' },
+      }));
+    if (!run) return;
+    if (run.ownerId !== ownerId) {
+      throw new ForbiddenException(
+        `El bot ${symbol}/${id} no pertenece al usuario autenticado.`,
+      );
+    }
+  }
 
   async onModuleInit() {
     try {
@@ -54,16 +105,15 @@ export class BotService implements OnModuleInit {
       const key = this.getKey(run.symbol, run.strategyId);
       if (this.activeStrategies.has(key)) continue;
 
-      const dryRun = !!cfg?.dryRun;
-      let exchange: BinanceService = this.binanceService;
-      if (dryRun) {
-        const paper = new PaperExchangeService(this.prisma);
-        paper.setBotRunId(run.id);
-        exchange = paper;
-      }
-
       let strategy: TradingStrategy;
       try {
+        const dryRun = this.resolveDryRun(cfg, `rehidratar BotRun ${run.id}`);
+        let exchange: BinanceService = this.binanceService;
+        if (dryRun) {
+          const paper = new PaperExchangeService(this.prisma);
+          paper.setBotRunId(run.id);
+          exchange = paper;
+        }
         strategy = StrategyFactory.createStrategy(
           strategyType,
           exchange,
@@ -73,14 +123,24 @@ export class BotService implements OnModuleInit {
           { indicators: this.indicatorsService },
         );
       } catch (err) {
-        this.logger.error(`Rehidratar BotRun ${run.id} falló al crear estrategia: ${(err as Error).message}`);
-        await this.botPnlService.stopBotRun(run.id, BotRunStatus.ERROR, (err as Error).message);
+        this.logger.error(
+          `Rehidratar BotRun ${run.id} falló al crear estrategia: ${(err as Error).message}`,
+        );
+        await this.botPnlService.stopBotRun(
+          run.id,
+          BotRunStatus.ERROR,
+          (err as Error).message,
+        );
         continue;
       }
 
       if (strategy.attachPnlReporter) {
         const { StrategyPnlReporter } = await import('./strategy-pnl-reporter');
-        const reporter = new StrategyPnlReporter(this.botPnlService, run.id, run.symbol);
+        const reporter = new StrategyPnlReporter(
+          this.botPnlService,
+          run.id,
+          run.symbol,
+        );
         strategy.attachPnlReporter(reporter);
       }
 
@@ -90,11 +150,19 @@ export class BotService implements OnModuleInit {
 
       this.activeStrategies.set(key, strategy);
       this.botRunIds.set(key, run.id);
-      this.logger.log(`Rehidratado BotRun ${run.id} (${run.symbol}/${run.strategyId}) — running...`);
+      this.logger.log(
+        `Rehidratado BotRun ${run.id} (${run.symbol}/${run.strategyId}) — running...`,
+      );
 
       strategy.run().catch(async (err) => {
-        this.logger.error(`Rehidratada estrategia ${run.id} falló: ${(err as Error).message}`);
-        await this.botPnlService.stopBotRun(run.id, BotRunStatus.ERROR, (err as Error).message);
+        this.logger.error(
+          `Rehidratada estrategia ${run.id} falló: ${(err as Error).message}`,
+        );
+        await this.botPnlService.stopBotRun(
+          run.id,
+          BotRunStatus.ERROR,
+          (err as Error).message,
+        );
         this.activeStrategies.delete(key);
         this.botRunIds.delete(key);
       });
@@ -119,7 +187,14 @@ export class BotService implements OnModuleInit {
     return this.botRunIds.get(this.getKey(symbol, id));
   }
 
-  async startStrategy(symbol: string, typeId: number, strategyType: string, config: any, id: string) {
+  async startStrategy(
+    symbol: string,
+    typeId: number,
+    strategyType: string,
+    config: any,
+    id: string,
+    ownerId?: number,
+  ) {
     if (await this.isEmergencyActive()) {
       throw new Error('Emergency stop activo. No se aceptan nuevos bots.');
     }
@@ -127,8 +202,22 @@ export class BotService implements OnModuleInit {
     const key = this.getKey(symbol, id);
 
     if (this.activeStrategies.has(key)) {
-      throw new Error(`Estrategia ya activa con este símbolo ${symbol} y el id ${id}`);
+      throw new Error(
+        `Estrategia ya activa con este símbolo ${symbol} y el id ${id}`,
+      );
     }
+
+    // Si el caller es HTTP (viene con ownerId) y ya existe un BotRun previo
+    // con este symbol/id de OTRO usuario, no se permite "reusar" el nombre.
+    // Callers internos de confianza (kill switch, telegram, etc.) no pasan
+    // ownerId y no quedan sujetos a este check.
+    if (ownerId !== undefined) {
+      await this.assertOwnership(symbol, id, ownerId);
+    }
+
+    // Validar dryRun ANTES de persistir nada (BotRun, TradingStrategy):
+    // así una config inválida no deja basura en DB.
+    const dryRun = this.resolveDryRun(config, `startStrategy ${id}/${symbol}`);
 
     const createTradingStrategyDto: CreateTradingStrategyDto = {
       symbol,
@@ -139,9 +228,13 @@ export class BotService implements OnModuleInit {
     };
 
     try {
-      await this.strategiesTradingService.createStrategies(createTradingStrategyDto);
+      await this.strategiesTradingService.createStrategies(
+        createTradingStrategyDto,
+      );
     } catch (err) {
-      this.logger.warn(`TradingStrategy persist skipped (${id}): ${err?.message ?? err}`);
+      this.logger.warn(
+        `TradingStrategy persist skipped (${id}): ${err?.message ?? err}`,
+      );
     }
 
     const botRun = await this.botPnlService.startBotRun({
@@ -150,17 +243,19 @@ export class BotService implements OnModuleInit {
       strategyType,
       initialQuote: config?.initialQuote,
       configSnapshot: config,
+      ownerId,
     });
     this.botRunIds.set(key, botRun.id);
 
-    const dryRun = !!config?.dryRun;
     let exchange: BinanceService = this.binanceService;
     if (dryRun) {
       // Instancia dedicada por bot para aislar botRunId (evita contaminación entre bots concurrentes).
       const paper = new PaperExchangeService(this.prisma);
       paper.setBotRunId(botRun.id);
       exchange = paper;
-      this.logger.warn(`[DRY-RUN] Bot ${id} on ${symbol} usa PaperExchange dedicado (botRunId=${botRun.id}).`);
+      this.logger.warn(
+        `[DRY-RUN] Bot ${id} on ${symbol} usa PaperExchange dedicado (botRunId=${botRun.id}).`,
+      );
     }
 
     const strategy: TradingStrategy = StrategyFactory.createStrategy(
@@ -174,7 +269,11 @@ export class BotService implements OnModuleInit {
 
     if (strategy.attachPnlReporter) {
       const { StrategyPnlReporter } = await import('./strategy-pnl-reporter');
-      const reporter = new StrategyPnlReporter(this.botPnlService, botRun.id, symbol);
+      const reporter = new StrategyPnlReporter(
+        this.botPnlService,
+        botRun.id,
+        symbol,
+      );
       strategy.attachPnlReporter(reporter);
     }
 
@@ -241,6 +340,13 @@ export class BotService implements OnModuleInit {
       );
     }
 
+    // Validar antes de detener la estrategia viva: si la config no trae
+    // dryRun explícito, no se toca nada y se aborta el restart.
+    const dryRun = this.resolveDryRun(
+      config,
+      `restartStrategy ${id}/${symbol}`,
+    );
+
     this.logger.warn(
       `Restart bot ${symbol}/${id} (type=${strategyType}, botRunId=${existingRun.id})`,
     );
@@ -266,13 +372,16 @@ export class BotService implements OnModuleInit {
     if (existingRun.status !== BotRunStatus.RUNNING) {
       await this.prisma.botRun.update({
         where: { id: existingRun.id },
-        data: { status: BotRunStatus.RUNNING, stoppedAt: null, errorMessage: null },
+        data: {
+          status: BotRunStatus.RUNNING,
+          stoppedAt: null,
+          errorMessage: null,
+        },
       });
     }
 
     this.botRunIds.set(key, existingRun.id);
 
-    const dryRun = !!config?.dryRun;
     let exchange: BinanceService = this.binanceService;
     if (dryRun) {
       const paper = new PaperExchangeService(this.prisma);
@@ -318,7 +427,13 @@ export class BotService implements OnModuleInit {
       this.botRunIds.delete(key);
     });
 
-    return { botRunId: existingRun.id, symbol, id, strategyType, hydrated: true };
+    return {
+      botRunId: existingRun.id,
+      symbol,
+      id,
+      strategyType,
+      hydrated: true,
+    };
   }
 
   getActiveBots(): string[] {
@@ -340,19 +455,24 @@ export class BotService implements OnModuleInit {
   }
 
   getBots() {
-    return Array.from(this.activeStrategies.entries()).map(([key, strategy]) => {
-      const [symbol, id] = key.split('-');
-      return {
-        symbol,
-        id,
-        strategy,
-      };
-    });
+    return Array.from(this.activeStrategies.entries()).map(
+      ([key, strategy]) => {
+        const [symbol, id] = key.split('-');
+        return {
+          symbol,
+          id,
+          strategy,
+        };
+      },
+    );
   }
 
-  
-
-  async updateOrderLevelPrice(id: string, symbol: string, levelIndex: number, newPrice: number) {
+  async updateOrderLevelPrice(
+    id: string,
+    symbol: string,
+    levelIndex: number,
+    newPrice: number,
+  ) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
@@ -362,7 +482,9 @@ export class BotService implements OnModuleInit {
       await strategy['updateOrderLevelPrice'](levelIndex, newPrice);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta actualizar precio de nivel`);
+    throw new Error(
+      `La estrategia con id ${id} no soporta actualizar precio de nivel`,
+    );
   }
 
   async removeOrderLevel(id: string, symbol: string, levelIndex: number) {
@@ -375,23 +497,30 @@ export class BotService implements OnModuleInit {
       await strategy['removeOrderLevel'](levelIndex);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta eliminar niveles de orden`);
+    throw new Error(
+      `La estrategia con id ${id} no soporta eliminar niveles de orden`,
+    );
   }
 
-  addOrderLevel(id: string, symbol: string, orderLevel: any) {
+  async addOrderLevel(id: string, symbol: string, orderLevel: any) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
       throw new Error(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['addOrderLevel'] === 'function') {
-      strategy['addOrderLevel'](orderLevel);
-      return true;
+      return await strategy['addOrderLevel'](orderLevel);
     }
-    throw new Error(`La estrategia con id ${id} no soporta agregar niveles de orden`);
+    throw new Error(
+      `La estrategia con id ${id} no soporta agregar niveles de orden`,
+    );
   }
 
-  updateProfitMargin(id: string, symbol: string, newProfitMargin: number) {
+  async updateProfitMargin(
+    id: string,
+    symbol: string,
+    newProfitMargin: number,
+  ) {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
@@ -401,6 +530,125 @@ export class BotService implements OnModuleInit {
       strategy['updateProfitMargin'](newProfitMargin);
       return true;
     }
-    throw new Error(`La estrategia con id ${id} no soporta actualización de profit margin`);
+    throw new Error(
+      `La estrategia con id ${id} no soporta actualización de profit margin`,
+    );
+  }
+
+  /**
+   * Devuelve estado runtime de una estrategia viva (contadores, órdenes abiertas).
+   */
+  getRuntimeStatus(symbol: string, id: string) {
+    const key = this.getKey(symbol, id);
+    const strat = this.activeStrategies.get(key);
+    if (!strat) throw new Error(`Estrategia ${symbol}/${id} no está activa`);
+    if (typeof (strat as any).getRuntimeStatus === 'function') {
+      return (strat as any).getRuntimeStatus();
+    }
+    return {
+      symbol,
+      id,
+      warning: `Estrategia ${strat.constructor.name} no implementa getRuntimeStatus`,
+    };
+  }
+
+  /**
+   * Devuelve la config actual de una estrategia (viva o persistida en DB).
+   */
+  async getStrategyConfig(symbol: string, id: string) {
+    const key = this.getKey(symbol, id);
+    const live = this.activeStrategies.get(key);
+    if (live?.config) {
+      return { source: 'live', symbol, id, config: live.config };
+    }
+    const run = await this.botPnlService.findActiveBotRun(id, symbol);
+    if (run) {
+      return {
+        source: 'botRun',
+        symbol,
+        id,
+        botRunId: run.id,
+        config: run.configSnapshot,
+      };
+    }
+    const persisted = await this.prisma.botRun.findFirst({
+      where: { strategyId: id, symbol },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (persisted) {
+      return {
+        source: 'botRun-last',
+        symbol,
+        id,
+        botRunId: persisted.id,
+        config: persisted.configSnapshot,
+      };
+    }
+    throw new Error(`No hay config para ${symbol}/${id}`);
+  }
+
+  /**
+   * Merge parcial de config en la estrategia viva (si existe) + persiste snapshot en BotRun.
+   * requiresRestart=true reinicia el bot para aplicar campos que solo se leen al arrancar
+   * (grid* / lowerPrice / upperPrice / gridStepPrice).
+   */
+  async updateStrategyConfig(
+    symbol: string,
+    id: string,
+    patch: Record<string, any>,
+    opts: { requiresRestart?: boolean } = {},
+  ) {
+    const key = this.getKey(symbol, id);
+    const live = this.activeStrategies.get(key);
+    const runId =
+      this.botRunIds.get(key) ??
+      (await this.botPnlService.findActiveBotRun(id, symbol))?.id;
+
+    if (!live && !runId) {
+      throw new Error(
+        `No hay estrategia viva ni BotRun activo para ${symbol}/${id}`,
+      );
+    }
+
+    const currentConfig = { ...(live?.config ?? {}) };
+    const mergedConfig = { ...currentConfig, ...patch };
+
+    if (live) {
+      live.config = { ...live.config, ...patch };
+      // Hooks opcionales que la estrategia puede implementar para aplicar en caliente.
+      if (typeof (live as any).onConfigUpdate === 'function') {
+        try {
+          await (live as any).onConfigUpdate(patch);
+        } catch (err) {
+          this.logger.warn(
+            `onConfigUpdate falló para ${symbol}/${id}: ${(err as Error).message}`,
+          );
+        }
+      }
+    }
+
+    if (runId) {
+      const run = await this.prisma.botRun.findUnique({ where: { id: runId } });
+      const snapshot = { ...((run?.configSnapshot as any) ?? {}), ...patch };
+      await this.prisma.botRun.update({
+        where: { id: runId },
+        data: { configSnapshot: snapshot },
+      });
+    }
+
+    if (opts.requiresRestart) {
+      this.logger.warn(
+        `Config con campos estructurales → restart bot ${symbol}/${id}`,
+      );
+      await this.restartStrategy(symbol, id);
+    }
+
+    return {
+      symbol,
+      id,
+      botRunId: runId,
+      config: mergedConfig,
+      restarted: !!opts.requiresRestart,
+    };
   }
 }
