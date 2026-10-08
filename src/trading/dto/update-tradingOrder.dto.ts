@@ -1,5 +1,13 @@
 import { OrderSide, OrderStatus, OrderType } from '@prisma/client';
-import { IsInt, IsEnum, IsOptional, IsDecimal, IsPositive, IsString, IsBoolean } from 'class-validator';
+import {
+  IsInt,
+  IsEnum,
+  IsOptional,
+  IsDecimal,
+  IsPositive,
+  IsString,
+  IsBoolean,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateTradingOrderDto {
@@ -28,23 +36,38 @@ export class UpdateTradingOrderDto {
   @IsString()
   client_order_id?: string;
 
-  @ApiPropertyOptional({ enum: OrderSide, description: 'Lado de la orden (BUY o SELL)' })
+  @ApiPropertyOptional({
+    enum: OrderSide,
+    description: 'Lado de la orden (BUY o SELL)',
+  })
   @IsOptional()
   @IsEnum(OrderSide)
   side?: OrderSide;
 
-  @ApiPropertyOptional({ description: 'Precio de la orden', type: 'number', format: 'decimal' })
+  @ApiPropertyOptional({
+    description: 'Precio de la orden',
+    type: 'number',
+    format: 'decimal',
+  })
   @IsOptional()
   @IsDecimal()
   price?: number | null;
 
-  @ApiPropertyOptional({ description: 'Cantidad total de la orden', type: 'number', format: 'decimal' })
+  @ApiPropertyOptional({
+    description: 'Cantidad total de la orden',
+    type: 'number',
+    format: 'decimal',
+  })
   @IsOptional()
   @IsDecimal()
   @IsPositive()
   quantity?: number;
 
-  @ApiPropertyOptional({ description: 'Cantidad ejecutada de la orden', type: 'number', format: 'decimal' })
+  @ApiPropertyOptional({
+    description: 'Cantidad ejecutada de la orden',
+    type: 'number',
+    format: 'decimal',
+  })
   @IsOptional()
   @IsDecimal()
   @IsPositive()
@@ -60,12 +83,20 @@ export class UpdateTradingOrderDto {
   @IsEnum(OrderType)
   type?: OrderType;
 
-  @ApiPropertyOptional({ description: 'Precio stop si aplica', type: 'number', format: 'decimal' })
+  @ApiPropertyOptional({
+    description: 'Precio stop si aplica',
+    type: 'number',
+    format: 'decimal',
+  })
   @IsOptional()
   @IsDecimal()
   stopPrice?: number | null;
 
-  @ApiPropertyOptional({ description: 'Cantidad stop si aplica', type: 'number', format: 'decimal' })
+  @ApiPropertyOptional({
+    description: 'Cantidad stop si aplica',
+    type: 'number',
+    format: 'decimal',
+  })
   @IsOptional()
   @IsDecimal()
   quantityStop?: number | null;
@@ -75,7 +106,9 @@ export class UpdateTradingOrderDto {
   @IsBoolean()
   isWorking?: boolean;
 
-  @ApiPropertyOptional({ description: 'ID de la orden que cierra esta (si aplica)' })
+  @ApiPropertyOptional({
+    description: 'ID de la orden que cierra esta (si aplica)',
+  })
   @IsOptional()
   @IsInt()
   closingOrderId?: number | null;

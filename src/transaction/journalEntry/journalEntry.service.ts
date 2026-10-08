@@ -1,6 +1,16 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException, BadRequestException as NestBadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+  BadRequestException as NestBadRequestException,
+} from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { CreateJournalEntryDto, UpdateJournalEntryDto } from './dto/create-journalEntry.dto';
+import {
+  CreateJournalEntryDto,
+  UpdateJournalEntryDto,
+} from './dto/create-journalEntry.dto';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
@@ -15,7 +25,7 @@ export class JournalEntryService {
     const errors = await validate(object, { forbidUnknownValues: false });
     if (errors.length > 0) {
       const messages = errors
-        .map(err => (err.constraints ? Object.values(err.constraints) : []))
+        .map((err) => (err.constraints ? Object.values(err.constraints) : []))
         .flat();
       throw new NestBadRequestException(messages);
     }
@@ -27,11 +37,17 @@ export class JournalEntryService {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       switch (error.code) {
         case 'P2002':
-          throw new BadRequestException('Violación de restricción única: registro duplicado.');
+          throw new BadRequestException(
+            'Violación de restricción única: registro duplicado.',
+          );
         case 'P2025':
-          throw new NotFoundException('Registro no encontrado para la operación solicitada.');
+          throw new NotFoundException(
+            'Registro no encontrado para la operación solicitada.',
+          );
         default:
-          throw new InternalServerErrorException(`${contextMessage}. Código Prisma: ${error.code}`);
+          throw new InternalServerErrorException(
+            `${contextMessage}. Código Prisma: ${error.code}`,
+          );
       }
     } else {
       throw new InternalServerErrorException(contextMessage);
@@ -48,10 +64,33 @@ export class JournalEntryService {
     };
   }
 
+  private assertBalanced(
+    lines: { amount: string | number | Prisma.Decimal; entryType: string }[],
+  ) {
+    let ingresos = new Prisma.Decimal(0);
+    let egresos = new Prisma.Decimal(0);
+    for (const line of lines) {
+      const amount = new Prisma.Decimal(line.amount as any);
+      if (line.entryType === 'INGRESO') {
+        ingresos = ingresos.plus(amount);
+      } else {
+        egresos = egresos.plus(amount);
+      }
+    }
+    if (!ingresos.equals(egresos)) {
+      throw new BadRequestException(
+        `El asiento no cuadra: ingresos ${ingresos.toString()} vs egresos ${egresos.toString()}`,
+      );
+    }
+  }
+
   private async updateBalances(tx: Prisma.TransactionClient, lines: any[]) {
     for (const line of lines) {
       const { accountId, currencyCode, amount, entryType } = line;
-      const balanceChange = entryType === 'INGRESO' ? amount : amount * -1;
+      const decimalAmount =
+        amount instanceof Prisma.Decimal ? amount : new Prisma.Decimal(amount);
+      const balanceChange =
+        entryType === 'INGRESO' ? decimalAmount : decimalAmount.negated();
 
       const existingBalance = await tx.accountBalance.findUnique({
         where: {
@@ -89,17 +128,24 @@ export class JournalEntryService {
   async create(createJournalEntryDto: CreateJournalEntryDto) {
     await this.validateDto(createJournalEntryDto);
 
+    if (createJournalEntryDto.lines.length === 0) {
+      throw new BadRequestException(
+        'Debe proporcionar al menos una línea para la entrada',
+      );
+    }
+
+    // Partida doble: ingresos y egresos deben cuadrar antes de tocar la base de datos.
+    this.assertBalanced(createJournalEntryDto.lines);
+
     try {
       let newEntryId: number | null = null;
-
-      if (createJournalEntryDto.lines.length === 0) {
-        throw new BadRequestException('Debe proporcionar al menos una línea para la entrada');
-      }
 
       const primeraLinea = createJournalEntryDto.lines[0];
 
       // Ejecuta procedimiento almacenado para crear JournalEntry y primera JournalEntryLine
-      const result = await this.prisma.$queryRaw<{ insertar_journal_entry_con_lineas: number }[]>`
+      const result = await this.prisma.$queryRaw<
+        { insertar_journal_entry_con_lineas: number }[]
+      >`
         SELECT insertar_journal_entry_con_lineas(
           ${createJournalEntryDto.entryDate}::timestamp,
           ${createJournalEntryDto.description}::text,
@@ -137,11 +183,16 @@ export class JournalEntryService {
       }
 
       // Actualiza balances dentro de una transacción
-      await this.prisma.$transaction(tx => this.updateBalances(tx, entryComplete.lines));
+      await this.prisma.$transaction((tx) =>
+        this.updateBalances(tx, entryComplete.lines),
+      );
 
       return entryComplete;
     } catch (error) {
-      this.handlePrismaError(error, 'Error creando una entrada del diario con procedimiento almacenado');
+      this.handlePrismaError(
+        error,
+        'Error creando una entrada del diario con procedimiento almacenado',
+      );
     }
   }
 
@@ -158,6 +209,93 @@ export class JournalEntryService {
     }
   }
 
+  async getAccountingSummary() {
+    const [total, lines, latestEntries, balances, orders] = await Promise.all([
+      this.prisma.journalEntry.count(),
+      this.prisma.journalEntryLine.findMany({
+        select: { currencyCode: true, entryType: true, amount: true },
+      }),
+      this.prisma.journalEntry.findMany({
+        take: 10,
+        orderBy: { entryDate: 'desc' },
+        include: { lines: true, status: true, transfer: true },
+      }),
+      this.prisma.accountBalance.findMany({
+        include: {
+          currency: true,
+          account: { include: { bankAccountType: true } },
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.tradingOrder.findMany({
+        select: { status: true, profit_loss: true },
+      }),
+    ]);
+
+    const byCurrency = new Map<
+      string,
+      { ingresos: Prisma.Decimal; egresos: Prisma.Decimal }
+    >();
+    for (const line of lines) {
+      const current = byCurrency.get(line.currencyCode) ?? {
+        ingresos: new Prisma.Decimal(0),
+        egresos: new Prisma.Decimal(0),
+      };
+      if (line.entryType === 'INGRESO')
+        current.ingresos = current.ingresos.plus(line.amount);
+      else current.egresos = current.egresos.plus(line.amount);
+      byCurrency.set(line.currencyCode, current);
+    }
+
+    const tradingByStatus = new Map<
+      string,
+      { count: number; profitLoss: Prisma.Decimal }
+    >();
+    let realizedClosedProfitLoss = new Prisma.Decimal(0);
+    for (const order of orders) {
+      const current = tradingByStatus.get(order.status) ?? {
+        count: 0,
+        profitLoss: new Prisma.Decimal(0),
+      };
+      current.count += 1;
+      if (order.profit_loss !== null) {
+        current.profitLoss = current.profitLoss.plus(order.profit_loss);
+        realizedClosedProfitLoss = realizedClosedProfitLoss.plus(
+          order.profit_loss,
+        );
+      }
+      tradingByStatus.set(order.status, current);
+    }
+
+    return {
+      journalEntries: {
+        total,
+        byCurrency: [...byCurrency.entries()].map(([currencyCode, value]) => ({
+          currencyCode,
+          ingresos: value.ingresos.toString(),
+          egresos: value.egresos.toString(),
+          neto: value.ingresos.minus(value.egresos).toString(),
+        })),
+        latestEntries,
+      },
+      balances: balances.map((item) => ({
+        accountId: item.accountId,
+        accountType: item.account.bankAccountType?.typeName ?? '',
+        currencyCode: item.currencyCode,
+        balance: item.balance.toString(),
+      })),
+      trading: {
+        realizedClosedProfitLoss: realizedClosedProfitLoss.toString(),
+        byStatus: [...tradingByStatus.entries()].map(([status, value]) => ({
+          status,
+          count: value.count,
+          profitLoss: value.profitLoss.toString(),
+        })),
+        binanceCrossMargin: null,
+      },
+    };
+  }
+
   async findOneJournalEntry(id: number) {
     if (!id) throw new BadRequestException('ID es requerido');
     try {
@@ -165,10 +303,16 @@ export class JournalEntryService {
         where: { id },
         include: { lines: true, status: true, transfer: true },
       });
-      if (!journalEntry) throw new NotFoundException(`Entrada del diario con id ${id} no encontrada.`);
+      if (!journalEntry)
+        throw new NotFoundException(
+          `Entrada del diario con id ${id} no encontrada.`,
+        );
       return journalEntry;
     } catch (error) {
-      this.handlePrismaError(error, `Error buscando la entrada del diario con id ${id}`);
+      this.handlePrismaError(
+        error,
+        `Error buscando la entrada del diario con id ${id}`,
+      );
     }
   }
 
@@ -177,17 +321,22 @@ export class JournalEntryService {
     await this.validateDto(updateJournalEntryDto);
     const prismaData = this.mapUpdateEntryDtoToPrisma(updateJournalEntryDto);
     try {
+      // `mapUpdateEntryDtoToPrisma` nunca muta `lines`, así que `updatedEntry.lines` son las
+      // líneas ya existentes sin cambios: llamar a `updateBalances` aquí reaplicaría el mismo
+      // delta de balance en cada edición de metadata (ej. solo cambiar `description`),
+      // duplicando el efecto contable cada vez que se llama a update(). No se debe invocar.
       return await this.prisma.$transaction(async (tx) => {
-        const updatedEntry = await tx.journalEntry.update({
+        return await tx.journalEntry.update({
           where: { id },
           data: prismaData,
           include: { lines: true },
         });
-        await this.updateBalances(tx, updatedEntry.lines);
-        return updatedEntry;
       });
     } catch (error) {
-      this.handlePrismaError(error, `Error actualizando entrada del diario con id ${id}`);
+      this.handlePrismaError(
+        error,
+        `Error actualizando entrada del diario con id ${id}`,
+      );
     }
   }
 
@@ -197,10 +346,16 @@ export class JournalEntryService {
       return await this.prisma.$transaction(async (tx) => {
         await tx.journalEntryLine.deleteMany({ where: { entryId: id } });
         const deletedEntry = await tx.journalEntry.delete({ where: { id } });
-        return { message: `Entrada del diario con id ${id} eliminada.`, deletedEntry };
+        return {
+          message: `Entrada del diario con id ${id} eliminada.`,
+          deletedEntry,
+        };
       });
     } catch (error) {
-      this.handlePrismaError(error, `Error eliminando entrada del diario con id ${id}`);
+      this.handlePrismaError(
+        error,
+        `Error eliminando entrada del diario con id ${id}`,
+      );
     }
   }
 
@@ -220,14 +375,22 @@ export class JournalEntryService {
       const where = entryId ? { entryId } : {};
       return await this.prisma.journalEntryLine.findMany({ where });
     } catch (error) {
-      this.handlePrismaError(error, 'Error obteniendo líneas del asiento contable');
+      this.handlePrismaError(
+        error,
+        'Error obteniendo líneas del asiento contable',
+      );
     }
   }
 
   async findOneLine(id: number) {
     try {
-      const line = await this.prisma.journalEntryLine.findUnique({ where: { id } });
-      if (!line) throw new NotFoundException(`Línea del asiento con id ${id} no encontrada.`);
+      const line = await this.prisma.journalEntryLine.findUnique({
+        where: { id },
+      });
+      if (!line)
+        throw new NotFoundException(
+          `Línea del asiento con id ${id} no encontrada.`,
+        );
       return line;
     } catch (error) {
       this.handlePrismaError(error, `Error buscando línea con id ${id}`);
@@ -245,7 +408,9 @@ export class JournalEntryService {
 
   async removeLine(id: number) {
     try {
-      const deleted = await this.prisma.journalEntryLine.delete({ where: { id } });
+      const deleted = await this.prisma.journalEntryLine.delete({
+        where: { id },
+      });
       return { message: `Línea con id ${id} eliminada.`, deleted };
     } catch (error) {
       this.handlePrismaError(error, `Error eliminando línea con id ${id}`);
@@ -257,9 +422,11 @@ export class JournalEntryService {
       entryDate: createDto.entryDate,
       description: createDto.description,
       createdBy: createDto.createdBy,
-      status: createDto.statusId ? { connect: { id: createDto.statusId } } : undefined,
+      status: createDto.statusId
+        ? { connect: { id: createDto.statusId } }
+        : undefined,
       lines: {
-        create: createDto.lines.map(line => ({
+        create: createDto.lines.map((line) => ({
           accountId: line.accountId,
           currencyCode: line.currencyCode,
           amount: line.amount,
@@ -274,7 +441,9 @@ export class JournalEntryService {
       entryDate: updateDto.entryDate,
       description: updateDto.description,
       createdBy: updateDto.createdBy,
-      status: updateDto.statusId ? { connect: { id: updateDto.statusId } } : undefined,
+      status: updateDto.statusId
+        ? { connect: { id: updateDto.statusId } }
+        : undefined,
     };
   }
 

@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { PrismaClient, Prisma } from '@prisma/client';
@@ -13,7 +19,6 @@ export class TransactionService {
   constructor(private readonly prisma: PrismaClient) {}
 
   async createTranfer(createTransactionDto: CreateTransferDto) {
-    
     try {
       const transaction = await this.prisma.transfer.create({
         data: createTransactionDto,
@@ -23,17 +28,20 @@ export class TransactionService {
       this.logger.error('Error creando transacción', error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') { // Unique constraint failed
-          throw new BadRequestException('Ya existe una transacción con ese identificador único.');
+        if (error.code === 'P2002') {
+          // Unique constraint failed
+          throw new BadRequestException(
+            'Ya existe una transacción con ese identificador único.',
+          );
         }
       }
 
-      throw new InternalServerErrorException('Error inesperado al crear la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al crear la transacción.',
+      );
     }
-      
   }
-   async createTransactionStatus(transactionStatusDto: TransactionStatusDto) {
-    
+  async createTransactionStatus(transactionStatusDto: TransactionStatusDto) {
     try {
       const transaction = await this.prisma.transactionStatus.create({
         data: transactionStatusDto,
@@ -43,40 +51,42 @@ export class TransactionService {
       this.logger.error('Error creando transacción', error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') { // Unique constraint failed
-          throw new BadRequestException('Ya existe una transacción con ese identificador único.');
+        if (error.code === 'P2002') {
+          // Unique constraint failed
+          throw new BadRequestException(
+            'Ya existe una transacción con ese identificador único.',
+          );
         }
       }
 
-      throw new InternalServerErrorException('Error inesperado al crear la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al crear la transacción.',
+      );
     }
-      
   }
-    async findAllTransactionStatus() {
-    
+  async findAllTransactionStatus() {
     try {
       return await this.prisma.transactionStatus.findMany();
     } catch (error) {
       this.logger.error('Error obteniendo transferencias', error);
-      throw new InternalServerErrorException('Error inesperado al obtener las transferencias.');
+      throw new InternalServerErrorException(
+        'Error inesperado al obtener las transferencias.',
+      );
     }
-      
   }
 
-
   async findAllTranfer() {
-    
     try {
       return await this.prisma.transfer.findMany();
     } catch (error) {
       this.logger.error('Error obteniendo transferencias', error);
-      throw new InternalServerErrorException('Error inesperado al obtener las transferencias.');
+      throw new InternalServerErrorException(
+        'Error inesperado al obtener las transferencias.',
+      );
     }
-      
   }
 
   async findOneTranfer(id: number) {
-    
     try {
       const transaction = await this.prisma.transfer.findUnique({
         where: { id },
@@ -88,13 +98,13 @@ export class TransactionService {
     } catch (error) {
       this.logger.error(`Error buscando transacción con id ${id}`, error);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Error inesperado al buscar la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar la transacción.',
+      );
     }
-      
   }
 
   async update(id: number, updateTransactionDto: UpdateTransferDto) {
-    
     try {
       const transaction = await this.prisma.transfer.update({
         where: { id },
@@ -105,17 +115,23 @@ export class TransactionService {
       this.logger.error(`Error actualizando transacción con id ${id}`, error);
 
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2025') { // Record not found
-          throw new NotFoundException(`Transacción con id ${id} no encontrada para actualizar.`);
+        if (error.code === 'P2025') {
+          // Record not found
+          throw new NotFoundException(
+            `Transacción con id ${id} no encontrada para actualizar.`,
+          );
         }
         if (error.code === 'P2002') {
-          throw new BadRequestException('Los datos actualizados violan una restricción única.');
+          throw new BadRequestException(
+            'Los datos actualizados violan una restricción única.',
+          );
         }
       }
 
-      throw new InternalServerErrorException('Error inesperado al actualizar la transacción.');
+      throw new InternalServerErrorException(
+        'Error inesperado al actualizar la transacción.',
+      );
     }
-      
   }
 
   async remove(id: number) {
@@ -136,5 +152,4 @@ export class TransactionService {
     }
   */
   }
-  
 }

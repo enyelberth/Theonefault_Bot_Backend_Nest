@@ -1,5 +1,11 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AuthGuard } from 'src/authA/auth.guard';
 import { CreateTradingExecutionDto } from './dto/create-trading-execution.dto';
 import { TradingExecutionService } from './trading-execution.service';
@@ -9,7 +15,9 @@ import { TradingExecutionService } from './trading-execution.service';
 @ApiTags('trading-execution')
 @Controller('trading-execution')
 export class TradingExecutionController {
-  constructor(private readonly tradingExecutionService: TradingExecutionService) {}
+  constructor(
+    private readonly tradingExecutionService: TradingExecutionService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all trading executions' })

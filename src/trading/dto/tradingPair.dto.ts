@@ -14,12 +14,18 @@ export class CreateTradingPairDto {
 }
 
 export class UpdateTradingPairDto {
-  @ApiPropertyOptional({ description: 'Código de la moneda base', maxLength: 5 })
+  @ApiPropertyOptional({
+    description: 'Código de la moneda base',
+    maxLength: 5,
+  })
   @IsString()
   @Length(1, 5)
   baseCurrencyCode?: string;
 
-  @ApiPropertyOptional({ description: 'Código de la moneda cotizada', maxLength: 5 })
+  @ApiPropertyOptional({
+    description: 'Código de la moneda cotizada',
+    maxLength: 5,
+  })
   @IsString()
   @Length(1, 5)
   quoteCurrencyCode?: string;

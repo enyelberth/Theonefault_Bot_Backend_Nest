@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { CreateAccountDto } from './dto/create-account.dto';
@@ -37,7 +38,7 @@ export class AccountService {
     }
   }
 
-  async findOneWithBalance(id: number) {
+  async findOneWithBalance(id: number, requestUserId: number) {
     try {
       const account = await this.prisma.account.findUnique({
         where: { id },
@@ -54,20 +55,121 @@ export class AccountService {
       if (!account) {
         throw new NotFoundException(`Cuenta con id ${id} no encontrada`);
       }
+      if (account.userId !== requestUserId) {
+        throw new ForbiddenException('No tienes acceso a esta cuenta');
+      }
       return account;
     } catch (error) {
       this.logger.error(
         `Error buscando cuenta con id ${id} incluyendo saldo`,
         error,
       );
-      if (error instanceof NotFoundException) throw error;
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      )
+        throw error;
       throw new InternalServerErrorException(
         'Error inesperado al buscar la cuenta con saldo.',
       );
     }
   }
 
-  async findByUserIdWithBalances(userId: number) {
+  async findAllAccountBalance(id: number, requestUserId: number) {
+    await this.assertOwnedAccount(id, requestUserId);
+    return this.prisma.accountBalance.findMany({
+      where: { accountId: id },
+      include: { currency: true },
+      orderBy: { currencyCode: 'asc' },
+    });
+  }
+
+  /** Lanza NotFoundException/ForbiddenException si la cuenta no existe o no pertenece a requestUserId. */
+  private async assertOwnedAccount(accountId: number, requestUserId: number) {
+    const account = await this.findOne(accountId);
+    if (account.userId !== requestUserId) {
+      throw new ForbiddenException('No tienes acceso a esta cuenta');
+    }
+    return account;
+  }
+
+  findAllBalances() {
+    return this.prisma.accountBalance.findMany({
+      include: {
+        currency: true,
+        account: { include: { bankAccountType: true } },
+      },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  async createBalance(
+    accountId: number,
+    currencyCode: string,
+    newBalance: number,
+    requestUserId: number,
+  ) {
+    await this.assertOwnedAccount(accountId, requestUserId);
+    try {
+      return await this.prisma.accountBalance.create({
+        data: {
+          accountId,
+          currencyCode: currencyCode.trim().toUpperCase(),
+          balance: newBalance,
+        },
+        include: { currency: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Ya existe un saldo para esa cuenta y moneda',
+        );
+      }
+      throw error;
+    }
+  }
+
+  async updateBalanceById(
+    id: number,
+    newBalance: number,
+    requestUserId: number,
+  ) {
+    const existing = await this.prisma.accountBalance.findUnique({
+      where: { id },
+      include: { account: true },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Saldo con id ${id} no encontrado`);
+    }
+    if (existing.account.userId !== requestUserId) {
+      throw new ForbiddenException('No tienes acceso a este saldo');
+    }
+    try {
+      return await this.prisma.accountBalance.update({
+        where: { id },
+        data: { balance: newBalance },
+        include: { currency: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException(`Saldo con id ${id} no encontrado`);
+      }
+      throw error;
+    }
+  }
+
+  async findByUserIdWithBalances(userId: number, requestUserId: number) {
+    if (userId !== requestUserId) {
+      throw new ForbiddenException(
+        'No tienes acceso a las cuentas de este usuario',
+      );
+    }
     try {
       const accounts = await this.prisma.account.findMany({
         where: { userId },
@@ -99,38 +201,44 @@ export class AccountService {
     }
   }
   async findCryptosByUserId(userId: number) {
-  try {
-    const accounts = await this.prisma.account.findMany({
-      where: { userId },
-      include: {
-        accountBalances: {
-          include: {
-            currency: true,
+    try {
+      const accounts = await this.prisma.account.findMany({
+        where: { userId },
+        include: {
+          accountBalances: {
+            include: {
+              currency: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!accounts || accounts.length === 0) {
-      throw new NotFoundException(`No se encontraron cuentas para el usuario con id ${userId}`);
+      if (!accounts || accounts.length === 0) {
+        throw new NotFoundException(
+          `No se encontraron cuentas para el usuario con id ${userId}`,
+        );
+      }
+
+      // Extraemos solo las cryptos de los saldos con su información de moneda
+      const cryptos = accounts.flatMap((account) =>
+        account.accountBalances.map((balance) => ({
+          symbol: balance.currency.code,
+          balance: balance.balance,
+        })),
+      );
+
+      return cryptos;
+    } catch (error) {
+      this.logger.error(
+        `Error buscando cryptos del usuario con id ${userId}`,
+        error,
+      );
+      if (error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException(
+        'Error inesperado al buscar cryptos de usuario.',
+      );
     }
-
-    // Extraemos solo las cryptos de los saldos con su información de moneda
-    const cryptos = accounts.flatMap(account => 
-      account.accountBalances.map(balance => ({
-        symbol: balance.currency.code,
-        balance: balance.balance,
-      }))
-    );
-
-    return cryptos;
-  } catch (error) {
-    this.logger.error(`Error buscando cryptos del usuario con id ${userId}`, error);
-    if (error instanceof NotFoundException) throw error;
-    throw new InternalServerErrorException('Error inesperado al buscar cryptos de usuario.');
   }
-}
-
 
   async findAll() {
     try {
@@ -184,16 +292,24 @@ export class AccountService {
     }
   }
 
-  async update(id: number, updateAccountDto: UpdateAccountDto) {
+  async update(
+    id: number,
+    updateAccountDto: UpdateAccountDto,
+    requestUserId: number,
+  ) {
+    await this.assertOwnedAccount(id, requestUserId);
+    // El dueño de la cuenta no puede reasignarla a otro userId vía este endpoint.
+    const { userId: _ignoredUserId, ...safeDto } = updateAccountDto;
     try {
       const account = await this.prisma.account.update({
         where: { id },
-        data: updateAccountDto,
+        data: safeDto,
       });
       return account;
     } catch (error) {
       this.logger.error(`Error actualizando cuenta con id ${id}`, error);
 
+      if (error instanceof ForbiddenException) throw error;
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2025') {
           throw new NotFoundException(
@@ -212,7 +328,8 @@ export class AccountService {
     }
   }
 
-  async remove(id: number) {
+  async remove(id: number, requestUserId: number) {
+    await this.assertOwnedAccount(id, requestUserId);
     try {
       const account = await this.prisma.account.delete({
         where: { id },
@@ -221,6 +338,7 @@ export class AccountService {
     } catch (error) {
       this.logger.error(`Error eliminando cuenta con id ${id}`, error);
 
+      if (error instanceof ForbiddenException) throw error;
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2025'
@@ -236,12 +354,16 @@ export class AccountService {
     }
   }
 
-  async findByEmail(email: string) {
+  async findByEmail(email: string, requestUserId: number) {
     try {
       const account = await this.prisma.account.findUnique({
         where: { email },
       });
       if (!account) {
+        throw new NotFoundException(`Cuenta con email ${email} no encontrada`);
+      }
+      if (account.userId !== requestUserId) {
+        // No revelamos existencia de cuentas ajenas por email (evita enumeración).
         throw new NotFoundException(`Cuenta con email ${email} no encontrada`);
       }
       return account;
@@ -254,8 +376,8 @@ export class AccountService {
     }
   }
 
-  async findAccountByEmail(email: string) {
-    return this.findByEmail(email);
+  async findAccountByEmail(email: string, requestUserId: number) {
+    return this.findByEmail(email, requestUserId);
   }
 
   /**
@@ -267,7 +389,9 @@ export class AccountService {
     accountId: number,
     currencyCode: string,
     newBalance: number,
+    requestUserId: number,
   ) {
+    await this.assertOwnedAccount(accountId, requestUserId);
     try {
       const updatedAccountBalance = await this.prisma.accountBalance.update({
         where: {

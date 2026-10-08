@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { CreateBankAccountTypeDto } from './dto/create-bankAccountType.dto';
 import { UpdateBankAccountTypeDto } from './dto/update-bankAccountType.dto';
 import { BankAccountTypeService } from './bankAccountType.service';
@@ -20,16 +30,28 @@ export class BankAccountTypeController {
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva cuenta' })
-  @ApiCreatedResponse({ description: 'La cuenta fue creada exitosamente.', type: CreateBankAccountTypeDto })
+  @ApiCreatedResponse({
+    description: 'La cuenta fue creada exitosamente.',
+    type: CreateBankAccountTypeDto,
+  })
   @ApiBadRequestResponse({ description: 'Datos inválidos o cuenta duplicada.' })
   async create(@Body() createAccountDto: CreateBankAccountTypeDto) {
     return this.accountService.create(createAccountDto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Obtener la lista de todas las cuentas o buscar por email' })
-  @ApiResponse({ status: 200, description: 'Lista de cuentas obtenida correctamente.' })
-  @ApiQuery({ name: 'email', required: false, description: 'Email para buscar una cuenta específica' })
+  @ApiOperation({
+    summary: 'Obtener la lista de todas las cuentas o buscar por email',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de cuentas obtenida correctamente.',
+  })
+  @ApiQuery({
+    name: 'email',
+    required: false,
+    description: 'Email para buscar una cuenta específica',
+  })
   async findAllOrByEmail(@Query('email') email?: string) {
     if (email) {
       // Si se provee email, usamos el método para buscar por email
@@ -40,28 +62,54 @@ export class BankAccountTypeController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una cuenta por su ID' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la cuenta a obtener' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la cuenta a obtener',
+  })
   @ApiResponse({ status: 200, description: 'Cuenta encontrada correctamente.' })
-  @ApiNotFoundResponse({ description: 'Cuenta no encontrada con el ID proporcionado.' })
+  @ApiNotFoundResponse({
+    description: 'Cuenta no encontrada con el ID proporcionado.',
+  })
   async findOne(@Param('id', ParseIntPipe) id: number) {
     return this.accountService.findOne(id);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar una cuenta por su ID' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la cuenta a actualizar' })
-  @ApiResponse({ status: 200, description: 'Cuenta actualizada correctamente.' })
-  @ApiBadRequestResponse({ description: 'Datos inválidos para la actualización.' })
-  @ApiNotFoundResponse({ description: 'Cuenta no encontrada con el ID proporcionado.' })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateAccountDto: UpdateBankAccountTypeDto) {
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la cuenta a actualizar',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Cuenta actualizada correctamente.',
+  })
+  @ApiBadRequestResponse({
+    description: 'Datos inválidos para la actualización.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Cuenta no encontrada con el ID proporcionado.',
+  })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateAccountDto: UpdateBankAccountTypeDto,
+  ) {
     return this.accountService.update(id, updateAccountDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar una cuenta por su ID' })
-  @ApiParam({ name: 'id', type: Number, description: 'ID de la cuenta a eliminar' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'ID de la cuenta a eliminar',
+  })
   @ApiResponse({ status: 200, description: 'Cuenta eliminada correctamente.' })
-  @ApiNotFoundResponse({ description: 'Cuenta no encontrada con el ID proporcionado.' })
+  @ApiNotFoundResponse({
+    description: 'Cuenta no encontrada con el ID proporcionado.',
+  })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.accountService.remove(id);
   }
