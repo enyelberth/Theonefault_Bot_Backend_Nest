@@ -8,7 +8,12 @@ import { PaperController } from './paper.controller';
 
 @Module({
   imports: [BinanceModule],
-  providers: [PrismaClient, PaperAccountService, BinanceAdapter, PaperExchangeFactory],
+  providers: [
+    PrismaClient,
+    PaperAccountService,
+    BinanceAdapter,
+    PaperExchangeFactory,
+  ],
   controllers: [PaperController],
   exports: [PaperAccountService, PaperExchangeFactory],
 })

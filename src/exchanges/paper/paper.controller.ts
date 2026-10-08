@@ -40,7 +40,10 @@ export class PaperController {
   }
 
   @Patch('accounts/:id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePaperAccountDto) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePaperAccountDto,
+  ) {
     return this.accounts.update(id, dto);
   }
 
@@ -69,7 +72,10 @@ export class PaperController {
   }
 
   @Get('accounts/:id/orders')
-  openOrders(@Param('id', ParseIntPipe) id: number, @Query('symbol') symbol?: string) {
+  openOrders(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('symbol') symbol?: string,
+  ) {
     return this.factory.get(id).getOpenOrders(symbol);
   }
 
@@ -79,7 +85,10 @@ export class PaperController {
   }
 
   @Post('accounts/:id/orders')
-  placeOrder(@Param('id', ParseIntPipe) id: number, @Body() dto: PlacePaperOrderDto) {
+  placeOrder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PlacePaperOrderDto,
+  ) {
     return this.factory.get(id).placeOrder({
       symbol: dto.symbol,
       side: dto.side,

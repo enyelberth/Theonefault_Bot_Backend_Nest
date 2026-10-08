@@ -58,7 +58,7 @@ export class PaperExchangeService extends BinanceService {
           : '0',
       avgPrice:
         order.status === PaperOrderStatus.FILLED
-          ? order.filledPrice?.toString() ?? order.price?.toString()
+          ? (order.filledPrice?.toString() ?? order.price?.toString())
           : undefined,
       stopPrice: order.stopPrice?.toString(),
       updateTime: order.updatedAt.getTime(),
@@ -112,11 +112,16 @@ export class PaperExchangeService extends BinanceService {
           if (order.side === OrderSide.BUY && spot <= p) filledPrice = p;
           else if (order.side === OrderSide.SELL && spot >= p) filledPrice = p;
         }
-      } else if (order.type === 'STOP_LOSS' || order.type === 'STOP_LOSS_LIMIT') {
+      } else if (
+        order.type === 'STOP_LOSS' ||
+        order.type === 'STOP_LOSS_LIMIT'
+      ) {
         const stop = order.stopPrice ? Number(order.stopPrice) : null;
         if (stop !== null) {
-          if (order.side === OrderSide.SELL && spot <= stop) filledPrice = order.price ? Number(order.price) : spot;
-          else if (order.side === OrderSide.BUY && spot >= stop) filledPrice = order.price ? Number(order.price) : spot;
+          if (order.side === OrderSide.SELL && spot <= stop)
+            filledPrice = order.price ? Number(order.price) : spot;
+          else if (order.side === OrderSide.BUY && spot >= stop)
+            filledPrice = order.price ? Number(order.price) : spot;
         }
       }
     } catch (err) {
@@ -219,10 +224,7 @@ export class PaperExchangeService extends BinanceService {
     return {
       orderListId: this.nextOrderId(),
       contingencyType: 'OCO',
-      orders: [
-        this.toBinanceLikeOrder(limit),
-        this.toBinanceLikeOrder(stop),
-      ],
+      orders: [this.toBinanceLikeOrder(limit), this.toBinanceLikeOrder(stop)],
     };
   }
 

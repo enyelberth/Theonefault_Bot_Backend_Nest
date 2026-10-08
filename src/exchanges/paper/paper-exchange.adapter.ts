@@ -26,7 +26,11 @@ import {
   NotImplementedByExchangeError,
   OrderRejectedError,
 } from '../exchange.errors';
-import { applyFee, fillPriceForMarket, FeesConfig } from '../../backtesting/engine/fees';
+import {
+  applyFee,
+  fillPriceForMarket,
+  FeesConfig,
+} from '../../backtesting/engine/fees';
 import { BinanceAdapter } from '../adapters/binance.adapter';
 import { PaperAccountService } from './paper-account.service';
 import { PaperBalances, ensureBalance, totalOf } from './paper-types';
@@ -131,7 +135,10 @@ export class PaperExchangeAdapter implements IExchange {
 
   async placeOrder(params: PlaceOrderParams): Promise<Order> {
     if ((params.market ?? 'SPOT') !== 'SPOT') {
-      throw new NotImplementedByExchangeError(this.id, `placeOrder market=${params.market}`);
+      throw new NotImplementedByExchangeError(
+        this.id,
+        `placeOrder market=${params.market}`,
+      );
     }
     const account = await this.accounts.get(this.accountId);
     const fees = this.accounts.readFees(account);
@@ -147,8 +154,17 @@ export class PaperExchangeAdapter implements IExchange {
       if (quantity <= 0) {
         throw new OrderRejectedError(this.id, 'invalid quantity');
       }
-      this.executeSpotFill(balances, base, account.quoteAsset, params.side, quantity, fillPrice, fees);
+      this.executeSpotFill(
+        balances,
+        base,
+        account.quoteAsset,
+        params.side,
+        quantity,
+        fillPrice,
+        fees,
+      );
       await this.accounts.persistBalances(this.accountId, balances);
+      const fee = applyFee(fillPrice * quantity, fees.takerBps);
       await this.accounts.recordFill({
         paperAccountId: this.accountId,
         orderId,
@@ -157,7 +173,7 @@ export class PaperExchangeAdapter implements IExchange {
         type: 'MARKET',
         price: fillPrice,
         quantity,
-        fee: applyFee(fillPrice * quantity, fees.takerBps),
+        fee,
         feeAsset: account.quoteAsset,
       });
       return this.buildOrder({
@@ -169,12 +185,37 @@ export class PaperExchangeAdapter implements IExchange {
         price: fillPrice,
         quantity,
         filledQuantity: quantity,
+        fee,
+        feeCurrency: account.quoteAsset,
       });
     }
 
-    if (params.type === 'LIMIT' && params.price) {
+    const isLimitLike =
+      (params.type === 'LIMIT' || params.type === 'LIMIT_MAKER') &&
+      params.price;
+    if (isLimitLike && params.price) {
+      const wantsMaker =
+        params.type === 'LIMIT_MAKER' || params.postOnly === true;
+      if (wantsMaker) {
+        const crosses =
+          (params.side === 'BUY' && params.price >= ticker.price) ||
+          (params.side === 'SELL' && params.price <= ticker.price);
+        if (crosses) {
+          throw new OrderRejectedError(
+            this.id,
+            'LIMIT_MAKER would immediately match (post-only rejected)',
+          );
+        }
+      }
       const quantity = this.resolveQuantity(params, params.price);
-      this.lockForLimit(balances, base, account.quoteAsset, params.side, quantity, params.price);
+      this.lockForLimit(
+        balances,
+        base,
+        account.quoteAsset,
+        params.side,
+        quantity,
+        params.price,
+      );
       await this.accounts.persistBalances(this.accountId, balances);
       this.openOrders.set(orderId, {
         id: orderId,
@@ -189,7 +230,7 @@ export class PaperExchangeAdapter implements IExchange {
         id: orderId,
         symbol: params.symbol,
         side: params.side,
-        type: 'LIMIT',
+        type: wantsMaker ? 'LIMIT_MAKER' : 'LIMIT',
         status: 'NEW',
         price: params.price,
         quantity,
@@ -199,7 +240,14 @@ export class PaperExchangeAdapter implements IExchange {
 
     if (params.type === 'STOP_LOSS_LIMIT' && params.price && params.stopPrice) {
       const quantity = this.resolveQuantity(params, params.price);
-      this.lockForLimit(balances, base, account.quoteAsset, params.side, quantity, params.price);
+      this.lockForLimit(
+        balances,
+        base,
+        account.quoteAsset,
+        params.side,
+        quantity,
+        params.price,
+      );
       await this.accounts.persistBalances(this.accountId, balances);
       this.openOrders.set(orderId, {
         id: orderId,
@@ -224,16 +272,27 @@ export class PaperExchangeAdapter implements IExchange {
       });
     }
 
-    throw new NotImplementedByExchangeError(this.id, `placeOrder type=${params.type}`);
+    throw new NotImplementedByExchangeError(
+      this.id,
+      `placeOrder type=${params.type}`,
+    );
   }
 
   async cancelOrder(_symbol: string, orderId: string): Promise<Order> {
     const open = this.openOrders.get(orderId);
-    if (!open) throw new OrderRejectedError(this.id, `order ${orderId} not open`);
+    if (!open)
+      throw new OrderRejectedError(this.id, `order ${orderId} not open`);
     const account = await this.accounts.get(this.accountId);
     const balances = this.accounts.readBalances(account);
     const base = open.symbol.replace(account.quoteAsset, '');
-    this.unlock(balances, base, account.quoteAsset, open.side, open.quantity, open.price ?? 0);
+    this.unlock(
+      balances,
+      base,
+      account.quoteAsset,
+      open.side,
+      open.quantity,
+      open.price ?? 0,
+    );
     await this.accounts.persistBalances(this.accountId, balances);
     this.openOrders.delete(orderId);
     return this.buildOrder({
@@ -249,14 +308,17 @@ export class PaperExchangeAdapter implements IExchange {
   }
 
   async cancelAllOrders(symbol: string): Promise<number> {
-    const targets = Array.from(this.openOrders.values()).filter((o) => o.symbol === symbol);
+    const targets = Array.from(this.openOrders.values()).filter(
+      (o) => o.symbol === symbol,
+    );
     for (const t of targets) await this.cancelOrder(symbol, t.id);
     return targets.length;
   }
 
   async getOrder(_symbol: string, orderId: string): Promise<Order> {
     const open = this.openOrders.get(orderId);
-    if (!open) throw new OrderRejectedError(this.id, `order ${orderId} not found`);
+    if (!open)
+      throw new OrderRejectedError(this.id, `order ${orderId} not found`);
     await this.tryFill(open);
     const stillOpen = this.openOrders.get(orderId);
     return this.buildOrder({
@@ -295,7 +357,10 @@ export class PaperExchangeAdapter implements IExchange {
     throw new NotImplementedByExchangeError(this.id, 'getTrades');
   }
 
-  subscribeTicker?(_symbol: string, _handler: (t: Ticker) => void): Promise<Unsubscribe> {
+  subscribeTicker?(
+    _symbol: string,
+    _handler: (t: Ticker) => void,
+  ): Promise<Unsubscribe> {
     throw new NotImplementedByExchangeError(this.id, 'subscribeTicker');
   }
 
@@ -332,7 +397,12 @@ export class PaperExchangeAdapter implements IExchange {
     if (side === 'BUY') {
       const required = notional + feeAmt;
       if (quoteBal.free < required) {
-        throw new InsufficientBalanceError(this.id, quote, required, quoteBal.free);
+        throw new InsufficientBalanceError(
+          this.id,
+          quote,
+          required,
+          quoteBal.free,
+        );
       }
       quoteBal.free -= required;
       const prevQty = baseBal.free + baseBal.locked;
@@ -344,7 +414,12 @@ export class PaperExchangeAdapter implements IExchange {
           : price;
     } else {
       if (baseBal.free < quantity) {
-        throw new InsufficientBalanceError(this.id, base, quantity, baseBal.free);
+        throw new InsufficientBalanceError(
+          this.id,
+          base,
+          quantity,
+          baseBal.free,
+        );
       }
       baseBal.free -= quantity;
       quoteBal.free += notional - feeAmt;
@@ -364,14 +439,24 @@ export class PaperExchangeAdapter implements IExchange {
       const required = quantity * price;
       const quoteBal = ensureBalance(balances, quote);
       if (quoteBal.free < required) {
-        throw new InsufficientBalanceError(this.id, quote, required, quoteBal.free);
+        throw new InsufficientBalanceError(
+          this.id,
+          quote,
+          required,
+          quoteBal.free,
+        );
       }
       quoteBal.free -= required;
       quoteBal.locked += required;
     } else {
       const baseBal = ensureBalance(balances, base);
       if (baseBal.free < quantity) {
-        throw new InsufficientBalanceError(this.id, base, quantity, baseBal.free);
+        throw new InsufficientBalanceError(
+          this.id,
+          base,
+          quantity,
+          baseBal.free,
+        );
       }
       baseBal.free -= quantity;
       baseBal.locked += quantity;
@@ -414,7 +499,10 @@ export class PaperExchangeAdapter implements IExchange {
       shouldFill =
         (order.side === 'BUY' && price <= order.price) ||
         (order.side === 'SELL' && price >= order.price);
-    } else if (order.type === 'STOP_LOSS_LIMIT' && order.stopPrice !== undefined) {
+    } else if (
+      order.type === 'STOP_LOSS_LIMIT' &&
+      order.stopPrice !== undefined
+    ) {
       const triggered =
         (order.side === 'BUY' && price >= order.stopPrice) ||
         (order.side === 'SELL' && price <= order.stopPrice);
@@ -431,7 +519,14 @@ export class PaperExchangeAdapter implements IExchange {
     const balances = this.accounts.readBalances(account);
     const base = order.symbol.replace(account.quoteAsset, '');
 
-    this.unlock(balances, base, account.quoteAsset, order.side, order.quantity, order.price);
+    this.unlock(
+      balances,
+      base,
+      account.quoteAsset,
+      order.side,
+      order.quantity,
+      order.price,
+    );
     this.executeSpotFill(
       balances,
       base,
@@ -456,7 +551,11 @@ export class PaperExchangeAdapter implements IExchange {
     this.openOrders.delete(order.id);
   }
 
-  private balanceToPosition(base: string, quote: string, b: { free: number; locked: number; avgEntry?: number }): Position {
+  private balanceToPosition(
+    base: string,
+    quote: string,
+    b: { free: number; locked: number; avgEntry?: number },
+  ): Position {
     const qty = totalOf({ free: b.free, locked: b.locked });
     return {
       symbol: `${base}${quote}`,
@@ -477,12 +576,14 @@ export class PaperExchangeAdapter implements IExchange {
     id: string;
     symbol: string;
     side: 'BUY' | 'SELL';
-    type: 'MARKET' | 'LIMIT' | 'STOP_LOSS_LIMIT';
+    type: 'MARKET' | 'LIMIT' | 'LIMIT_MAKER' | 'STOP_LOSS_LIMIT';
     status: OrderStatus;
     price: number;
     quantity: number;
     filledQuantity: number;
     stopPrice?: number;
+    fee?: number;
+    feeCurrency?: string;
   }): Order {
     return {
       id: input.id,
@@ -497,6 +598,8 @@ export class PaperExchangeAdapter implements IExchange {
       filledQuantity: input.filledQuantity,
       averagePrice: input.filledQuantity > 0 ? input.price : 0,
       quoteQuantity: input.filledQuantity * input.price,
+      fee: input.fee,
+      feeCurrency: input.feeCurrency,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       market: 'SPOT',

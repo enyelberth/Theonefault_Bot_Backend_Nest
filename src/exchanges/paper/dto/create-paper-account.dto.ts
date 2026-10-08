@@ -23,13 +23,19 @@ export class CreatePaperAccountDto {
   @IsOptional() @IsInt() ownerId?: number;
   @IsNumber() @IsPositive() initialQuote: number;
   @IsOptional() @IsString() quoteAsset?: string;
-  @IsOptional() @ValidateNested() @Type(() => FeesConfigDto) fees?: FeesConfigDto;
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FeesConfigDto)
+  fees?: FeesConfigDto;
 }
 
 export class UpdatePaperAccountDto {
   @IsOptional() @IsString() @Length(1, 100) name?: string;
   @IsOptional() @IsBoolean() active?: boolean;
-  @IsOptional() @ValidateNested() @Type(() => FeesConfigDto) fees?: FeesConfigDto;
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FeesConfigDto)
+  fees?: FeesConfigDto;
 }
 
 export class PlacePaperOrderDto {

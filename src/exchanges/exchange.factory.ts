@@ -14,7 +14,11 @@ export class ExchangeFactory {
   get(id: ExchangeId): IExchange {
     const adapter = this.registry.get(id);
     if (!adapter) {
-      throw new ExchangeError(`Exchange "${id}" not registered`, id, 'EXCHANGE_NOT_FOUND');
+      throw new ExchangeError(
+        `Exchange "${id}" not registered`,
+        id,
+        'EXCHANGE_NOT_FOUND',
+      );
     }
     return adapter;
   }

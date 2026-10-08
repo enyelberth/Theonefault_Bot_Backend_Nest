@@ -20,7 +20,11 @@ export type OrderStatus =
   | 'REJECTED'
   | 'EXPIRED';
 
-export type MarketType = 'SPOT' | 'MARGIN_CROSS' | 'MARGIN_ISOLATED' | 'FUTURES';
+export type MarketType =
+  | 'SPOT'
+  | 'MARGIN_CROSS'
+  | 'MARGIN_ISOLATED'
+  | 'FUTURES';
 
 export interface PlaceOrderParams {
   symbol: string;

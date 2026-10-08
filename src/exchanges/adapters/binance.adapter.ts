@@ -27,6 +27,59 @@ import {
   SymbolNotFoundError,
 } from '../exchange.errors';
 
+// Formas crudas de la respuesta REST de Binance que de verdad se leen en
+// este adapter (no el contrato completo de su API). binance.service.ts
+// sigue devolviendo `any` — esto solo cubre el punto donde esa respuesta
+// cruda se convierte al dominio (mapOrder/mapPosition/getBalance), que es
+// donde un cambio de forma de Binance pasaba desapercibido hasta runtime.
+interface BinanceRawFill {
+  commission?: string;
+  commissionAsset?: string;
+}
+
+interface BinanceRawOrder {
+  orderId?: number | string;
+  id?: number | string;
+  clientOrderId?: string;
+  side?: 'BUY' | 'SELL';
+  type?: string;
+  status?: string;
+  price?: string;
+  stopPrice?: string;
+  origQty?: string;
+  quantity?: string;
+  executedQty?: string;
+  cummulativeQuoteQty?: string;
+  fills?: BinanceRawFill[];
+  time?: number;
+  updateTime?: number;
+}
+
+interface BinanceRawPosition {
+  symbol?: string;
+  positionAmt?: string;
+  entryPrice?: string;
+  markPrice?: string;
+  liquidationPrice?: string;
+  unRealizedProfit?: string;
+  leverage?: string;
+}
+
+interface BinanceRawSpotBalance {
+  asset: string;
+  free: string;
+  locked: string;
+}
+
+interface BinanceRawMarginBalance {
+  asset: string;
+  free: string;
+  locked: string;
+  borrowed: string;
+  interest: string;
+  netAsset: string;
+}
+
 const CAPABILITIES: ExchangeCapabilities = {
   spot: true,
   marginCross: true,
@@ -54,7 +107,8 @@ export class BinanceAdapter implements IExchange {
   }
 
   async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
-    const { priceFilter, lotSizeFilter } = await this.binance.obtenerFiltrosSimbolo(symbol);
+    const { priceFilter, lotSizeFilter } =
+      await this.binance.obtenerFiltrosSimbolo(symbol);
     if (!priceFilter || !lotSizeFilter) {
       throw new SymbolNotFoundError(this.id, symbol);
     }
@@ -70,17 +124,32 @@ export class BinanceAdapter implements IExchange {
       stepSize: parseFloat(lotSizeFilter.stepSize),
       minNotional: 0,
       minQuantity: parseFloat(lotSizeFilter.minQty ?? '0'),
-      maxQuantity: lotSizeFilter.maxQty ? parseFloat(lotSizeFilter.maxQty) : undefined,
+      maxQuantity: lotSizeFilter.maxQty
+        ? parseFloat(lotSizeFilter.maxQty)
+        : undefined,
     };
   }
 
   async getTicker(symbol: string): Promise<Ticker> {
-    const data = await this.binance.getSymbolPrice(symbol);
-    return {
-      symbol,
-      price: parseFloat(data.price),
-      timestamp: Date.now(),
-    };
+    try {
+      const data = await this.binance.getBookTicker(symbol);
+      const bid = parseFloat(data.bidPrice);
+      const ask = parseFloat(data.askPrice);
+      return {
+        symbol,
+        price: bid > 0 && ask > 0 ? (bid + ask) / 2 : Math.max(bid, ask),
+        bid: bid > 0 ? bid : undefined,
+        ask: ask > 0 ? ask : undefined,
+        timestamp: Date.now(),
+      };
+    } catch {
+      const data = await this.binance.getSymbolPrice(symbol);
+      return {
+        symbol,
+        price: parseFloat(data.price),
+        timestamp: Date.now(),
+      };
+    }
   }
 
   async getOrderBook(_symbol: string, _depth = 100): Promise<OrderBook> {
@@ -89,7 +158,11 @@ export class BinanceAdapter implements IExchange {
 
   async getCandles(query: CandleQuery): Promise<Candle[]> {
     const limit = query.limit ?? 500;
-    const raw = await this.binance.getCandles(query.symbol, query.timeframe, limit);
+    const raw = await this.binance.getCandles(
+      query.symbol,
+      query.timeframe,
+      limit,
+    );
     return raw.map((k) => ({
       symbol: query.symbol,
       timeframe: query.timeframe,
@@ -107,8 +180,10 @@ export class BinanceAdapter implements IExchange {
   async getBalance(market: MarketType = 'SPOT'): Promise<AccountBalance> {
     if (market === 'SPOT') {
       const info = await this.binance.getAccountInfo();
-      const balances: AssetBalance[] = (info.balances ?? [])
-        .map((b: any) => ({
+      const balances: AssetBalance[] = (
+        (info.balances ?? []) as BinanceRawSpotBalance[]
+      )
+        .map((b) => ({
           asset: b.asset,
           free: parseFloat(b.free),
           locked: parseFloat(b.locked),
@@ -119,7 +194,9 @@ export class BinanceAdapter implements IExchange {
     }
     if (market === 'MARGIN_CROSS') {
       const info = await this.binance.getCrossMarginAccountInfo();
-      const balances: AssetBalance[] = (info.userAssets ?? []).map((a: any) => ({
+      const balances: AssetBalance[] = (
+        (info.userAssets ?? []) as BinanceRawMarginBalance[]
+      ).map((a) => ({
         asset: a.asset,
         free: parseFloat(a.free),
         locked: parseFloat(a.locked),
@@ -141,15 +218,24 @@ export class BinanceAdapter implements IExchange {
 
   async getPositions(market: MarketType = 'MARGIN_CROSS'): Promise<Position[]> {
     if (market !== 'MARGIN_CROSS') {
-      throw new NotImplementedByExchangeError(this.id, `getPositions(${market})`);
+      throw new NotImplementedByExchangeError(
+        this.id,
+        `getPositions(${market})`,
+      );
     }
-    const raw = await this.binance.getCrossMarginPositions();
-    return raw.map((p: any) => this.mapPosition(p, market));
+    const raw =
+      (await this.binance.getCrossMarginPositions()) as BinanceRawPosition[];
+    return raw.map((p) => this.mapPosition(p, market));
   }
 
-  async getPosition(symbol: string, market: MarketType = 'MARGIN_CROSS'): Promise<Position | null> {
+  async getPosition(
+    symbol: string,
+    market: MarketType = 'MARGIN_CROSS',
+  ): Promise<Position | null> {
     try {
-      const raw = await this.binance.getCrossMarginPosition(symbol);
+      const raw = (await this.binance.getCrossMarginPosition(
+        symbol,
+      )) as BinanceRawPosition;
       return this.mapPosition(raw, market);
     } catch {
       return null;
@@ -162,26 +248,67 @@ export class BinanceAdapter implements IExchange {
     const price = params.price?.toString() ?? '0';
     const tif = params.timeInForce ?? 'GTC';
 
+    const wantsMaker =
+      params.type === 'LIMIT_MAKER' || params.postOnly === true;
+
     try {
       let raw: any;
       if (market === 'SPOT') {
         if (params.type === 'MARKET') {
-          raw = await this.binance.createMarketOrder(params.symbol, params.side, qty);
+          raw = await this.binance.createMarketOrder(
+            params.symbol,
+            params.side,
+            qty,
+            params.clientOrderId,
+          );
+        } else if (wantsMaker) {
+          raw = await this.binance.createLimitMakerOrder(
+            params.symbol,
+            params.side,
+            qty,
+            price,
+            params.clientOrderId,
+          );
         } else if (params.type === 'LIMIT') {
-          raw = await this.binance.createLimitOrder(params.symbol, params.side, qty, price, tif);
+          raw = await this.binance.createLimitOrder(
+            params.symbol,
+            params.side,
+            qty,
+            price,
+            tif,
+            params.clientOrderId,
+          );
         } else if (params.type === 'STOP_LOSS_LIMIT' && params.stopPrice) {
           raw = await this.binance.createStopLossOrder(
             params.symbol,
             params.side,
             qty,
             params.stopPrice.toString(),
+            {},
+            params.clientOrderId,
           );
         } else {
-          throw new NotImplementedByExchangeError(this.id, `placeOrder ${params.type} SPOT`);
+          throw new NotImplementedByExchangeError(
+            this.id,
+            `placeOrder ${params.type} SPOT`,
+          );
         }
       } else if (market === 'MARGIN_CROSS') {
         if (params.type === 'MARKET') {
-          raw = await this.binance.createCrossMarginMarketOrder(params.symbol, params.side, qty);
+          raw = await this.binance.createCrossMarginMarketOrder(
+            params.symbol,
+            params.side,
+            qty,
+            params.clientOrderId,
+          );
+        } else if (wantsMaker) {
+          raw = await this.binance.createCrossMarginLimitMakerOrder(
+            params.symbol,
+            params.side,
+            qty,
+            price,
+            params.clientOrderId,
+          );
         } else if (params.type === 'LIMIT') {
           raw = await this.binance.createCrossMarginLimitOrder(
             params.symbol,
@@ -189,6 +316,7 @@ export class BinanceAdapter implements IExchange {
             qty,
             price,
             tif,
+            params.clientOrderId,
           );
         } else if (params.type === 'STOP_LOSS_LIMIT' && params.stopPrice) {
           raw = await this.binance.createCrossMarginStopLossOrder(
@@ -196,13 +324,31 @@ export class BinanceAdapter implements IExchange {
             params.side,
             qty,
             params.stopPrice.toString(),
+            {},
+            params.clientOrderId,
           );
         } else {
-          throw new NotImplementedByExchangeError(this.id, `placeOrder ${params.type} MARGIN_CROSS`);
+          throw new NotImplementedByExchangeError(
+            this.id,
+            `placeOrder ${params.type} MARGIN_CROSS`,
+          );
         }
       } else if (market === 'MARGIN_ISOLATED') {
         if (params.type === 'MARKET') {
-          raw = await this.binance.createIsolatedMarginMarketOrder(params.symbol, params.side, qty);
+          raw = await this.binance.createIsolatedMarginMarketOrder(
+            params.symbol,
+            params.side,
+            qty,
+            params.clientOrderId,
+          );
+        } else if (wantsMaker) {
+          raw = await this.binance.createIsolatedMarginLimitMakerOrder(
+            params.symbol,
+            params.side,
+            qty,
+            price,
+            params.clientOrderId,
+          );
         } else if (params.type === 'LIMIT') {
           raw = await this.binance.createIsolatedMarginLimitOrder(
             params.symbol,
@@ -210,6 +356,7 @@ export class BinanceAdapter implements IExchange {
             qty,
             price,
             tif,
+            params.clientOrderId,
           );
         } else {
           throw new NotImplementedByExchangeError(
@@ -218,7 +365,10 @@ export class BinanceAdapter implements IExchange {
           );
         }
       } else {
-        throw new NotImplementedByExchangeError(this.id, `placeOrder market=${market}`);
+        throw new NotImplementedByExchangeError(
+          this.id,
+          `placeOrder market=${market}`,
+        );
       }
       return this.mapOrder(raw, params.symbol, market);
     } catch (err: any) {
@@ -228,7 +378,11 @@ export class BinanceAdapter implements IExchange {
     }
   }
 
-  async cancelOrder(symbol: string, orderId: string, market: MarketType = 'SPOT'): Promise<Order> {
+  async cancelOrder(
+    symbol: string,
+    orderId: string,
+    market: MarketType = 'SPOT',
+  ): Promise<Order> {
     const numericId = Number(orderId);
     const raw =
       market === 'MARGIN_CROSS'
@@ -237,7 +391,10 @@ export class BinanceAdapter implements IExchange {
     return this.mapOrder(raw, symbol, market);
   }
 
-  async cancelAllOrders(symbol: string, market: MarketType = 'SPOT'): Promise<number> {
+  async cancelAllOrders(
+    symbol: string,
+    market: MarketType = 'SPOT',
+  ): Promise<number> {
     if (market === 'MARGIN_CROSS') {
       const result = await this.binance.cancelAllCrossMarginOrders(symbol);
       return result.canceledOrdersCount ?? 0;
@@ -246,7 +403,11 @@ export class BinanceAdapter implements IExchange {
     return result.canceledOrdersCount ?? 0;
   }
 
-  async getOrder(symbol: string, orderId: string, market: MarketType = 'SPOT'): Promise<Order> {
+  async getOrder(
+    symbol: string,
+    orderId: string,
+    market: MarketType = 'SPOT',
+  ): Promise<Order> {
     const numericId = Number(orderId);
     const raw =
       market === 'MARGIN_CROSS'
@@ -255,23 +416,39 @@ export class BinanceAdapter implements IExchange {
     return this.mapOrder(raw, symbol, market);
   }
 
-  async getOpenOrders(symbol?: string, market: MarketType = 'SPOT'): Promise<Order[]> {
-    if (!symbol) throw new NotImplementedByExchangeError(this.id, 'getOpenOrders without symbol');
+  async getOpenOrders(
+    symbol?: string,
+    market: MarketType = 'SPOT',
+  ): Promise<Order[]> {
+    if (!symbol)
+      throw new NotImplementedByExchangeError(
+        this.id,
+        'getOpenOrders without symbol',
+      );
     if (market === 'MARGIN_CROSS') {
-      const raw = await this.binance.getAllCrossMarginOrders(symbol);
-      return raw.map((o: any) => this.mapOrder(o, symbol, market));
+      const raw = (await this.binance.getAllCrossMarginOrders(
+        symbol,
+      )) as BinanceRawOrder[];
+      return raw.map((o) => this.mapOrder(o, symbol, market));
     }
-    const raw = await this.binance.getAllOrders(symbol);
+    const raw = (await this.binance.getAllOrders(symbol)) as BinanceRawOrder[];
     return raw
-      .filter((o: any) => o.status === 'NEW' || o.status === 'PARTIALLY_FILLED')
-      .map((o: any) => this.mapOrder(o, symbol, market));
+      .filter((o) => o.status === 'NEW' || o.status === 'PARTIALLY_FILLED')
+      .map((o) => this.mapOrder(o, symbol, market));
   }
 
-  async getTrades(_symbol: string, _limit = 500, _market: MarketType = 'SPOT'): Promise<Trade[]> {
+  async getTrades(
+    _symbol: string,
+    _limit = 500,
+    _market: MarketType = 'SPOT',
+  ): Promise<Trade[]> {
     throw new NotImplementedByExchangeError(this.id, 'getTrades');
   }
 
-  subscribeTicker?(_symbol: string, _handler: (t: Ticker) => void): Promise<Unsubscribe> {
+  subscribeTicker?(
+    _symbol: string,
+    _handler: (t: Ticker) => void,
+  ): Promise<Unsubscribe> {
     throw new NotImplementedByExchangeError(this.id, 'subscribeTicker');
   }
 
@@ -283,18 +460,38 @@ export class BinanceAdapter implements IExchange {
     throw new NotImplementedByExchangeError(this.id, 'subscribeCandles');
   }
 
-  private mapOrder(raw: any, symbol: string, market: MarketType): Order {
+  private mapOrder(
+    raw: BinanceRawOrder,
+    symbol: string,
+    market: MarketType,
+  ): Order {
     const price = parseFloat(raw?.price ?? '0');
     const qty = parseFloat(raw?.origQty ?? raw?.quantity ?? '0');
     const filled = parseFloat(raw?.executedQty ?? '0');
     const cumQuote = parseFloat(raw?.cummulativeQuoteQty ?? '0');
+    // `fills` is only present on the synchronous order-creation response.
+    // getOrder()/getOpenOrders()/cancelOrder() never include it, so fee must
+    // stay `undefined` (unknown) rather than default to 0 here — callers
+    // like reconciliation.service.ts treat `fee === undefined` as "don't
+    // overwrite the recorded fee" and would otherwise persist a fabricated
+    // zero fee over a real, previously-recorded commission.
+    const fills: BinanceRawFill[] = Array.isArray(raw?.fills) ? raw.fills : [];
+    const fee = fills.length
+      ? fills.reduce(
+          (sum, fill) => sum + parseFloat(fill?.commission ?? '0'),
+          0,
+        )
+      : undefined;
+    const feeCurrency = fills.length
+      ? fills.find((fill) => fill?.commissionAsset)?.commissionAsset
+      : undefined;
     return {
       id: String(raw?.orderId ?? raw?.id ?? ''),
       clientOrderId: raw?.clientOrderId,
       exchange: this.id,
       symbol,
-      side: (raw?.side ?? 'BUY') as any,
-      type: (raw?.type ?? 'LIMIT') as any,
+      side: raw?.side ?? 'BUY',
+      type: (raw?.type ?? 'LIMIT') as Order['type'],
       status: (raw?.status ?? 'NEW') as OrderStatus,
       price,
       stopPrice: raw?.stopPrice ? parseFloat(raw.stopPrice) : undefined,
@@ -302,6 +499,8 @@ export class BinanceAdapter implements IExchange {
       filledQuantity: filled,
       averagePrice: filled > 0 ? cumQuote / filled : 0,
       quoteQuantity: cumQuote,
+      fee,
+      feeCurrency,
       createdAt: raw?.time ?? Date.now(),
       updatedAt: raw?.updateTime ?? Date.now(),
       market,
@@ -309,16 +508,18 @@ export class BinanceAdapter implements IExchange {
     };
   }
 
-  private mapPosition(raw: any, market: MarketType): Position {
+  private mapPosition(raw: BinanceRawPosition, market: MarketType): Position {
     const amt = parseFloat(raw?.positionAmt ?? '0');
     return {
-      symbol: raw?.symbol,
+      symbol: raw?.symbol ?? '',
       exchange: this.id,
       side: amt > 0 ? 'LONG' : amt < 0 ? 'SHORT' : 'FLAT',
       quantity: Math.abs(amt),
       entryPrice: parseFloat(raw?.entryPrice ?? '0'),
       markPrice: parseFloat(raw?.markPrice ?? '0'),
-      liquidationPrice: raw?.liquidationPrice ? parseFloat(raw.liquidationPrice) : undefined,
+      liquidationPrice: raw?.liquidationPrice
+        ? parseFloat(raw.liquidationPrice)
+        : undefined,
       unrealizedPnl: parseFloat(raw?.unRealizedProfit ?? '0'),
       realizedPnl: 0,
       leverage: raw?.leverage ? parseFloat(raw.leverage) : undefined,

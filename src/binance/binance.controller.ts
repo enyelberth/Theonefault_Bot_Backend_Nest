@@ -1,7 +1,32 @@
-import { Controller, Get, Post, Param, Body, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiNotFoundResponse, ApiQuery, ApiBearerAuth, ApiProperty } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiCreatedResponse,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiQuery,
+  ApiBearerAuth,
+  ApiProperty,
+  ApiBody,
+} from '@nestjs/swagger';
 import { BinanceService } from './binance.service';
-import { CreateLimitOrderDto, CreateMarketOrderDto, CreateOcoOrderDto } from './dto/create-binance.dto';
+import {
+  CreateLimitOrderDto,
+  CreateMarketOrderDto,
+  CreateOcoOrderDto,
+} from './dto/create-binance.dto';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
 import { IsNotEmpty, IsString } from 'class-validator';
 class RepayCrossMarginDto {
@@ -20,27 +45,37 @@ class RepayCrossMarginDto {
 @ApiTags('binance')
 @Controller('binance')
 export class BinanceController {
-  constructor(private readonly binanceService: BinanceService) { }
+  constructor(private readonly binanceService: BinanceService) {}
 
   @Public()
   @Get('mode')
-  @ApiOperation({ summary: 'Modo actual (PROD/TEST) + baseUrl (sin exponer secretos)' })
+  @ApiOperation({
+    summary: 'Modo actual (PROD/TEST) + baseUrl (sin exponer secretos)',
+  })
   getMode() {
     return this.binanceService.getMode();
   }
 
-  @Public()
   @Get('ping')
-  @ApiOperation({ summary: 'Test conectividad autenticada (verifica keys + firma)' })
+  @ApiOperation({
+    summary: 'Test conectividad autenticada (verifica keys + firma)',
+  })
   ping() {
     return this.binanceService.pingSigned();
   }
 
-  @Public()
   @Get('balances-public')
-  @ApiOperation({ summary: 'Balances no cero (Spot) — versión pública para dashboard' })
+  @ApiOperation({ summary: 'Balances no cero (Spot)' })
   balancesPublic() {
     return this.binanceService.getNonZeroBalances();
+  }
+
+  @Get('balances-usdt')
+  @ApiOperation({
+    summary: 'Balances Spot valorados en USDT + total de la cartera',
+  })
+  balancesInUsdt() {
+    return this.binanceService.getBalancesInUsdt();
   }
 
   @Public()
@@ -51,10 +86,10 @@ export class BinanceController {
     return this.binanceService.getSymbolPrice(symbol.toUpperCase());
   }
 
-  @Public()
   @Post('quick-sell')
   @ApiOperation({
-    summary: 'Vender cantidad de un asset por quote (market order). Confirmación requerida.',
+    summary:
+      'Vender cantidad de un asset por quote (market order). Confirmación requerida.',
   })
   async quickSell(
     @Body()
@@ -87,45 +122,145 @@ export class BinanceController {
 
   @Get('account-info')
   @ApiOperation({ summary: 'Obtener información completa de la cuenta' })
-  @ApiResponse({ status: 200, description: 'Información de la cuenta obtenida correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Información de la cuenta obtenida correctamente.',
+  })
   async getAccountInfo() {
     return this.binanceService.getAccountInfo();
   }
 
   @Get('account-balance')
   @ApiOperation({ summary: 'Obtener información del balance de la cuenta' })
-  @ApiResponse({ status: 200, description: 'Información del balance de la cuenta obtenida correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Información del balance de la cuenta obtenida correctamente.',
+  })
   async getAccountBalance() {
     return this.binanceService.getNonZeroBalances();
   }
 
   @Get('balance/spot')
   @ApiOperation({ summary: 'Obtener saldo de fondos Spot' })
-  @ApiResponse({ status: 200, description: 'Saldo spot obtenido correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Saldo spot obtenido correctamente.',
+  })
   async getSpotBalances() {
     return this.binanceService.getNonZeroBalances();
   }
 
   @Get('balance/margin/cross')
   @ApiOperation({ summary: 'Obtener saldo de margen cruzado' })
-  @ApiResponse({ status: 200, description: 'Saldo de margin cruzado obtenido correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Saldo de margin cruzado obtenido correctamente.',
+  })
   async getCrossMarginBalances() {
     return this.binanceService.getCrossMarginLoans();
   }
 
   @Get('balance/margin/isolated')
   @ApiOperation({ summary: 'Obtener saldo de margen aislado' })
-  @ApiResponse({ status: 200, description: 'Saldo de margin aislado obtenido correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Saldo de margin aislado obtenido correctamente.',
+  })
   async getIsolatedMarginBalances() {
     return this.binanceService.getIsolatedMarginBalances();
   }
 
+  @Get('orders/open/spot')
+  @ApiOperation({ summary: 'Órdenes abiertas Spot (todos los símbolos)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes abiertas spot obtenidas correctamente.',
+  })
+  async getSpotOpenOrders() {
+    return this.binanceService.getSpotOpenOrders();
+  }
+
+  @Get('orders/open/margin-cross')
+  @ApiOperation({
+    summary: 'Órdenes abiertas Margin Cruzado (todos los símbolos)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes abiertas margin cruzado obtenidas correctamente.',
+  })
+  async getCrossMarginOpenOrdersAll() {
+    return this.binanceService.getCrossMarginOpenOrders();
+  }
+
+  @Get('orders/open/margin-isolated')
+  @ApiOperation({
+    summary:
+      'Órdenes abiertas Margin Aislado (todos los pares con posición aislada)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes abiertas margin aislado obtenidas correctamente.',
+  })
+  async getIsolatedMarginOpenOrdersAll() {
+    const pairs = await this.binanceService.getIsolatedMarginBalances();
+    const symbols = pairs.map((pair: any) => pair.symbol).filter(Boolean);
+    if (!symbols.length) return [];
+    return this.binanceService.getIsolatedMarginOpenOrdersForSymbols(symbols);
+  }
+
+  @Post('orders/cancel/:symbol/:orderId')
+  @ApiOperation({ summary: 'Cancelar una orden Spot específica' })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiParam({ name: 'orderId', type: Number, description: 'ID de la orden' })
+  @ApiResponse({
+    status: 200,
+    description: 'Orden spot cancelada correctamente.',
+  })
+  async cancelSpotOrder(
+    @Param('symbol') symbol: string,
+    @Param('orderId', ParseIntPipe) orderId: number,
+  ) {
+    return this.binanceService.cancelOrder(symbol, orderId);
+  }
+
+  @Post('margin-isolated/order/cancel/:symbol/:orderId')
+  @ApiOperation({ summary: 'Cancelar una orden margin aislado' })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiParam({ name: 'orderId', type: Number, description: 'ID de la orden' })
+  @ApiResponse({
+    status: 200,
+    description: 'Orden margin aislado cancelada correctamente.',
+  })
+  async cancelIsolatedMarginOrder(
+    @Param('symbol') symbol: string,
+    @Param('orderId', ParseIntPipe) orderId: number,
+  ) {
+    return this.binanceService.cancelIsolatedMarginOrder(symbol, orderId);
+  }
+
   @Post('order/limit')
   @ApiOperation({ summary: 'Crear una orden limit' })
-  @ApiCreatedResponse({ description: 'Orden limit creada correctamente.', type: CreateLimitOrderDto })
+  @ApiCreatedResponse({
+    description: 'Orden limit creada correctamente.',
+    type: CreateLimitOrderDto,
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createLimitOrder(@Body() dto: CreateLimitOrderDto) {
-    return this.binanceService.createLimitOrder(dto.symbol, dto.side, dto.quantity, dto.price, dto.timeInForce);
+    return this.binanceService.createLimitOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+      dto.price,
+      dto.timeInForce,
+    );
   }
 
   @Post('order/market')
@@ -133,7 +268,11 @@ export class BinanceController {
   @ApiCreatedResponse({ description: 'Orden market creada correctamente.' })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createMarketOrder(@Body() dto: CreateMarketOrderDto) {
-    return this.binanceService.createMarketOrder(dto.symbol, dto.side, dto.quantity);
+    return this.binanceService.createMarketOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+    );
   }
 
   @Post('order/oco')
@@ -151,9 +290,11 @@ export class BinanceController {
       dto.stopLimitTimeInForce,
     );
   }
-   @Post('order/oco/cross-margin')
+  @Post('order/oco/cross-margin')
   @ApiOperation({ summary: 'Crear orden OCO en margin cruzado' })
-  @ApiCreatedResponse({ description: 'Orden OCO margin cruzado creada correctamente.' })
+  @ApiCreatedResponse({
+    description: 'Orden OCO margin cruzado creada correctamente.',
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createCrossMarginOcoOrder(@Body() dto: CreateOcoOrderDto) {
     return this.binanceService.createCrossMarginOcoOrder(
@@ -168,66 +309,131 @@ export class BinanceController {
   }
   @Post('order/limit/cross')
   @ApiOperation({ summary: 'Crear una orden limit en margin cruzado' })
-  @ApiCreatedResponse({ description: 'Orden limit margin cruzado creada correctamente.', type: CreateLimitOrderDto })
+  @ApiCreatedResponse({
+    description: 'Orden limit margin cruzado creada correctamente.',
+    type: CreateLimitOrderDto,
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createCrossMarginLimitOrder(@Body() dto: CreateLimitOrderDto) {
-    console.log('Received DTO:', dto);
-    return this.binanceService.createCrossMarginLimitOrder(dto.symbol, dto.side, dto.quantity, dto.price, dto.timeInForce);
+    return this.binanceService.createCrossMarginLimitOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+      dto.price,
+      dto.timeInForce,
+    );
   }
 
   @Post('order/market/cross')
   @ApiOperation({ summary: 'Crear una orden market en margin cruzado' })
-  @ApiCreatedResponse({ description: 'Orden market margin cruzado creada correctamente.' })
+  @ApiCreatedResponse({
+    description: 'Orden market margin cruzado creada correctamente.',
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createCrossMarginMarketOrder(@Body() dto: CreateMarketOrderDto) {
-    return this.binanceService.createCrossMarginMarketOrder(dto.symbol, dto.side, dto.quantity);
+    return this.binanceService.createCrossMarginMarketOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+    );
   }
 
   @Post('order/limit/isolated')
   @ApiOperation({ summary: 'Crear una orden limit en margin aislado' })
-  @ApiCreatedResponse({ description: 'Orden limit margin aislado creada correctamente.', type: CreateLimitOrderDto })
+  @ApiCreatedResponse({
+    description: 'Orden limit margin aislado creada correctamente.',
+    type: CreateLimitOrderDto,
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createIsolatedMarginLimitOrder(@Body() dto: CreateLimitOrderDto) {
-    return this.binanceService.createIsolatedMarginLimitOrder(dto.symbol, dto.side, dto.quantity, dto.price, dto.timeInForce);
+    return this.binanceService.createIsolatedMarginLimitOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+      dto.price,
+      dto.timeInForce,
+    );
   }
 
   @Post('order/market/isolated')
   @ApiOperation({ summary: 'Crear una orden market en margin aislado' })
-  @ApiCreatedResponse({ description: 'Orden market margin aislado creada correctamente.' })
+  @ApiCreatedResponse({
+    description: 'Orden market margin aislado creada correctamente.',
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async createIsolatedMarginMarketOrder(@Body() dto: CreateMarketOrderDto) {
-    return this.binanceService.createIsolatedMarginMarketOrder(dto.symbol, dto.side, dto.quantity);
+    return this.binanceService.createIsolatedMarginMarketOrder(
+      dto.symbol,
+      dto.side,
+      dto.quantity,
+    );
   }
 
   @Get('order/:symbol/:orderId')
   @ApiOperation({ summary: 'Consultar estado de una orden' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
   @ApiParam({ name: 'orderId', type: Number, description: 'ID de la orden' })
-  @ApiResponse({ status: 200, description: 'Estado de la orden obtenido correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado de la orden obtenido correctamente.',
+  })
   @ApiNotFoundResponse({ description: 'Orden no encontrada.' })
   async getOrderStatus(
     @Param('symbol') symbol: string,
-    @Param('orderId', ParseIntPipe) orderId: number
+    @Param('orderId', ParseIntPipe) orderId: number,
   ) {
     return this.binanceService.checkOrderStatus(symbol, orderId);
   }
   @Post('margin-cross/orders/cancel/:symbol')
-  @ApiOperation({ summary: 'Cancelar todas las órdenes margin cruzado abiertas para un símbolo y lado' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
-  @ApiQuery({ name: 'side', required: true, enum: ['BUY', 'SELL'], description: 'Lado de la orden a cancelar: BUY o SELL' })
-  @ApiResponse({ status: 200, description: 'Órdenes margin cruzado canceladas correctamente.' })
+  @ApiOperation({
+    summary:
+      'Cancelar todas las órdenes margin cruzado abiertas para un símbolo y lado',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiQuery({
+    name: 'side',
+    required: true,
+    enum: ['BUY', 'SELL'],
+    description: 'Lado de la orden a cancelar: BUY o SELL',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes margin cruzado canceladas correctamente.',
+  })
   async cancelAllCrossMarginOrdersBySide(
     @Param('symbol') symbol: string,
-    @Query('side') side: 'BUY' | 'SELL'
+    @Query('side') side: 'BUY' | 'SELL',
   ) {
     return this.binanceService.cancelAllCrossMarginOrdersBySide(symbol, side);
   }
 
   @Get('orders/:symbol')
   @ApiOperation({ summary: 'Obtener todas las órdenes de un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par, ej. BTCUSDT' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Cantidad máxima de órdenes a obtener' })
-  @ApiQuery({ name: 'fromId', required: false, type: Number, description: 'ID desde donde iniciar la búsqueda' })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par, ej. BTCUSDT',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Cantidad máxima de órdenes a obtener',
+  })
+  @ApiQuery({
+    name: 'fromId',
+    required: false,
+    type: Number,
+    description: 'ID desde donde iniciar la búsqueda',
+  })
   @ApiResponse({ status: 200, description: 'Órdenes obtenidas correctamente.' })
   async getAllOrders(
     @Param('symbol') symbol: string,
@@ -238,34 +444,71 @@ export class BinanceController {
   }
 
   @Post('orders/cancel-all/:symbol')
-  @ApiOperation({ summary: 'Cancelar todas las órdenes abiertas de un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par, ej. LINKUSDT' })
-  @ApiResponse({ status: 200, description: 'Órdenes canceladas correctamente.' })
+  @ApiOperation({
+    summary: 'Cancelar todas las órdenes abiertas de un símbolo',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par, ej. LINKUSDT',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes canceladas correctamente.',
+  })
   async cancelAllOrders(@Param('symbol') symbol: string) {
     return this.binanceService.cancelAllOrders(symbol);
   }
 
-
-
   @Get('margin-cross/orders/:symbol')
-  @ApiOperation({ summary: 'Obtener todas las órdenes margin cruzado para un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Límite máximo de órdenes a obtener' })
-  @ApiQuery({ name: 'fromId', required: false, type: Number, description: 'ID para paginación' })
-  @ApiResponse({ status: 200, description: 'Órdenes margin cruzado obtenidas correctamente.' })
+  @ApiOperation({
+    summary: 'Obtener todas las órdenes margin cruzado para un símbolo',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Límite máximo de órdenes a obtener',
+  })
+  @ApiQuery({
+    name: 'fromId',
+    required: false,
+    type: Number,
+    description: 'ID para paginación',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes margin cruzado obtenidas correctamente.',
+  })
   async getAllCrossMarginOrders(
     @Param('symbol') symbol: string,
     @Query('limit') limit?: number,
     @Query('fromId') fromId?: number,
   ) {
-    return this.binanceService.getAllCrossMarginOrders(symbol, limit ?? 500, fromId);
+    return this.binanceService.getAllCrossMarginOrders(
+      symbol,
+      limit ?? 500,
+      fromId,
+    );
   }
 
   @Get('margin-cross/order/:symbol/:orderId')
   @ApiOperation({ summary: 'Consultar una orden margin cruzado específica' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
   @ApiParam({ name: 'orderId', type: Number, description: 'ID de la orden' })
-  @ApiResponse({ status: 200, description: 'Orden margin cruzado obtenida correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Orden margin cruzado obtenida correctamente.',
+  })
   async getCrossMarginOrderStatus(
     @Param('symbol') symbol: string,
     @Param('orderId', ParseIntPipe) orderId: number,
@@ -274,90 +517,193 @@ export class BinanceController {
   }
 
   @Post('margin-cross/orders/cancel-all/:symbol')
-  @ApiOperation({ summary: 'Cancelar todas las órdenes margin cruzado abiertas para un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
-  @ApiResponse({ status: 200, description: 'Órdenes margin cruzado canceladas correctamente.' })
+  @ApiOperation({
+    summary:
+      'Cancelar todas las órdenes margin cruzado abiertas para un símbolo',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Órdenes margin cruzado canceladas correctamente.',
+  })
   async cancelAllCrossMarginOrders(@Param('symbol') symbol: string) {
     return this.binanceService.cancelAllCrossMarginOrders(symbol);
   }
   @Post('margin-cross/order/cancel/:symbol/:orderId')
   @ApiOperation({ summary: 'Cancelar una orden margin cruzado' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
   @ApiParam({ name: 'orderId', type: Number, description: 'ID de la orden' })
-  @ApiResponse({ status: 200, description: 'Orden margin cruzado cancelada correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Orden margin cruzado cancelada correctamente.',
+  })
   async cancelCrossMarginOrder(
     @Param('symbol') symbol: string,
-    @Param('orderId', ParseIntPipe) orderId: number
+    @Param('orderId', ParseIntPipe) orderId: number,
   ) {
     return this.binanceService.cancelCrossMarginOrder(symbol, orderId);
   }
-    @Get('margin-cross/positions')
-  @ApiOperation({ summary: 'Obtener todas las posiciones margin cruzado con ganancia/pérdida' })
-  @ApiResponse({ status: 200, description: 'Posiciones margin cruzado obtenidas correctamente.' })
+  @Get('margin-cross/positions')
+  @ApiOperation({
+    summary: 'Obtener todas las posiciones margin cruzado con ganancia/pérdida',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Posiciones margin cruzado obtenidas correctamente.',
+  })
   async getCrossMarginPositions() {
     return this.binanceService.getCrossMarginPositions();
   }
 
   @Get('margin-cross/position/:symbol')
-  @ApiOperation({ summary: 'Obtener posición margin cruzado y ganancia/pérdida no realizada para un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
-  @ApiResponse({ status: 200, description: 'Posición margin cruzado obtenida correctamente.' })
-  async getCrossMarginPosition(
-    @Param('symbol') symbol: string
-  ) {
+  @ApiOperation({
+    summary:
+      'Obtener posición margin cruzado y ganancia/pérdida no realizada para un símbolo',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Posición margin cruzado obtenida correctamente.',
+  })
+  async getCrossMarginPosition(@Param('symbol') symbol: string) {
     return this.binanceService.getCrossMarginPosition(symbol);
   }
 
   @Get('margin-cross/unrealized-profit/:symbol')
-  @ApiOperation({ summary: 'Obtener ganancia o pérdida no realizada en margin cruzado para un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
-  @ApiResponse({ status: 200, description: 'Ganancia o pérdida margin cruzado obtenida correctamente.' })
-  async getCrossMarginUnrealizedProfit(
-    @Param('symbol') symbol: string
-  ) {
+  @ApiOperation({
+    summary:
+      'Obtener ganancia o pérdida no realizada en margin cruzado para un símbolo',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Ganancia o pérdida margin cruzado obtenida correctamente.',
+  })
+  async getCrossMarginUnrealizedProfit(@Param('symbol') symbol: string) {
     return this.binanceService.getCrossMarginUnrealizedProfit(symbol);
   }
 
   @Get('margin-cross/profit-percent/:symbol')
-  @ApiOperation({ summary: 'Obtener ganancia o pérdida en porcentaje en margin cruzado para un símbolo' })
-  @ApiParam({ name: 'symbol', type: String, description: 'Símbolo del par (ej. BTCUSDT)' })
-  @ApiResponse({ status: 200, description: 'Porcentaje de ganancia o pérdida margin cruzado obtenido correctamente.' })
-  async getCrossMarginProfitPercent(
-    @Param('symbol') symbol: string
-  ) {
+  @ApiOperation({
+    summary:
+      'Obtener ganancia o pérdida en porcentaje en margin cruzado para un símbolo',
+  })
+  @ApiParam({
+    name: 'symbol',
+    type: String,
+    description: 'Símbolo del par (ej. BTCUSDT)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Porcentaje de ganancia o pérdida margin cruzado obtenido correctamente.',
+  })
+  async getCrossMarginProfitPercent(@Param('symbol') symbol: string) {
     return this.binanceService.getCrossMarginProfitPercent(symbol);
   }
-    @Get('margin-cross/summary')
-  @ApiOperation({ summary: 'Obtener resumen de margin cruzado: Nivel de margen, ganancias y pérdidas' })
-  @ApiResponse({ status: 200, description: 'Resumen de margin cruzado obtenido correctamente.' })
+  @Get('margin-cross/summary')
+  @ApiOperation({
+    summary:
+      'Obtener resumen de margin cruzado: Nivel de margen, ganancias y pérdidas',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen de margin cruzado obtenido correctamente.',
+  })
   async getCrossMarginSummary() {
     return this.binanceService.calculateCrossMarginSummary();
   }
 
   @Get('margin-cross/pnl-risk-summary')
-@ApiOperation({ summary: 'Obtener Resumen de PNL, Nivel de Margen y Estado de Liquidación/Riesgo de la cuenta de Margin Cruzado.' })
-@ApiResponse({ status: 200, description: 'Resumen de PNL y riesgo de liquidación obtenido correctamente.' })
-async getCrossMarginPNLSummary() {
-  return this.binanceService.getCrossMarginPNLSummary();
-}
-    @Get('margin-cross/saldo')
-@ApiOperation({ summary: 'Slado' })
-@ApiResponse({ status: 200, description: 'Saldo' })
-async getCrossMarginSaldo() {
-  return this.binanceService.getCrossMarginSaldo();
-}
-    @Get('margin-cross/liquid')
-@ApiOperation({ summary: 'Slado' })
-@ApiResponse({ status: 200, description: 'Saldo' })
-async getCrossMarginLiqui() {
-  return this.binanceService.liquiCrossMagin();
-}
+  @ApiOperation({
+    summary:
+      'Obtener Resumen de PNL, Nivel de Margen y Estado de Liquidación/Riesgo de la cuenta de Margin Cruzado.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Resumen de PNL y riesgo de liquidación obtenido correctamente.',
+  })
+  async getCrossMarginPNLSummary() {
+    return this.binanceService.getCrossMarginPNLSummary();
+  }
+  @Get('margin-cross/saldo')
+  @ApiOperation({ summary: 'Slado' })
+  @ApiResponse({ status: 200, description: 'Saldo' })
+  async getCrossMarginSaldo() {
+    return this.binanceService.getCrossMarginSaldo();
+  }
+  @Get('margin-cross/liquid')
+  @ApiOperation({ summary: 'Slado' })
+  @ApiResponse({ status: 200, description: 'Saldo' })
+  async getCrossMarginLiqui() {
+    return this.binanceService.liquiCrossMagin();
+  }
   @Post('margin-cross/repay')
   @ApiOperation({ summary: 'Repagar préstamo margin cruzado' })
-  @ApiResponse({ status: 200, description: 'Préstamo margin cruzado repagado correctamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Préstamo margin cruzado repagado correctamente.',
+  })
   @ApiBadRequestResponse({ description: 'Parámetros inválidos.' })
   async repayCrossMargin(@Body() dto: RepayCrossMarginDto) {
     return this.binanceService.repayCrossMargin(dto.asset, dto.amount);
   }
-  
+
+  @Get('fee/bnb-burn')
+  @ApiOperation({ summary: 'Estado del pago de fees en BNB (spot + interest)' })
+  @ApiResponse({ status: 200, description: 'Estado obtenido correctamente.' })
+  async getBnbBurnStatus() {
+    const status = await this.binanceService.getBnbBurnStatus();
+    const balance = await this.binanceService.getBnbBalance();
+    return { ...status, bnbBalance: balance };
+  }
+
+  @Post('fee/bnb-burn')
+  @ApiOperation({
+    summary:
+      'Activar/desactivar pago de fees en BNB (-25% spot, -10% interest)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['spotBNBBurn', 'interestBNBBurn'],
+      properties: {
+        spotBNBBurn: { type: 'boolean', example: true },
+        interestBNBBurn: { type: 'boolean', example: true },
+      },
+    },
+  })
+  async setBnbBurn(
+    @Body() body: { spotBNBBurn: boolean; interestBNBBurn: boolean },
+  ) {
+    if (
+      typeof body?.spotBNBBurn !== 'boolean' ||
+      typeof body?.interestBNBBurn !== 'boolean'
+    ) {
+      throw new Error(
+        'spotBNBBurn e interestBNBBurn son obligatorios (boolean)',
+      );
+    }
+    return this.binanceService.setBnbBurn(
+      body.spotBNBBurn,
+      body.interestBNBBurn,
+    );
+  }
 }

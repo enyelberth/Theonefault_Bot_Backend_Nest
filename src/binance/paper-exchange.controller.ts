@@ -1,18 +1,26 @@
-import { Controller, Get, Query, Delete, Param } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Query, Delete } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PrismaClient } from '@prisma/client';
-import { Public } from 'src/authA/auth.guard';
 
+@ApiBearerAuth('BearerAuth')
 @ApiTags('paper-exchange')
 @Controller('paper')
 export class PaperExchangeController {
   constructor(private readonly prisma: PrismaClient) {}
 
-  @Public()
   @Get('orders')
   @ApiOperation({ summary: 'Listar órdenes simuladas' })
   @ApiQuery({ name: 'symbol', required: false })
-  @ApiQuery({ name: 'status', required: false, enum: ['OPEN', 'FILLED', 'CANCELED'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['OPEN', 'FILLED', 'CANCELED'],
+  })
   @ApiQuery({ name: 'botRunId', required: false, type: 'number' })
   @ApiQuery({ name: 'limit', required: false, type: 'number' })
   async listOrders(
@@ -32,7 +40,6 @@ export class PaperExchangeController {
     });
   }
 
-  @Public()
   @Get('orders/summary')
   @ApiOperation({ summary: 'Resumen paper orders por status' })
   async summary() {
@@ -44,7 +51,6 @@ export class PaperExchangeController {
     return { open, filled, canceled, total: open + filled + canceled };
   }
 
-  @Public()
   @Delete('orders/all')
   @ApiOperation({ summary: 'Borrar todas las paper orders (reset)' })
   async wipeAll() {

@@ -6,7 +6,10 @@ export interface PaperAssetBalance {
 
 export type PaperBalances = Record<string, PaperAssetBalance>;
 
-export function ensureBalance(balances: PaperBalances, asset: string): PaperAssetBalance {
+export function ensureBalance(
+  balances: PaperBalances,
+  asset: string,
+): PaperAssetBalance {
   if (!balances[asset]) balances[asset] = { free: 0, locked: 0 };
   return balances[asset];
 }

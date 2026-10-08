@@ -12,7 +12,12 @@ import type {
   Trade,
 } from './domain';
 
-export type ExchangeId = 'binance' | 'binance-paper' | 'bybit' | 'okx' | 'kraken';
+export type ExchangeId =
+  | 'binance'
+  | 'binance-paper'
+  | 'bybit'
+  | 'okx'
+  | 'kraken';
 
 export interface ExchangeCapabilities {
   spot: boolean;
@@ -52,13 +57,28 @@ export interface IExchange {
   getPosition(symbol: string, market?: MarketType): Promise<Position | null>;
 
   placeOrder(params: PlaceOrderParams): Promise<Order>;
-  cancelOrder(symbol: string, orderId: string, market?: MarketType): Promise<Order>;
+  cancelOrder(
+    symbol: string,
+    orderId: string,
+    market?: MarketType,
+  ): Promise<Order>;
   cancelAllOrders(symbol: string, market?: MarketType): Promise<number>;
-  getOrder(symbol: string, orderId: string, market?: MarketType): Promise<Order>;
+  getOrder(
+    symbol: string,
+    orderId: string,
+    market?: MarketType,
+  ): Promise<Order>;
   getOpenOrders(symbol?: string, market?: MarketType): Promise<Order[]>;
-  getTrades(symbol: string, limit?: number, market?: MarketType): Promise<Trade[]>;
+  getTrades(
+    symbol: string,
+    limit?: number,
+    market?: MarketType,
+  ): Promise<Trade[]>;
 
-  subscribeTicker?(symbol: string, handler: (ticker: Ticker) => void): Promise<Unsubscribe>;
+  subscribeTicker?(
+    symbol: string,
+    handler: (ticker: Ticker) => void,
+  ): Promise<Unsubscribe>;
   subscribeCandles?(
     symbol: string,
     timeframe: Timeframe,

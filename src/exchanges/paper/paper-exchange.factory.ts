@@ -15,7 +15,11 @@ export class PaperExchangeFactory {
   get(accountId: number): PaperExchangeAdapter {
     const cached = this.cache.get(accountId);
     if (cached) return cached;
-    const adapter = new PaperExchangeAdapter(accountId, this.reference, this.accounts);
+    const adapter = new PaperExchangeAdapter(
+      accountId,
+      this.reference,
+      this.accounts,
+    );
     this.cache.set(accountId, adapter);
     return adapter;
   }

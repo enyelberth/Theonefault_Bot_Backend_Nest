@@ -33,13 +33,16 @@ export class PaperAccountService {
         quoteAsset,
         initialQuote: new Prisma.Decimal(input.initialQuote),
         balances: balances as unknown as Prisma.InputJsonValue,
-        feesConfig: (input.fees ?? DEFAULT_FEES) as unknown as Prisma.InputJsonValue,
+        feesConfig: (input.fees ??
+          DEFAULT_FEES) as unknown as Prisma.InputJsonValue,
       },
     });
   }
 
   async get(id: number): Promise<PaperAccount> {
-    const account = await this.prisma.paperAccount.findUnique({ where: { id } });
+    const account = await this.prisma.paperAccount.findUnique({
+      where: { id },
+    });
     if (!account) throw new NotFoundException(`PaperAccount ${id} not found`);
     return account;
   }
@@ -51,13 +54,18 @@ export class PaperAccountService {
     });
   }
 
-  async update(id: number, input: UpdatePaperAccountInput): Promise<PaperAccount> {
+  async update(
+    id: number,
+    input: UpdatePaperAccountInput,
+  ): Promise<PaperAccount> {
     return this.prisma.paperAccount.update({
       where: { id },
       data: {
         name: input.name,
         active: input.active,
-        feesConfig: input.fees ? (input.fees as unknown as Prisma.InputJsonValue) : undefined,
+        feesConfig: input.fees
+          ? (input.fees as unknown as Prisma.InputJsonValue)
+          : undefined,
       },
     });
   }
@@ -93,7 +101,10 @@ export class PaperAccountService {
   }
 
   readFees(account: PaperAccount): FeesConfig {
-    return { ...DEFAULT_FEES, ...((account.feesConfig ?? {}) as Partial<FeesConfig>) };
+    return {
+      ...DEFAULT_FEES,
+      ...((account.feesConfig ?? {}) as Partial<FeesConfig>),
+    };
   }
 
   async persistBalances(id: number, balances: PaperBalances): Promise<void> {
