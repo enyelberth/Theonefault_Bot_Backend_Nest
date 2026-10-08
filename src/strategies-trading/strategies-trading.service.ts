@@ -18,7 +18,7 @@ import { PrismaClient, StrategyType, TradingStrategy } from '@prisma/client';
 export class StrategiesTradingService {
   private readonly logger = new Logger(StrategiesTradingService.name);
 
-  constructor(private readonly prisma: PrismaClient) { }
+  constructor(private readonly prisma: PrismaClient) {}
 
   // Trading Strategy
   async createStrategies(
@@ -106,7 +106,9 @@ export class StrategiesTradingService {
     try {
       const types = await this.prisma.strategyType.findMany();
       if (types.length === 0) {
-        throw new BadRequestException('No hay tipos de estrategias disponibles.');
+        throw new BadRequestException(
+          'No hay tipos de estrategias disponibles.',
+        );
       }
       return types;
     } catch (error) {

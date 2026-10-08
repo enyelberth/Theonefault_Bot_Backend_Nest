@@ -7,18 +7,18 @@ import { PnlTracker } from '../bot/pnl-tracker';
 import { TradingStrategy } from './trading-strategy.interface';
 
 export interface BollingerRsiConfig {
-  interval: string;         // ej "1m"
-  bbPeriod?: number;        // 20
-  bbK?: number;             // 2
-  rsiPeriod?: number;       // 14
-  rsiOversold?: number;     // 30
-  rsiOverbought?: number;   // 70
-  trendFast?: number;       // 20
-  trendSlow?: number;       // 50
+  interval: string; // ej "1m"
+  bbPeriod?: number; // 20
+  bbK?: number; // 2
+  rsiPeriod?: number; // 14
+  rsiOversold?: number; // 30
+  rsiOverbought?: number; // 70
+  trendFast?: number; // 20
+  trendSlow?: number; // 50
   useTrendFilter?: boolean; // true: solo entra en tendencia coherente
   tradeQuantity: number;
-  profitMargin: number;     // fraccion, ej 0.003 = 0.3%
-  stopLossMargin?: number;  // fraccion
+  profitMargin: number; // fraccion, ej 0.003 = 0.3%
+  stopLossMargin?: number; // fraccion
   loopSleepMs?: number;
 }
 
@@ -31,7 +31,9 @@ interface OpenPosition {
 }
 
 @Injectable()
-export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig> {
+export class BollingerRsiStrategy
+  implements TradingStrategy<BollingerRsiConfig>
+{
   id: string;
   symbol: string;
   config: BollingerRsiConfig;
@@ -88,7 +90,9 @@ export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig>
         const price = parseFloat(priceResp.price);
 
         if (!bb || rsi === null) {
-          this.logger.warn(`Indicators not ready for ${this.symbol}. Sleeping.`);
+          this.logger.warn(
+            `Indicators not ready for ${this.symbol}. Sleeping.`,
+          );
           await this.sleep(sleepMs);
           continue;
         }
@@ -146,7 +150,12 @@ export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig>
         openedAt: new Date(),
         externalOrderId: String(order.orderId),
       };
-      this.pnl.openLeg(++this.legCounter, price, this.config.tradeQuantity, OrderSide.BUY);
+      this.pnl.openLeg(
+        ++this.legCounter,
+        price,
+        this.config.tradeQuantity,
+        OrderSide.BUY,
+      );
       this.logger.log(`OPEN LONG ${this.symbol} @ ${price}`);
     } catch (err) {
       this.logger.error('openLong err', err as Error);
@@ -170,7 +179,12 @@ export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig>
         openedAt: new Date(),
         externalOrderId: String(order.orderId),
       };
-      this.pnl.openLeg(++this.legCounter, price, this.config.tradeQuantity, OrderSide.SELL);
+      this.pnl.openLeg(
+        ++this.legCounter,
+        price,
+        this.config.tradeQuantity,
+        OrderSide.SELL,
+      );
       this.logger.log(`OPEN SHORT ${this.symbol} @ ${price}`);
     } catch (err) {
       this.logger.error('openShort err', err as Error);
@@ -198,13 +212,27 @@ export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig>
     let reason = '';
 
     if (isLong) {
-      if (price >= profitTarget) { shouldExit = true; reason = 'takeProfit'; }
-      else if (stopPrice && price <= stopPrice) { shouldExit = true; reason = 'stopLoss'; }
-      else if (price >= bb.middle && rsi >= 55) { shouldExit = true; reason = 'meanRevert'; }
+      if (price >= profitTarget) {
+        shouldExit = true;
+        reason = 'takeProfit';
+      } else if (stopPrice && price <= stopPrice) {
+        shouldExit = true;
+        reason = 'stopLoss';
+      } else if (price >= bb.middle && rsi >= 55) {
+        shouldExit = true;
+        reason = 'meanRevert';
+      }
     } else {
-      if (price <= profitTarget) { shouldExit = true; reason = 'takeProfit'; }
-      else if (stopPrice && price >= stopPrice) { shouldExit = true; reason = 'stopLoss'; }
-      else if (price <= bb.middle && rsi <= 45) { shouldExit = true; reason = 'meanRevert'; }
+      if (price <= profitTarget) {
+        shouldExit = true;
+        reason = 'takeProfit';
+      } else if (stopPrice && price >= stopPrice) {
+        shouldExit = true;
+        reason = 'stopLoss';
+      } else if (price <= bb.middle && rsi <= 45) {
+        shouldExit = true;
+        reason = 'meanRevert';
+      }
     }
 
     if (shouldExit) {
@@ -215,7 +243,8 @@ export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig>
   private async closePosition(price: number, reason: string) {
     if (!this.position) return;
     const pos = this.position;
-    const closingSide: 'BUY' | 'SELL' = pos.side === OrderSide.BUY ? 'SELL' : 'BUY';
+    const closingSide: 'BUY' | 'SELL' =
+      pos.side === OrderSide.BUY ? 'SELL' : 'BUY';
 
     try {
       const order = await this.binanceService.createLimitOrder(
@@ -226,7 +255,9 @@ export class BollingerRsiStrategy implements TradingStrategy<BollingerRsiConfig>
         'GTC',
       );
       await this.pnl.closeLeg(this.legCounter, price, order.orderId);
-      this.logger.log(`CLOSE ${pos.side} ${this.symbol} @ ${price} (${reason})`);
+      this.logger.log(
+        `CLOSE ${pos.side} ${this.symbol} @ ${price} (${reason})`,
+      );
       this.position = null;
     } catch (err) {
       this.logger.error('closePosition err', err as Error);

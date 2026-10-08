@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RsiStrategyConfig, TradingStrategy } from './trading-strategy.interface';
+import {
+  RsiStrategyConfig,
+  TradingStrategy,
+} from './trading-strategy.interface';
 import { BinanceService } from '../binance/binance.service';
 import { StrategyPnlReporter } from '../bot/strategy-pnl-reporter';
 import { OrderSide } from '@prisma/client';
@@ -13,7 +16,7 @@ interface Order {
 
 @Injectable()
 export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
-  id:string;
+  id: string;
   symbol: string;
   config: RsiStrategyConfig;
 
@@ -41,26 +44,38 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
     this.pnlReporter = reporter;
   }
 
+  async stop(): Promise<void> {
+    this.isRunning = false;
+  }
+
   async run() {
     this.logInfo(`Iniciando estrategia RSI en ${this.symbol}`);
 
     this.tickSize = await this.binanceService.getSymbolTickSize(this.symbol);
 
-    let candles = await this.binanceService.getCandles(this.symbol, '1m', this.config.rsiPeriod + 1);
-    let closePrices = candles.map(c => parseFloat(c.close));
+    const candles = await this.binanceService.getCandles(
+      this.symbol,
+      '1m',
+      this.config.rsiPeriod + 1,
+    );
+    const closePrices = candles.map((c) => parseFloat(c.close));
 
     while (this.isRunning) {
       try {
         const rsi = this.calculateRSI(closePrices, this.config.rsiPeriod);
         this.logInfo(`RSI: ${rsi.toFixed(2)}`);
 
-        const currentPriceResp = await this.binanceService.getSymbolPrice(this.symbol);
+        const currentPriceResp = await this.binanceService.getSymbolPrice(
+          this.symbol,
+        );
         const currentPrice = parseFloat(currentPriceResp.price);
 
         await this.manageOrdersTimeout();
 
         if (!this.inPosition && rsi <= this.config.oversoldThreshold) {
-          this.logInfo(`RSI ${rsi.toFixed(2)} indica compra, colocando órdenes escalonadas por debajo del precio actual`);
+          this.logInfo(
+            `RSI ${rsi.toFixed(2)} indica compra, colocando órdenes escalonadas por debajo del precio actual`,
+          );
           await this.placeBuyOrders(currentPrice);
           this.inPosition = true;
           this.entryPrice = currentPrice;
@@ -75,9 +90,12 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
             this.logError('No hay precio de entrada guardado para la venta');
           }
         } else if (this.inPosition) {
-          const stopLossTriggerPrice = this.entryPrice! * (1 - (this.config.stopLossMargin ?? 0) / 100);
+          const stopLossTriggerPrice =
+            this.entryPrice! * (1 - (this.config.stopLossMargin ?? 0) / 100);
           if (currentPrice <= stopLossTriggerPrice) {
-            this.logInfo(`Precio bajo stop loss (${stopLossTriggerPrice}), vendiendo para limitar pérdida.`);
+            this.logInfo(
+              `Precio bajo stop loss (${stopLossTriggerPrice}), vendiendo para limitar pérdida.`,
+            );
 
             if (this.entryPrice) {
               const sellOrderId = await this.placeSellOrder(this.entryPrice);
@@ -99,7 +117,8 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
         const lastCandle = await this.getLastCandleClose();
         if (lastCandle !== null) {
           closePrices.push(lastCandle);
-          if (closePrices.length > this.config.rsiPeriod + 1) closePrices.shift();
+          if (closePrices.length > this.config.rsiPeriod + 1)
+            closePrices.shift();
         }
 
         const sleepMs = this.config.minSleepMs || 15000;
@@ -119,7 +138,7 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
 
     for (let i = 1; i <= numOrders; i++) {
       const priceOffsetPercent = this.config.profitMargin || 0;
-      let rawBuyPrice = priceBase * (1 - priceOffsetPercent / 100);
+      const rawBuyPrice = priceBase * (1 - priceOffsetPercent / 100);
       const adjustedBuyPrice = this.adjustPriceToTickSize(rawBuyPrice);
       const quantity = quantityPerOrder.toString();
 
@@ -156,7 +175,7 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
 
     const quantity = this.config.tradeQuantity.toString();
     const priceOffsetPercent = this.config.profitMargin || 0;
-    let rawSellPrice = priceBase * (1 + priceOffsetPercent / 100);
+    const rawSellPrice = priceBase * (1 + priceOffsetPercent / 100);
     const adjustedSellPrice = this.adjustPriceToTickSize(rawSellPrice);
 
     try {
@@ -234,7 +253,8 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
 
     if (
       this.currentSellOrder &&
-      now - this.currentSellOrder.timestamp > (this.config.maxOrderAgeMs ?? 180000)
+      now - this.currentSellOrder.timestamp >
+        (this.config.maxOrderAgeMs ?? 180000)
     ) {
       this.logInfo(
         `Cancelando orden SELL pendiente ${this.currentSellOrder.orderId} tras tiempo de espera`,
@@ -283,19 +303,23 @@ export class RsiStrategy implements TradingStrategy<RsiStrategyConfig> {
       if (delta >= 0) gain = delta;
       else loss = -delta;
 
-      avgGain = ((avgGain * (period - 1)) + gain) / period;
-      avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+      avgGain = (avgGain * (period - 1) + gain) / period;
+      avgLoss = (avgLoss * (period - 1) + loss) / period;
     }
 
     if (avgLoss === 0) return 100;
 
     const rs = avgGain / avgLoss;
-    return 100 - (100 / (1 + rs));
+    return 100 - 100 / (1 + rs);
   }
 
   private async getLastCandleClose(): Promise<number | null> {
     try {
-      const candles = await this.binanceService.getCandles(this.symbol, '1m', 1);
+      const candles = await this.binanceService.getCandles(
+        this.symbol,
+        '1m',
+        1,
+      );
       if (candles && candles.length > 0) return parseFloat(candles[0].close);
       return null;
     } catch (error) {

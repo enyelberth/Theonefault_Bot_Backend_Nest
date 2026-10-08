@@ -6,6 +6,6 @@ import { PrismaClient } from '@prisma/client';
 @Module({
   controllers: [StrategiesTradingController],
   providers: [StrategiesTradingService, PrismaClient],
-  exports:[StrategiesTradingService]
+  exports: [StrategiesTradingService],
 })
 export class StrategiesTradingModule {}

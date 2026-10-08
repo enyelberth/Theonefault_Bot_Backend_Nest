@@ -15,29 +15,31 @@ interface OpenOrder {
 }
 
 export interface AdaptiveGridConfig {
-  totalQuantity: number;      // total base quantity budget
-  gridLevels: number;         // levels below current price (recommend 8-20)
-  gridSpacingPct: number;     // spacing between levels (e.g. 0.005 = 0.5%)
-  profitMargin: number;       // TP per leg (e.g. 0.006 = 0.6%)
-  stopLossPct?: number;       // per-leg SL (e.g. 0.03)
+  totalQuantity: number; // total base quantity budget
+  gridLevels: number; // levels below current price (recommend 8-20)
+  gridSpacingPct: number; // spacing between levels (e.g. 0.005 = 0.5%)
+  profitMargin: number; // TP per leg (e.g. 0.006 = 0.6%)
+  stopLossPct?: number; // per-leg SL (e.g. 0.03)
 
-  emaFastPeriod?: number;     // default 20
-  emaSlowPeriod?: number;     // default 50
-  rsiPeriod?: number;         // default 14
-  rsiFloor?: number;          // pause BUYs when RSI < floor (default 30)
-  interval?: string;          // indicator interval (default '15m')
+  emaFastPeriod?: number; // default 20
+  emaSlowPeriod?: number; // default 50
+  rsiPeriod?: number; // default 14
+  rsiFloor?: number; // pause BUYs when RSI < floor (default 30)
+  interval?: string; // indicator interval (default '15m')
 
-  maxDrawdownPct?: number;    // pause new BUYs if unrealized loss > pct of deployed (default 0.05)
-  emergencyExitPct?: number;  // market-sell inventory if unrealized loss > pct (default 0.12)
+  maxDrawdownPct?: number; // pause new BUYs if unrealized loss > pct of deployed (default 0.05)
+  emergencyExitPct?: number; // market-sell inventory if unrealized loss > pct (default 0.12)
 
-  recenterOnBreak?: boolean;  // shift grid center if price exits by 2x spacing (default true)
-  minSleepMs?: number;        // default 8000
-  maxSleepMs?: number;        // default 20000
+  recenterOnBreak?: boolean; // shift grid center if price exits by 2x spacing (default true)
+  minSleepMs?: number; // default 8000
+  maxSleepMs?: number; // default 20000
   dryRun?: boolean;
 }
 
 @Injectable()
-export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig> {
+export class AdaptiveGridStrategy
+  implements TradingStrategy<AdaptiveGridConfig>
+{
   id!: string;
   symbol!: string;
   config!: AdaptiveGridConfig;
@@ -46,9 +48,9 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
   private isRunning = true;
   private centerPrice = 0;
 
-  private openBuys = new Map<number, OpenOrder>();   // level -> BUY order
-  private openTPs = new Map<number, OpenOrder>();    // level -> LIMIT SELL (take-profit)
-  private openSLs = new Map<number, OpenOrder>();    // level -> STOP-LOSS SELL
+  private openBuys = new Map<number, OpenOrder>(); // level -> BUY order
+  private openTPs = new Map<number, OpenOrder>(); // level -> LIMIT SELL (take-profit)
+  private openSLs = new Map<number, OpenOrder>(); // level -> STOP-LOSS SELL
 
   private pnl = new PnlTracker();
   private botRunId?: number;
@@ -113,35 +115,53 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
       `START adaptive-grid cfg=${JSON.stringify({ ...cfg, emaFast, emaSlow, rsiPeriod, rsiFloor, interval, maxDDPct, emergencyPct })}`,
     );
 
-    const { priceFilter, lotSizeFilter } = await this.binance.obtenerFiltrosSimbolo(this.symbol);
-    if (!priceFilter || !lotSizeFilter) throw new Error(`Filters missing ${this.symbol}`);
+    const { priceFilter, lotSizeFilter } =
+      await this.binance.obtenerFiltrosSimbolo(this.symbol);
+    if (!priceFilter || !lotSizeFilter)
+      throw new Error(`Filters missing ${this.symbol}`);
 
-    const initPrice = parseFloat((await this.binance.getSymbolPrice(this.symbol)).price);
+    const initPrice = parseFloat(
+      (await this.binance.getSymbolPrice(this.symbol)).price,
+    );
     this.centerPrice = initPrice;
-    this.log(`Grid centered at ${initPrice} spacing=${(cfg.gridSpacingPct * 100).toFixed(3)}% levels=${cfg.gridLevels}`);
+    this.log(
+      `Grid centered at ${initPrice} spacing=${(cfg.gridSpacingPct * 100).toFixed(3)}% levels=${cfg.gridLevels}`,
+    );
 
     while (this.isRunning) {
       try {
-        const currentPrice = parseFloat((await this.binance.getSymbolPrice(this.symbol)).price);
+        const currentPrice = parseFloat(
+          (await this.binance.getSymbolPrice(this.symbol)).price,
+        );
 
         const [ema20, ema50, rsi, atr] = await Promise.all([
-          this.indicators.getEMA(this.symbol, interval, emaFast).catch(() => null),
-          this.indicators.getEMA(this.symbol, interval, emaSlow).catch(() => null),
-          this.indicators.getRSI(this.symbol, interval, rsiPeriod).catch(() => null),
+          this.indicators
+            .getEMA(this.symbol, interval, emaFast)
+            .catch(() => null),
+          this.indicators
+            .getEMA(this.symbol, interval, emaSlow)
+            .catch(() => null),
+          this.indicators
+            .getRSI(this.symbol, interval, rsiPeriod)
+            .catch(() => null),
           this.indicators.getATR(this.symbol, interval, 14).catch(() => null),
         ]);
 
-        const trendOk = ema20 !== null && ema50 !== null ? ema20 >= ema50 : true;
+        const trendOk =
+          ema20 !== null && ema50 !== null ? ema20 >= ema50 : true;
         const rsiOk = rsi === null ? true : rsi > rsiFloor;
         const canBuy = trendOk && rsiOk;
 
         // Circuit breaker
         const unreal = this.pnl.computeUnrealized(currentPrice);
         const deployed = this.computeDeployedNotional();
-        const ddPct = deployed > 0 ? Math.abs(Math.min(0, unreal)) / deployed : 0;
+        const ddPct =
+          deployed > 0 ? Math.abs(Math.min(0, unreal)) / deployed : 0;
 
         if (ddPct > emergencyPct && !this.circuitTripped) {
-          this.warn(`EMERGENCY EXIT triggered ddPct=${(ddPct * 100).toFixed(2)}% > ${(emergencyPct * 100).toFixed(2)}%`);
+          this.warn(
+            `EMERGENCY EXIT triggered ddPct=${(ddPct * 100).toFixed(2)}% > ${(emergencyPct * 100).toFixed(2)}%`,
+          );
           await this.emergencyExit(currentPrice, priceFilter, lotSizeFilter);
           this.circuitTripped = true;
         }
@@ -151,9 +171,13 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
         if (recenter && !this.circuitTripped) {
           const lowestLevelPrice = this.levelPrice(cfg.gridLevels);
           const highestLevelPrice = this.levelPrice(0);
-          if (currentPrice < lowestLevelPrice * (1 - cfg.gridSpacingPct * 2) ||
-              currentPrice > highestLevelPrice * (1 + cfg.gridSpacingPct * 2)) {
-            this.warn(`Price ${currentPrice} out of grid [${lowestLevelPrice.toFixed(4)}, ${highestLevelPrice.toFixed(4)}] — recenter`);
+          if (
+            currentPrice < lowestLevelPrice * (1 - cfg.gridSpacingPct * 2) ||
+            currentPrice > highestLevelPrice * (1 + cfg.gridSpacingPct * 2)
+          ) {
+            this.warn(
+              `Price ${currentPrice} out of grid [${lowestLevelPrice.toFixed(4)}, ${highestLevelPrice.toFixed(4)}] — recenter`,
+            );
             this.centerPrice = currentPrice;
           }
         }
@@ -169,7 +193,13 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
             const qty = this.roundStep(qtyPerLevel, lotSizeFilter.stepSize);
             if (qty <= 0) continue;
             try {
-              const order = await this.binance.createLimitOrder(this.symbol, 'BUY', qty.toString(), price.toString(), 'GTC');
+              const order = await this.binance.createLimitOrder(
+                this.symbol,
+                'BUY',
+                qty.toString(),
+                price.toString(),
+                'GTC',
+              );
               this.openBuys.set(i, {
                 orderId: Number(order.orderId),
                 price,
@@ -177,36 +207,47 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
                 side: OrderSide.BUY,
                 timestamp: Date.now(),
               });
-              this.log(`BUY placed level=${i} @ ${price} qty=${qty} (RSI=${rsi?.toFixed(1)} EMA${emaFast}=${ema20?.toFixed(2)} EMA${emaSlow}=${ema50?.toFixed(2)})`);
+              this.log(
+                `BUY placed level=${i} @ ${price} qty=${qty} (RSI=${rsi?.toFixed(1)} EMA${emaFast}=${ema20?.toFixed(2)} EMA${emaSlow}=${ema50?.toFixed(2)})`,
+              );
             } catch (e) {
               this.err(`BUY place fail level=${i}:`, e);
             }
             await new Promise((r) => setTimeout(r, 120));
           }
         } else if (!canBuy) {
-          this.log(`SKIP BUYs — trend=${trendOk} rsi=${rsi?.toFixed(1)} (floor=${rsiFloor})`);
+          this.log(
+            `SKIP BUYs — trend=${trendOk} rsi=${rsi?.toFixed(1)} (floor=${rsiFloor})`,
+          );
         } else if (drawdownBlock) {
-          this.warn(`SKIP BUYs — drawdown ${(ddPct * 100).toFixed(2)}% > max ${(maxDDPct * 100).toFixed(2)}%`);
+          this.warn(
+            `SKIP BUYs — drawdown ${(ddPct * 100).toFixed(2)}% > max ${(maxDDPct * 100).toFixed(2)}%`,
+          );
         }
 
         await this.checkBuys(priceFilter, lotSizeFilter, stopLossPct);
         await this.checkTPs();
         await this.checkSLs();
 
-        await this.pnl.snapshot(this.openBuys.size + this.openTPs.size, currentPrice, {
-          canBuy,
-          trendOk,
-          rsi,
-          ema20,
-          ema50,
-          atr,
-          deployedNotional: deployed,
-          drawdownPct: ddPct,
-          circuitTripped: this.circuitTripped,
-          centerPrice: this.centerPrice,
-        });
+        await this.pnl.snapshot(
+          this.openBuys.size + this.openTPs.size,
+          currentPrice,
+          {
+            canBuy,
+            trendOk,
+            rsi,
+            ema20,
+            ema50,
+            atr,
+            deployedNotional: deployed,
+            drawdownPct: ddPct,
+            circuitTripped: this.circuitTripped,
+            centerPrice: this.centerPrice,
+          },
+        );
 
-        const sleepMs = minSleep + Math.floor(Math.random() * (maxSleep - minSleep));
+        const sleepMs =
+          minSleep + Math.floor(Math.random() * (maxSleep - minSleep));
         await new Promise((r) => setTimeout(r, sleepMs));
       } catch (e) {
         this.err('Loop error:', e);
@@ -220,18 +261,37 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
     return inv.costBasis;
   }
 
-  private async checkBuys(priceFilter: any, lotSizeFilter: any, stopLossPct: number) {
+  private async checkBuys(
+    priceFilter: any,
+    lotSizeFilter: any,
+    stopLossPct: number,
+  ) {
     for (const [level, ord] of Array.from(this.openBuys.entries())) {
       try {
-        const st = await this.binance.checkOrderStatus(this.symbol, ord.orderId);
+        const st = await this.binance.checkOrderStatus(
+          this.symbol,
+          ord.orderId,
+        );
         if (st.status === 'FILLED') {
           this.openBuys.delete(level);
-          this.pnl.openLeg(level, ord.price, ord.qty, OrderSide.BUY, new Date(ord.timestamp));
+          this.pnl.openLeg(
+            level,
+            ord.price,
+            ord.qty,
+            OrderSide.BUY,
+            new Date(ord.timestamp),
+          );
 
           const tpPriceRaw = ord.price * (1 + this.config.profitMargin);
           const tpPrice = this.roundStep(tpPriceRaw, priceFilter.tickSize);
           try {
-            const tp = await this.binance.createLimitOrder(this.symbol, 'SELL', ord.qty.toString(), tpPrice.toString(), 'GTC');
+            const tp = await this.binance.createLimitOrder(
+              this.symbol,
+              'SELL',
+              ord.qty.toString(),
+              tpPrice.toString(),
+              'GTC',
+            );
             this.openTPs.set(level, {
               orderId: Number(tp.orderId),
               price: tpPrice,
@@ -247,7 +307,12 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
             const slPriceRaw = ord.price * (1 - stopLossPct);
             const slPrice = this.roundStep(slPriceRaw, priceFilter.tickSize);
             try {
-              const sl = await this.binance.createStopLossOrder(this.symbol, 'SELL', ord.qty.toString(), slPrice.toString());
+              const sl = await this.binance.createStopLossOrder(
+                this.symbol,
+                'SELL',
+                ord.qty.toString(),
+                slPrice.toString(),
+              );
               this.openSLs.set(level, {
                 orderId: Number(sl?.orderId ?? Date.now()),
                 price: slPrice,
@@ -259,8 +324,14 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
               this.err(`SL place fail level=${level}:`, e);
             }
           }
-          this.log(`BUY filled level=${level} → TP@${tpPrice} SL@${(ord.price * (1 - stopLossPct)).toFixed(4)}`);
-        } else if (st.status === 'CANCELED' || st.status === 'EXPIRED' || st.status === 'REJECTED') {
+          this.log(
+            `BUY filled level=${level} → TP@${tpPrice} SL@${(ord.price * (1 - stopLossPct)).toFixed(4)}`,
+          );
+        } else if (
+          st.status === 'CANCELED' ||
+          st.status === 'EXPIRED' ||
+          st.status === 'REJECTED'
+        ) {
           this.openBuys.delete(level);
         }
       } catch (e) {
@@ -272,12 +343,17 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
   private async checkTPs() {
     for (const [level, ord] of Array.from(this.openTPs.entries())) {
       try {
-        const st = await this.binance.checkOrderStatus(this.symbol, ord.orderId);
+        const st = await this.binance.checkOrderStatus(
+          this.symbol,
+          ord.orderId,
+        );
         if (st.status === 'FILLED') {
           this.openTPs.delete(level);
           const paired = this.openSLs.get(level);
           if (paired) {
-            try { await this.binance.cancelOrder(this.symbol, paired.orderId); } catch {}
+            try {
+              await this.binance.cancelOrder(this.symbol, paired.orderId);
+            } catch {}
             this.openSLs.delete(level);
           }
           await this.pnl.closeLeg(level, ord.price, ord.orderId);
@@ -294,17 +370,24 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
   private async checkSLs() {
     for (const [level, ord] of Array.from(this.openSLs.entries())) {
       try {
-        const st = await this.binance.checkOrderStatus(this.symbol, ord.orderId);
+        const st = await this.binance.checkOrderStatus(
+          this.symbol,
+          ord.orderId,
+        );
         if (st.status === 'FILLED') {
           this.openSLs.delete(level);
           const paired = this.openTPs.get(level);
           if (paired) {
-            try { await this.binance.cancelOrder(this.symbol, paired.orderId); } catch {}
+            try {
+              await this.binance.cancelOrder(this.symbol, paired.orderId);
+            } catch {}
             this.openTPs.delete(level);
           }
-          const fillPrice = parseFloat((st as any).filledPrice ?? (st as any).price ?? ord.price);
+          const fillPrice = parseFloat(st.filledPrice ?? st.price ?? ord.price);
           const pnl = await this.pnl.closeLeg(level, fillPrice, ord.orderId);
-          this.warn(`SL filled level=${level} @ ${fillPrice} pnl=${pnl?.toFixed(6)}`);
+          this.warn(
+            `SL filled level=${level} @ ${fillPrice} pnl=${pnl?.toFixed(6)}`,
+          );
         } else if (['CANCELED', 'EXPIRED', 'REJECTED'].includes(st.status)) {
           this.openSLs.delete(level);
         }
@@ -314,17 +397,27 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
     }
   }
 
-  private async emergencyExit(currentPrice: number, priceFilter: any, lotSizeFilter: any) {
+  private async emergencyExit(
+    currentPrice: number,
+    priceFilter: any,
+    lotSizeFilter: any,
+  ) {
     for (const [level, ord] of Array.from(this.openBuys.entries())) {
-      try { await this.binance.cancelOrder(this.symbol, ord.orderId); } catch {}
+      try {
+        await this.binance.cancelOrder(this.symbol, ord.orderId);
+      } catch {}
       this.openBuys.delete(level);
     }
     for (const [level, ord] of Array.from(this.openTPs.entries())) {
-      try { await this.binance.cancelOrder(this.symbol, ord.orderId); } catch {}
+      try {
+        await this.binance.cancelOrder(this.symbol, ord.orderId);
+      } catch {}
       this.openTPs.delete(level);
     }
     for (const [level, ord] of Array.from(this.openSLs.entries())) {
-      try { await this.binance.cancelOrder(this.symbol, ord.orderId); } catch {}
+      try {
+        await this.binance.cancelOrder(this.symbol, ord.orderId);
+      } catch {}
       this.openSLs.delete(level);
     }
 
@@ -333,9 +426,21 @@ export class AdaptiveGridStrategy implements TradingStrategy<AdaptiveGridConfig>
       const qty = this.roundStep(inv.qty, lotSizeFilter.stepSize);
       if (qty > 0) {
         try {
-          const mkt = await this.binance.createMarketOrder(this.symbol, 'SELL', qty.toString());
-          this.warn(`EMERGENCY market SELL qty=${qty} response=${JSON.stringify(mkt).slice(0, 200)}`);
-          const legLevels = Array.from(new Set([...this.openBuys.keys(), ...this.openTPs.keys(), ...this.openSLs.keys()]));
+          const mkt = await this.binance.createMarketOrder(
+            this.symbol,
+            'SELL',
+            qty.toString(),
+          );
+          this.warn(
+            `EMERGENCY market SELL qty=${qty} response=${JSON.stringify(mkt).slice(0, 200)}`,
+          );
+          const legLevels = Array.from(
+            new Set([
+              ...this.openBuys.keys(),
+              ...this.openTPs.keys(),
+              ...this.openSLs.keys(),
+            ]),
+          );
           for (const l of legLevels) {
             await this.pnl.closeLeg(l, currentPrice);
           }

@@ -14,6 +14,9 @@ export interface TradingStrategy<TConfig = any> {
 
   /** Opcional: strategies con estado persistido usan este método para hidratar desde DB al restart/rehydrate. */
   setBotRunContext?(botRunId: number, prisma: PrismaClient): void;
+
+  /** Opcional: hook para aplicar patch de config en caliente (sin restart). */
+  onConfigUpdate?(patch: Record<string, any>): void | Promise<void>;
 }
 export interface GridStrategyConfig {
   gridCount: number;
@@ -51,5 +54,4 @@ export interface GridFullStrategyConfig {
   minSleepMs?: number;
   maxSleepMs?: number;
   buySafetyMargin?: number; // P
-
 }

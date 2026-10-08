@@ -61,7 +61,8 @@ export class PnlTracker {
     else this.losses += 1;
 
     await this.reporter?.reportTrade({
-      externalOrderId: externalOrderId !== undefined ? String(externalOrderId) : undefined,
+      externalOrderId:
+        externalOrderId !== undefined ? String(externalOrderId) : undefined,
       side: leg.side,
       entryPrice: leg.entryPrice,
       exitPrice,
@@ -92,7 +93,13 @@ export class PnlTracker {
     legsInProfit: number;
     legsInLoss: number;
   } {
-    const empty = { net: 0, profit: 0, loss: 0, legsInProfit: 0, legsInLoss: 0 };
+    const empty = {
+      net: 0,
+      profit: 0,
+      loss: 0,
+      legsInProfit: 0,
+      legsInLoss: 0,
+    };
     if (lastPrice === undefined || !Number.isFinite(lastPrice)) return empty;
     let profit = 0;
     let loss = 0;
@@ -116,7 +123,8 @@ export class PnlTracker {
     let qty = 0;
     let costBasis = 0;
     for (const leg of this.legs.values()) {
-      const signedQty = leg.side === OrderSide.BUY ? leg.quantity : -leg.quantity;
+      const signedQty =
+        leg.side === OrderSide.BUY ? leg.quantity : -leg.quantity;
       qty += signedQty;
       costBasis += leg.entryPrice * signedQty;
     }

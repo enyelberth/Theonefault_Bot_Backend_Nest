@@ -12,7 +12,9 @@ export class UpdateTradingStrategyDto {
   @IsInt()
   typeId?: number;
 
-  @ApiPropertyOptional({ description: 'Configuración de la estrategia en JSON' })
+  @ApiPropertyOptional({
+    description: 'Configuración de la estrategia en JSON',
+  })
   @IsOptional()
   @IsJSON()
   config?: any;

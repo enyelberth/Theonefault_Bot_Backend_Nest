@@ -3,7 +3,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsJSON, IsOptional, IsString } from 'class-validator';
 
 export class CreateTradingStrategyDto {
-
   @ApiProperty({ description: 'Símbolo del mercado (ejemplo: BTCUSDT)' })
   @IsString()
   id: string;
@@ -15,7 +14,9 @@ export class CreateTradingStrategyDto {
   @IsInt()
   typeId: number;
 
-  @ApiProperty({ description: 'Configuración específica de la estrategia en formato JSON' })
+  @ApiProperty({
+    description: 'Configuración específica de la estrategia en formato JSON',
+  })
   @IsJSON()
   config: any;
 
@@ -24,8 +25,6 @@ export class CreateTradingStrategyDto {
   @IsString()
   strategyType?: string | null;
 }
-
-
 
 export class CreateStrategyTypeDto {
   @ApiProperty({ description: 'Nombre único del tipo de estrategia' })
@@ -37,4 +36,3 @@ export class CreateStrategyTypeDto {
   @IsString()
   description?: string;
 }
-
