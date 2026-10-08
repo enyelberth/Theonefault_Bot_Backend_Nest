@@ -9,6 +9,12 @@ import { IndicatorsModule } from 'src/indicators/indicators.module';
 @Module({
   imports: [IndicatorsModule],
   exports: [TradingService],
-  providers: [TradingService, CryptoPriceWatcherGateway, BinanceService, AccountService, PrismaClient],
+  providers: [
+    TradingService,
+    CryptoPriceWatcherGateway,
+    BinanceService,
+    AccountService,
+    PrismaClient,
+  ],
 })
 export class CryptoPriceWatcherModule {}

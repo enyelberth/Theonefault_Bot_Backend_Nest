@@ -1,12 +1,16 @@
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCryptoPairDto {
-  @ApiProperty({
-    description: 'The unique symbol of the crypto pair (e.g., "BTC/USDT")',
-    example: 'BTC/USDT',
-  })
+  @ApiProperty({ example: 'BTC' })
   @IsString()
   @IsNotEmpty()
-  symbolPair: string;
+  @Length(1, 5)
+  baseCurrencyCode: string;
+
+  @ApiProperty({ example: 'USDT' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(1, 5)
+  quoteCurrencyCode: string;
 }

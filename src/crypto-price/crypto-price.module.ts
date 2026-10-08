@@ -7,6 +7,5 @@ import { PrismaClient } from '@prisma/client';
   controllers: [CryptoPriceController],
   providers: [CryptoPriceService, PrismaClient],
   exports: [CryptoPriceService], // Export the service if needed in other modules
-
 })
 export class CryptoPriceModule {}

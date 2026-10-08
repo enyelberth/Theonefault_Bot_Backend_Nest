@@ -1,33 +1,71 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateCryptoPairDto } from './dto/create-crypto-pair.dto';
 import { UpdateCryptoPairDto } from './dto/update-crypto-pair.dto';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class CryptoPairService {
-  constructor(private prisma: PrismaClient) {
-    this.prisma = new PrismaClient();
-  }
+  constructor(private readonly prisma: PrismaClient) {}
 
-  async create(createCryptoPairDto: CreateCryptoPairDto){
-   // return await this.prisma.cryptoPair.create({
-   //   data: createCryptoPairDto,
-   // });
+  async create(createCryptoPairDto: CreateCryptoPairDto) {
+    const base = createCryptoPairDto.baseCurrencyCode.trim().toUpperCase();
+    const quote = createCryptoPairDto.quoteCurrencyCode.trim().toUpperCase();
+    if (base === quote)
+      throw new BadRequestException('La base y la quote deben ser distintas');
+    try {
+      return await this.prisma.tradingPair.create({
+        data: { baseCurrencyCode: base, quoteCurrencyCode: quote },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException('El par ya existe');
+      }
+      throw error;
+    }
   }
 
   async findAll() {
-   // return await this.prisma.cryptoPair.findMany();
+    return this.prisma.tradingPair.findMany({ orderBy: { id: 'asc' } });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} cryptoPair`;
+  async findOne(id: number) {
+    const pair = await this.prisma.tradingPair.findUnique({ where: { id } });
+    if (!pair) throw new NotFoundException(`Par con id ${id} no encontrado`);
+    return pair;
   }
 
-  update(id: number, updateCryptoPairDto: UpdateCryptoPairDto) {
-    return `This action updates a #${id} cryptoPair`;
+  async update(id: number, updateCryptoPairDto: UpdateCryptoPairDto) {
+    await this.findOne(id);
+    return this.prisma.tradingPair.update({
+      where: { id },
+      data: {
+        ...(updateCryptoPairDto.baseCurrencyCode
+          ? {
+              baseCurrencyCode: updateCryptoPairDto.baseCurrencyCode
+                .trim()
+                .toUpperCase(),
+            }
+          : {}),
+        ...(updateCryptoPairDto.quoteCurrencyCode
+          ? {
+              quoteCurrencyCode: updateCryptoPairDto.quoteCurrencyCode
+                .trim()
+                .toUpperCase(),
+            }
+          : {}),
+      },
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} cryptoPair`;
+  async remove(id: number) {
+    await this.findOne(id);
+    return this.prisma.tradingPair.delete({ where: { id } });
   }
 }

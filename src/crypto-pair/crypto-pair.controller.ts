@@ -1,8 +1,24 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+} from '@nestjs/common';
 import { CryptoPairService } from './crypto-pair.service';
 import { CreateCryptoPairDto } from './dto/create-crypto-pair.dto';
 import { UpdateCryptoPairDto } from './dto/update-crypto-pair.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthGuard } from 'src/authA/auth.guard';
 
 @ApiBearerAuth('BearerAuth')
@@ -14,7 +30,11 @@ export class CryptoPairController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new crypto pair' })
-  @ApiResponse({ status: 201, description: 'The crypto pair has been successfully created.', type: CreateCryptoPairDto })
+  @ApiResponse({
+    status: 201,
+    description: 'The crypto pair has been successfully created.',
+    type: CreateCryptoPairDto,
+  })
   @ApiBody({ type: CreateCryptoPairDto })
   create(@Body() createCryptoPairDto: CreateCryptoPairDto) {
     return this.cryptoPairService.create(createCryptoPairDto);
@@ -29,8 +49,15 @@ export class CryptoPairController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Find a crypto pair by ID' })
-  @ApiParam({ name: 'id', description: 'The ID of the crypto pair', example: 1 })
-  @ApiResponse({ status: 200, description: 'Returns the crypto pair with the specified ID.' })
+  @ApiParam({
+    name: 'id',
+    description: 'The ID of the crypto pair',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns the crypto pair with the specified ID.',
+  })
   @ApiResponse({ status: 404, description: 'Crypto pair not found.' })
   findOne(@Param('id') id: string) {
     return this.cryptoPairService.findOne(+id);
@@ -38,18 +65,35 @@ export class CryptoPairController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a crypto pair by ID' })
-  @ApiParam({ name: 'id', description: 'The ID of the crypto pair', example: 1 })
+  @ApiParam({
+    name: 'id',
+    description: 'The ID of the crypto pair',
+    example: 1,
+  })
   @ApiBody({ type: UpdateCryptoPairDto })
-  @ApiResponse({ status: 200, description: 'The crypto pair has been successfully updated.' })
+  @ApiResponse({
+    status: 200,
+    description: 'The crypto pair has been successfully updated.',
+  })
   @ApiResponse({ status: 404, description: 'Crypto pair not found.' })
-  update(@Param('id') id: string, @Body() updateCryptoPairDto: UpdateCryptoPairDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateCryptoPairDto: UpdateCryptoPairDto,
+  ) {
     return this.cryptoPairService.update(+id, updateCryptoPairDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a crypto pair by ID' })
-  @ApiParam({ name: 'id', description: 'The ID of the crypto pair', example: 1 })
-  @ApiResponse({ status: 200, description: 'The crypto pair has been successfully deleted.' })
+  @ApiParam({
+    name: 'id',
+    description: 'The ID of the crypto pair',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The crypto pair has been successfully deleted.',
+  })
   @ApiResponse({ status: 404, description: 'Crypto pair not found.' })
   remove(@Param('id') id: string) {
     return this.cryptoPairService.remove(+id);
