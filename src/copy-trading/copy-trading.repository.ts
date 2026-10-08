@@ -45,9 +45,15 @@ export class CopyTradingRepository {
 
   async setMasterActive(id: number, active: boolean): Promise<CopyMaster> {
     try {
-      return await this.prisma.copyMaster.update({ where: { id }, data: { active } });
+      return await this.prisma.copyMaster.update({
+        where: { id },
+        data: { active },
+      });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
         throw new NotFoundException(`CopyMaster ${id} not found`);
       }
       throw e;
@@ -72,7 +78,10 @@ export class CopyTradingRepository {
     });
   }
 
-  listSubscriptionsByMaster(masterId: number, activeOnly = true): Promise<CopySubscription[]> {
+  listSubscriptionsByMaster(
+    masterId: number,
+    activeOnly = true,
+  ): Promise<CopySubscription[]> {
     return this.prisma.copySubscription.findMany({
       where: { masterId, ...(activeOnly ? { active: true } : {}) },
       orderBy: { createdAt: 'asc' },
@@ -83,14 +92,21 @@ export class CopyTradingRepository {
     try {
       await this.prisma.copySubscription.delete({ where: { id } });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
         throw new NotFoundException(`CopySubscription ${id} not found`);
       }
       throw e;
     }
   }
 
-  recordEvent(masterId: number, signal: unknown, fanoutCount: number): Promise<CopyEvent> {
+  recordEvent(
+    masterId: number,
+    signal: unknown,
+    fanoutCount: number,
+  ): Promise<CopyEvent> {
     return this.prisma.copyEvent.create({
       data: {
         masterId,
@@ -124,10 +140,18 @@ export class CopyTradingRepository {
         status: input.status,
         reason: input.reason,
         orderId: input.orderId,
-        price: input.price !== undefined ? new Prisma.Decimal(input.price) : undefined,
-        quantity: input.quantity !== undefined ? new Prisma.Decimal(input.quantity) : undefined,
+        price:
+          input.price !== undefined
+            ? new Prisma.Decimal(input.price)
+            : undefined,
+        quantity:
+          input.quantity !== undefined
+            ? new Prisma.Decimal(input.quantity)
+            : undefined,
         quoteQuantity:
-          input.quoteQuantity !== undefined ? new Prisma.Decimal(input.quoteQuantity) : undefined,
+          input.quoteQuantity !== undefined
+            ? new Prisma.Decimal(input.quoteQuantity)
+            : undefined,
       },
     });
   }

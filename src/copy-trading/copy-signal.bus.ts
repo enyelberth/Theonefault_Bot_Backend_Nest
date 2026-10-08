@@ -9,7 +9,9 @@ export interface CopySignalEvent {
   emittedAt: number;
 }
 
-export type CopySignalHandler = (event: CopySignalEvent) => void | Promise<void>;
+export type CopySignalHandler = (
+  event: CopySignalEvent,
+) => void | Promise<void>;
 
 @Injectable()
 export class CopySignalBus {

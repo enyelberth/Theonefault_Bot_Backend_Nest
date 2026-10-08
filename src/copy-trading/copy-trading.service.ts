@@ -5,11 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import {
-  CopyEvent,
-  CopyMaster,
-  CopySubscription,
-} from '@prisma/client';
+import { CopyEvent, CopyMaster, CopySubscription } from '@prisma/client';
 import { CopySignalBus, CopySignalEvent } from './copy-signal.bus';
 import { CopyExecutorService } from './copy-executor.service';
 import { CopyTradingRepository } from './copy-trading.repository';
@@ -54,7 +50,8 @@ export class CopyTradingService implements OnModuleInit, OnModuleDestroy {
 
   async subscribe(dto: CreateSubscriptionDto): Promise<CopySubscription> {
     const master = await this.repo.findMasterById(dto.masterId);
-    if (!master) throw new NotFoundException(`CopyMaster ${dto.masterId} not found`);
+    if (!master)
+      throw new NotFoundException(`CopyMaster ${dto.masterId} not found`);
     const sub = await this.repo.createSubscription(dto);
     await this.repo.incrementFollowerCount(dto.masterId, 1);
     return sub;
@@ -64,7 +61,9 @@ export class CopyTradingService implements OnModuleInit, OnModuleDestroy {
     const sub = await this.repo.findSubscriptionById(id);
     if (!sub) throw new NotFoundException(`CopySubscription ${id} not found`);
     await this.repo.deleteSubscription(id);
-    await this.repo.incrementFollowerCount(sub.masterId, -1).catch(() => undefined);
+    await this.repo
+      .incrementFollowerCount(sub.masterId, -1)
+      .catch(() => undefined);
   }
 
   listSubscriptions(masterId: number): Promise<CopySubscription[]> {
@@ -75,8 +74,15 @@ export class CopyTradingService implements OnModuleInit, OnModuleDestroy {
     try {
       const master = await this.repo.findMasterByRunId(event.masterRunId);
       if (!master || !master.active) return null;
-      const followers = await this.repo.listSubscriptionsByMaster(master.id, true);
-      const recorded = await this.repo.recordEvent(master.id, event.signal, followers.length);
+      const followers = await this.repo.listSubscriptionsByMaster(
+        master.id,
+        true,
+      );
+      const recorded = await this.repo.recordEvent(
+        master.id,
+        event.signal,
+        followers.length,
+      );
       if (followers.length > 0) {
         await Promise.all(
           followers.map((sub) =>

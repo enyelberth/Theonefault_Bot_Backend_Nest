@@ -37,7 +37,10 @@ export class CopyTradingController {
   }
 
   @Patch('masters/:id/active')
-  setActive(@Param('id', ParseIntPipe) id: number, @Query('value') value: string) {
+  setActive(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('value') value: string,
+  ) {
     return this.service.setActive(id, value !== 'false');
   }
 

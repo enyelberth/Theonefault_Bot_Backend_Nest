@@ -30,7 +30,15 @@ export class CreateSubscriptionDto {
   @IsNumber()
   @IsPositive()
   sizeMultiplier?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() fixedQuote?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() maxRiskPct?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  fixedQuote?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  maxRiskPct?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean;
 }

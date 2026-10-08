@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { CopyVisibility } from '@prisma/client';
 
 export class CreateMasterDto {
