@@ -1,4 +1,11 @@
-import type { Candle, Position, AccountBalance, Ticker, RiskContext, Timeframe } from '../../exchanges/domain';
+import type {
+  Candle,
+  Position,
+  AccountBalance,
+  Ticker,
+  RiskContext,
+  Timeframe,
+} from '../../exchanges/domain';
 import type { IExchange } from '../../exchanges/exchange.interface';
 
 export interface StrategyContext<TConfig = Record<string, unknown>> {

@@ -22,7 +22,8 @@ const META: StrategyMetadata = {
   id: 'martingale',
   name: 'Martingale',
   version: '1.0.0',
-  description: 'Double position size after loss up to maxSteps. WARNING high risk of capital blowup.',
+  description:
+    'Double position size after loss up to maxSteps. WARNING high risk of capital blowup.',
   tags: ['martingale', 'high-risk', 'template'],
   configSchema: {
     baseQuote: { type: 'number', minimum: 0, default: 20 },
@@ -37,17 +38,26 @@ export class MartingaleStrategy implements IStrategy<MartingaleStrategyConfig> {
   readonly metadata = META;
 
   init(ctx: StrategyContext<MartingaleStrategyConfig>): void {
-    ctx.setState<MartingaleState>('mg', { step: 0, positionQty: 0, positionCost: 0, active: false });
+    ctx.setState<MartingaleState>('mg', {
+      step: 0,
+      positionQty: 0,
+      positionCost: 0,
+      active: false,
+    });
   }
 
-  onCandle(candle: Candle, ctx: StrategyContext<MartingaleStrategyConfig>): Signal {
+  onCandle(
+    candle: Candle,
+    ctx: StrategyContext<MartingaleStrategyConfig>,
+  ): Signal {
     const state = ctx.state<MartingaleState>('mg') ?? {
       step: 0,
       positionQty: 0,
       positionCost: 0,
       active: false,
     };
-    const { baseQuote, multiplier, maxSteps, takeProfit, stopLoss } = ctx.config;
+    const { baseQuote, multiplier, maxSteps, takeProfit, stopLoss } =
+      ctx.config;
     const price = candle.close;
 
     if (state.active && state.positionQty > 0) {

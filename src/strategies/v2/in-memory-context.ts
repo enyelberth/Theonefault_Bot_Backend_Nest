@@ -1,5 +1,12 @@
 import { Logger } from '@nestjs/common';
-import type { AccountBalance, Candle, Position, RiskContext, Ticker, Timeframe } from '../../exchanges/domain';
+import type {
+  AccountBalance,
+  Candle,
+  Position,
+  RiskContext,
+  Ticker,
+  Timeframe,
+} from '../../exchanges/domain';
 import type { IExchange } from '../../exchanges/exchange.interface';
 import type { StrategyContext } from './strategy-context';
 
@@ -12,7 +19,9 @@ export interface InMemoryContextInit<TConfig> {
   historyLimit?: number;
 }
 
-export class InMemoryStrategyContext<TConfig> implements StrategyContext<TConfig> {
+export class InMemoryStrategyContext<TConfig>
+  implements StrategyContext<TConfig>
+{
   readonly strategyId: string;
   readonly symbol: string;
   readonly timeframe: Timeframe;
@@ -42,7 +51,10 @@ export class InMemoryStrategyContext<TConfig> implements StrategyContext<TConfig
   pushCandle(candle: Candle): void {
     this.historyBuffer.push(candle);
     if (this.historyBuffer.length > this.historyLimit) {
-      this.historyBuffer.splice(0, this.historyBuffer.length - this.historyLimit);
+      this.historyBuffer.splice(
+        0,
+        this.historyBuffer.length - this.historyLimit,
+      );
     }
   }
 

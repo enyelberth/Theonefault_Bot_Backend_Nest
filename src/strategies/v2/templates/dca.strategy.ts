@@ -37,11 +37,21 @@ export class DcaStrategy implements IStrategy<DcaStrategyConfig> {
   readonly metadata = META;
 
   init(ctx: StrategyContext<DcaStrategyConfig>): void {
-    ctx.setState<DcaState>('dca', { bars: 0, totalCost: 0, totalQty: 0, buys: 0 });
+    ctx.setState<DcaState>('dca', {
+      bars: 0,
+      totalCost: 0,
+      totalQty: 0,
+      buys: 0,
+    });
   }
 
   onCandle(candle: Candle, ctx: StrategyContext<DcaStrategyConfig>): Signal {
-    const state = ctx.state<DcaState>('dca') ?? { bars: 0, totalCost: 0, totalQty: 0, buys: 0 };
+    const state = ctx.state<DcaState>('dca') ?? {
+      bars: 0,
+      totalCost: 0,
+      totalQty: 0,
+      buys: 0,
+    };
     const {
       intervalBars,
       quotePerBuy,

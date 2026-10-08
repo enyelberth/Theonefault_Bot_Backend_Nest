@@ -14,7 +14,8 @@ const META: StrategyMetadata = {
   id: 'sma-cross',
   name: 'SMA Crossover',
   version: '1.0.0',
-  description: 'Enter LONG on fast SMA crossing above slow SMA, exit on inverse cross.',
+  description:
+    'Enter LONG on fast SMA crossing above slow SMA, exit on inverse cross.',
   tags: ['trend', 'sample'],
   configSchema: {
     fastPeriod: { type: 'integer', minimum: 2, default: 9 },
@@ -33,7 +34,8 @@ export class SmaCrossStrategy implements IStrategy<SmaCrossConfig> {
 
     const fast = smaSeries(closes, fastPeriod);
     const slow = smaSeries(closes, slowPeriod);
-    if (fast.length < 2 || slow.length < 2) return holdSignal(ctx.symbol, 'insufficient-data');
+    if (fast.length < 2 || slow.length < 2)
+      return holdSignal(ctx.symbol, 'insufficient-data');
 
     const fPrev = fast[fast.length - 2];
     const fNow = fast[fast.length - 1];
@@ -62,7 +64,7 @@ export class SmaCrossStrategy implements IStrategy<SmaCrossConfig> {
         symbol: ctx.symbol,
         side: 'SELL',
         type: 'MARKET',
-        quantity: position!.quantity,
+        quantity: position.quantity,
         reason: `SMA${fastPeriod} crossed below SMA${slowPeriod}`,
         emittedAt: ctx.now(),
       };
