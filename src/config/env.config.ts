@@ -10,7 +10,12 @@ const clean = (v: string | undefined): string | undefined => {
   return t.length > 0 ? t : undefined;
 };
 
-const pick = (production: string | undefined, test: string | undefined, legacy: string | undefined, isProd: boolean): string => {
+const pick = (
+  production: string | undefined,
+  test: string | undefined,
+  legacy: string | undefined,
+  isProd: boolean,
+): string => {
   const p = clean(production);
   const t = clean(test);
   const l = clean(legacy);
@@ -25,6 +30,8 @@ export interface AppEnv {
     baseUrl: string;
     apiKey: string;
     apiSecret: string;
+    autoEnableBnbBurn: boolean;
+    bnbLowBalanceThreshold: number;
   };
 }
 
@@ -35,12 +42,14 @@ export function envConfig(): AppEnv {
   const production = boolFlag(process.env.PRODUCTION, false);
   const marginEnabled = boolFlag(process.env.MARGIN, false);
 
-  const baseUrl = pick(
-    process.env.BINANCE_BASE_URL_PROD,
-    process.env.BINANCE_BASE_URL_TEST,
-    process.env.BASE_URL,
-    production,
-  ) || (production ? 'https://api.binance.com' : 'https://testnet.binance.vision');
+  const baseUrl =
+    pick(
+      process.env.BINANCE_BASE_URL_PROD,
+      process.env.BINANCE_BASE_URL_TEST,
+      process.env.BASE_URL,
+      production,
+    ) ||
+    (production ? 'https://api.binance.com' : 'https://testnet.binance.vision');
 
   const apiKey = pick(
     process.env.BINANCE_API_KEY_PROD,
@@ -56,7 +65,25 @@ export function envConfig(): AppEnv {
     production,
   );
 
-  cache = { production, marginEnabled, binance: { baseUrl, apiKey, apiSecret } };
+  const autoEnableBnbBurn = boolFlag(process.env.BINANCE_AUTO_BNB_BURN, true);
+  const bnbLowBalanceRaw = clean(process.env.BINANCE_BNB_LOW_THRESHOLD);
+  const bnbLowBalanceThreshold = bnbLowBalanceRaw
+    ? Number(bnbLowBalanceRaw)
+    : 0.05;
+
+  cache = {
+    production,
+    marginEnabled,
+    binance: {
+      baseUrl,
+      apiKey,
+      apiSecret,
+      autoEnableBnbBurn,
+      bnbLowBalanceThreshold: Number.isFinite(bnbLowBalanceThreshold)
+        ? bnbLowBalanceThreshold
+        : 0.05,
+    },
+  };
   return cache;
 }
 
