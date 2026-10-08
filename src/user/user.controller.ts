@@ -1,9 +1,34 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, BadRequestException, ParseIntPipe, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  BadRequestException,
+  ForbiddenException,
+  ParseIntPipe,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { Request } from 'express';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthGuard, Public } from 'src/authA/auth.guard';
+
+interface AuthenticatedRequest extends Request {
+  user?: { sub: number; email?: string };
+}
 @ApiBearerAuth('BearerAuth')
 @UseGuards(AuthGuard)
 @ApiTags('user')
@@ -38,7 +63,16 @@ export class UserController {
   @ApiParam({ name: 'id', type: Number })
   @ApiBody({ type: UpdateUserDto })
   @ApiResponse({ status: 200, description: 'User updated' })
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateUserDto: UpdateUserDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (req.user?.sub !== id) {
+      throw new ForbiddenException(
+        'No puedes modificar la cuenta de otro usuario',
+      );
+    }
     return this.userService.update(id, updateUserDto);
   }
 
@@ -46,7 +80,15 @@ export class UserController {
   @ApiOperation({ summary: 'Delete user by id' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'User deleted' })
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (req.user?.sub !== id) {
+      throw new ForbiddenException(
+        'No puedes eliminar la cuenta de otro usuario',
+      );
+    }
     return this.userService.remove(id);
   }
   @Public()
@@ -58,7 +100,6 @@ export class UserController {
     return { exists };
   }
   @Public()
-
   @Get('exists/username/:username')
   @ApiOperation({ summary: 'Check if username exists' })
   @ApiParam({ name: 'username', type: String })
@@ -67,9 +108,12 @@ export class UserController {
     return { exists };
   }
 
+  @Public()
   @Post('login')
   @ApiOperation({ summary: 'User login' })
-  @ApiBody({ schema: { example: { email: 'user@example.com', password: 'mypassword' }}})
+  @ApiBody({
+    schema: { example: { email: 'user@example.com', password: 'mypassword' } },
+  })
   async login(@Body() body: { email: string; password: string }) {
     const { email, password } = body;
     if (!email || !password) {

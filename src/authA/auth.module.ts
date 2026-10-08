@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtModule } from '@nestjs/jwt';
@@ -12,17 +11,21 @@ import { PrismaClient } from '@prisma/client';
 
 @Module({
   imports: [
-    
     JwtModule.register({
       global: true,
       secret: jwtConstants.secret,
       signOptions: { expiresIn: '260m' },
     }),
   ],
-  providers: [AuthService,UserModule,PrismaClient,  {
-    provide: APP_GUARD,
-    useClass: AuthGuard,
-  },],
+  providers: [
+    AuthService,
+    UserModule,
+    PrismaClient,
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+  ],
   controllers: [AuthController],
   exports: [AuthService],
 })

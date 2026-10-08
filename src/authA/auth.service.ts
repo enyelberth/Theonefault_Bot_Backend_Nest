@@ -1,13 +1,15 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
+import { jwtRefreshConstants } from './constantes';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly jwtService: JwtService,
-  ) { }
+  ) {}
 
   private isEmail(value: string): boolean {
     // Regex simple para validar email
@@ -26,11 +28,13 @@ export class AuthService {
     try {
       // Verificar y decodificar el refresh token
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: jwtRefreshConstants.secret,
       });
 
       // Buscar usuario con el id en el payload
-      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+      });
       if (!user) {
         throw new UnauthorizedException('Usuario no encontrado');
       }
@@ -47,11 +51,8 @@ export class AuthService {
   async logout(userId: string): Promise<void> {
     // Aquí eliminarías o invalidarías el refresh token almacenado en DB
     /*await this.prisma.refreshToken.deleteMany({ where: { userId } });*/
-
     // No se devuelve nada, simplemente indica que se cerró sesión
   }
-
-
 
   async signIn(
     userOrEmail: string,
@@ -62,8 +63,10 @@ export class AuthService {
       : { username: userOrEmail };
 
     const user = await this.prisma.user.findFirst({ where: whereCondition });
-    //console.log(user)
-    if (!user || user.password !== pass) {
+    const passwordMatches = user
+      ? await bcrypt.compare(pass, user.password)
+      : false;
+    if (!user || !passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
