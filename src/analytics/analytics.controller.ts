@@ -1,4 +1,5 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AnalyticsService, type AnalyticsQuery } from './analytics.service';
 import type { AnalyticsGroupBy } from './analytics.types';
@@ -318,6 +319,32 @@ export class AnalyticsController {
       symbol: symbol?.trim().toUpperCase() || undefined,
       ownerId: parsedOwner,
     });
+  }
+
+  @Get('statement')
+  @ApiOperation({
+    summary:
+      'Estado de cuenta: balance por moneda, ledger de CapitalEvent y trades con fee/pnl bruto-neto',
+  })
+  statement(@Query() query: AnalyticsQuery) {
+    return this.analytics.statement(this.analytics.parseFilters(query));
+  }
+
+  @Get('statement.csv')
+  @ApiOperation({ summary: 'Estado de cuenta (trades) exportado a CSV' })
+  async statementCsv(
+    @Query() query: AnalyticsQuery,
+    @Res() res: Response,
+  ) {
+    const csv = await this.analytics.statementCsv(
+      this.analytics.parseFilters(query),
+    );
+    res.header('Content-Type', 'text/csv; charset=utf-8');
+    res.header(
+      'Content-Disposition',
+      'attachment; filename="statement.csv"',
+    );
+    res.send(csv);
   }
 
   @Get('execution')

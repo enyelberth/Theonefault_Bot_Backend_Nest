@@ -4,9 +4,10 @@ import { RiskManagerService } from './risk-manager.service';
 import { RiskManagerController } from './risk-manager.controller';
 import { BotModule } from 'src/bot/bot.module';
 import { DashboardModule } from 'src/dashboard/dashboard.module';
+import { BotRunnerModule } from 'src/bot-runner/bot-runner.module';
 
 @Module({
-  imports: [forwardRef(() => BotModule), DashboardModule],
+  imports: [forwardRef(() => BotModule), DashboardModule, BotRunnerModule],
   controllers: [RiskManagerController],
   providers: [PrismaClient, RiskManagerService],
   exports: [RiskManagerService],

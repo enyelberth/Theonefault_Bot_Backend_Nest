@@ -46,6 +46,7 @@ import { MarketRegimeService } from '../market-regime/market-regime.service';
 import type { RegimeFilterConfig } from '../market-regime/market-regime.types';
 import type { MultiTimeframeConfig } from '../market-regime/multi-timeframe';
 import { KlineCollectorService } from '../market-data/kline-collector.service';
+import { PriceForecastService } from '../market-prediction/price-forecast.service';
 
 const WS_TRACKED_TIMEFRAMES = new Set<Timeframe>(['1m', '5m', '15m', '1h']);
 // Default si la estrategia no trae config.maxOrderAgeMs. Mismo orden de
@@ -166,6 +167,7 @@ export class BotRunnerService {
     private readonly klines: KlineCollectorService,
     private readonly alerts: OperationalAlertsService,
     private readonly ledger: CapitalLedgerService,
+    private readonly forecasts: PriceForecastService,
   ) {}
 
   private async emitCloseCapitalEvents(
@@ -647,19 +649,34 @@ export class BotRunnerService {
               .touchStats(handle.input.runId, { ordersRejected: 1 })
               .catch(() => undefined);
           } else {
-            const gated = await this.gateSignal(
+            const forecastAllowed = await this.checkPriceForecast(
               handle,
               candidate,
+              isEntry,
               correlationId,
             );
-            if (gated) {
-              await this.executeSignal(handle, gated, correlationId);
-              this.copyBus.publish({
-                masterRunId: handle.input.runId,
-                masterEquity: handle.currentEquity,
-                signal: gated,
-                emittedAt: Date.now(),
-              });
+            if (!forecastAllowed) {
+              handle.status.ordersRejected += 1;
+              handle.status.lastRejectReason =
+                'PRICE_FORECAST_FILTER: divergencia estadística contra la señal';
+              await this.repo
+                .touchStats(handle.input.runId, { ordersRejected: 1 })
+                .catch(() => undefined);
+            } else {
+              const gated = await this.gateSignal(
+                handle,
+                candidate,
+                correlationId,
+              );
+              if (gated) {
+                await this.executeSignal(handle, gated, correlationId);
+                this.copyBus.publish({
+                  masterRunId: handle.input.runId,
+                  masterEquity: handle.currentEquity,
+                  signal: gated,
+                  emittedAt: Date.now(),
+                });
+              }
             }
           }
         }
@@ -677,6 +694,74 @@ export class BotRunnerService {
         signals: signal ? 1 : 0,
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * Filtro opcional (config.priceForecast) basado en el forecast AR+GARCH de
+   * src/market-prediction. Es una señal probabilística más, no una
+   * garantía: solo bloquea OPEN/ADJUST, nunca cierres, y nunca reemplaza al
+   * motor de riesgo (gateSignal sigue corriendo después si esto permite
+   * pasar). Cualquier error o dato insuficiente falla hacia "permitido" por
+   * defecto salvo que allowInsufficientData se desactive explícitamente --
+   * un filtro auxiliar no debería convertirse en una nueva fuente de
+   * caídas del bot.
+   */
+  private async checkPriceForecast(
+    handle: RunnerHandle,
+    signal: Signal,
+    isEntry: boolean,
+    correlationId: string,
+  ): Promise<boolean> {
+    if (!isEntry || !signal.side) return true;
+    const filter = this.priceForecastFilter(handle.input.config);
+    if (!filter?.enabled) return true;
+
+    let result: Awaited<ReturnType<PriceForecastService['current']>> | null = null;
+    try {
+      result = await this.forecasts.current({
+        symbol: signal.symbol,
+        timeframe: handle.input.timeframe,
+        horizonBars: filter.horizonBars,
+      });
+    } catch (e: any) {
+      this.logger.warn(`priceForecast check failed: ${e.message}`);
+      await this.trace(handle, correlationId, 'PRICE_FORECAST_ALLOWED', {
+        reason: 'forecast error, fail-open',
+        error: e.message,
+      });
+      return true;
+    }
+
+    if (!result || result.forecast?.status !== 'OK') {
+      await this.trace(
+        handle,
+        correlationId,
+        filter.allowInsufficientData
+          ? 'PRICE_FORECAST_ALLOWED'
+          : 'PRICE_FORECAST_REJECTED',
+        { reason: 'insufficient data', filter },
+      );
+      return filter.allowInsufficientData;
+    }
+
+    const forecast = result.forecast;
+    const referencePrice = signal.price ?? forecast.lastPrice;
+    const expectedChangePct =
+      referencePrice > 0
+        ? ((forecast.forecastPrice - referencePrice) / referencePrice) * 100
+        : 0;
+    const allowed =
+      signal.side === 'BUY'
+        ? expectedChangePct >= -filter.maxDivergencePct
+        : expectedChangePct <= filter.maxDivergencePct;
+
+    await this.trace(
+      handle,
+      correlationId,
+      allowed ? 'PRICE_FORECAST_ALLOWED' : 'PRICE_FORECAST_REJECTED',
+      { forecast, expectedChangePct, filter },
+    );
+    return allowed;
   }
 
   private async gateSignal(
@@ -1413,6 +1498,33 @@ export class BotRunnerService {
           : undefined,
       allowUnknown:
         typeof value.allowUnknown === 'boolean' ? value.allowUnknown : false,
+    };
+  }
+
+  private priceForecastFilter(config: Record<string, unknown>):
+    | {
+        enabled: boolean;
+        horizonBars: number;
+        maxDivergencePct: number;
+        allowInsufficientData: boolean;
+      }
+    | undefined {
+    const raw = config.priceForecast;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const value = raw as Record<string, unknown>;
+    return {
+      enabled: value.enabled === true,
+      horizonBars:
+        typeof value.horizonBars === 'number' &&
+        Number.isInteger(value.horizonBars) &&
+        value.horizonBars > 0
+          ? value.horizonBars
+          : 5,
+      maxDivergencePct:
+        typeof value.maxDivergencePct === 'number' && value.maxDivergencePct > 0
+          ? value.maxDivergencePct
+          : 1,
+      allowInsufficientData: value.allowInsufficientData !== false,
     };
   }
 

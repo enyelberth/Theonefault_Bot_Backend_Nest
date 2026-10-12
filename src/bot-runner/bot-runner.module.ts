@@ -14,6 +14,7 @@ import { MarketRegimeModule } from '../market-regime/market-regime.module';
 import { MarketDataModule } from '../market-data/market-data.module';
 import { OperationalAlertsModule } from '../operational-alerts/operational-alerts.module';
 import { CapitalLedgerModule } from '../capital-ledger/capital-ledger.module';
+import { MarketPredictionModule } from '../market-prediction/market-prediction.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CapitalLedgerModule } from '../capital-ledger/capital-ledger.module';
     MarketDataModule,
     OperationalAlertsModule,
     CapitalLedgerModule,
+    MarketPredictionModule,
   ],
   providers: [
     BotRunnerService,

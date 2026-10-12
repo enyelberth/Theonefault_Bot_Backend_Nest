@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
-import { Prisma, PrismaClient, RunnerStatus } from '@prisma/client';
+import {
+  BotRunnerRun,
+  Prisma,
+  PrismaClient,
+  RunnerStatus,
+} from '@prisma/client';
 import { createHash } from 'crypto';
 import type { IExchange } from '../exchanges/exchange.interface';
 import type { MarketType, Order, Position } from '../exchanges/domain';
@@ -99,7 +104,7 @@ export class ReconciliationService {
         exchange,
       );
       const balanceResult = await this.captureBalances(
-        run.id,
+        run,
         batch.id,
         market,
         exchange,
@@ -418,16 +423,84 @@ export class ReconciliationService {
   }
 
   private async captureBalances(
-    botRunnerRunId: number,
+    run: BotRunnerRun,
     batchId: number,
     market: MarketType,
     exchange: IExchange,
   ): Promise<{ checked: number; issues: number; snapshot: unknown[] }> {
+    const botRunnerRunId = run.id;
     try {
       const account = await exchange.getBalance(market);
+      let issues = 0;
+
+      // Comparación de balance local (derivado de CapitalEvent) vs exchange.
+      // Solo en SPOT: en MARGIN/FUTURES el balance remoto incluye PnL no
+      // realizado de posiciones abiertas que nuestro ledger (solo
+      // movimientos realizados) no modela, y comparar ahí daría falsos
+      // positivos. Nunca se autocorrige -- regla del proyecto: una
+      // discrepancia de balance ambigua siempre queda REQUIRES_MANUAL.
+      if (market === 'SPOT') {
+        const quoteCurrency = this.quoteCurrencyFromSymbol(run.symbol);
+        const [capitalAgg, openTradesCount] = await Promise.all([
+          this.prisma.capitalEvent.aggregate({
+            where: { botRunnerRunId, currency: quoteCurrency },
+            _sum: { amount: true },
+          }),
+          this.prisma.botRunnerTrade.count({
+            where: { botRunnerRunId, symbol: run.symbol, closedAt: null },
+          }),
+        ]);
+        const expectedBalance = new Prisma.Decimal(run.initialEquity ?? 0)
+          .plus(capitalAgg._sum.amount ?? 0)
+          .toNumber();
+        const remote = account.balances.find(
+          (balance) => balance.asset === quoteCurrency,
+        );
+        const remoteBalance = remote?.total ?? 0;
+        const fingerprint = this.fingerprint(
+          botRunnerRunId,
+          'BALANCE_MISMATCH',
+          'BALANCE',
+          quoteCurrency,
+        );
+        // Si hay posiciones abiertas en SPOT, parte del capital está
+        // "congelado" en el activo base (no en la quote currency), así que
+        // se tolera una banda más ancha en vez de marcar CRITICAL por algo
+        // esperado.
+        const tolerance = Math.max(
+          1,
+          Math.abs(expectedBalance) * (openTradesCount > 0 ? 0.05 : 0.005),
+        );
+        const diff = remoteBalance - expectedBalance;
+        if (Math.abs(diff) <= tolerance) {
+          await this.resolveFingerprint(
+            fingerprint,
+            'local ledger balance and exchange balance now match',
+          );
+        } else {
+          issues += 1;
+          await this.recordIssue(botRunnerRunId, batchId, {
+            type: 'BALANCE_MISMATCH',
+            // Balance remoto por debajo de lo esperado => posible pérdida
+            // de capital no explicada; siempre CRITICAL. Por encima podría
+            // ser un depósito/ajuste externo no reflejado aún -- HIGH.
+            severity: diff < 0 ? 'CRITICAL' : 'HIGH',
+            entityType: 'BALANCE',
+            entityId: quoteCurrency,
+            localState: {
+              expectedBalance,
+              initialEquity: Number(run.initialEquity ?? 0),
+              openTradesCount,
+            },
+            remoteState: { balance: remoteBalance, asset: quoteCurrency },
+            action: 'REQUIRES_MANUAL',
+          });
+        }
+      }
+
       return {
         checked: account.balances.length,
-        issues: 0,
+        issues,
         snapshot: account.balances.map((balance) => ({
           asset: balance.asset,
           free: balance.free,
@@ -449,6 +522,14 @@ export class ReconciliationService {
       });
       return { checked: 0, issues: 1, snapshot: [] };
     }
+  }
+
+  private quoteCurrencyFromSymbol(symbol: string): string {
+    const quotes = ['USDT', 'USDC', 'BUSD', 'FDUSD', 'TUSD', 'BTC', 'ETH', 'BNB'];
+    for (const q of quotes) {
+      if (symbol.endsWith(q)) return q;
+    }
+    return 'USDT';
   }
 
   private async recordIssue(

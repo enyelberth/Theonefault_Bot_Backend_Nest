@@ -31,7 +31,27 @@ No mezclar npm y Yarn. `package-lock.json` es el lockfile objetivo mientras no s
 - `src/analytics`: métricas unificadas para BotRunner v2 y cálculos financieros puros.
 - `src/reconciliation`: comparación periódica del estado local con el exchange.
 - `src/market-regime`: detección de tendencia, volatilidad, volumen y filtros de entrada.
+- `src/market-prediction`: predicción estadística de precio (AR+GARCH) y su validación walk-forward.
 - `prisma/schema.prisma`: esquema canónico. No usar `schema copy.prisma`.
+
+### Nota: dos módulos de riesgo con nombres parecidos
+
+`src/risk` y `src/risk-manager` son módulos **distintos**, ambos con una clase
+`RiskManagerService` (en archivos distintos, no es el mismo código):
+
+- `src/risk/risk-manager.service.ts`: gate **por señal**, consultado inline por
+  `BotRunnerService` en cada ciclo (`RiskProfile`, sizers, `KillSwitch` por
+  scope GLOBAL/BOT). Es el motor de riesgo de la regla #3.
+- `src/risk-manager/risk-manager.service.ts`: watchdog **global/agregado**,
+  cron cada 10s sobre `RiskConfig` (singleton), cubre límites de cartera
+  (`maxDailyLossQuote`, `maxCrossBotExposurePct`, `consecutiveLossLimit`,
+  `minWinRatePct`, `maxOpenBots`). Agrega bots legacy (`BotRun`/`TradeResult`)
+  y bots v2 (`BotRunnerRun`/`BotRunnerTrade` vía `BotRunnerService.list()`) y
+  puede detener ambos. La exposición cruzada agregada (`maxCrossBotExposurePct`)
+  todavía solo cuenta bots legacy -- pendiente de dato de notional por runner v2.
+
+Al tocar cualquiera de los dos, verificar cuál es el que realmente aplica al
+caso (por-señal vs agregado-global) antes de asumir que es el otro.
 
 ## Reglas financieras y de seguridad
 
@@ -70,7 +90,8 @@ El payload debe ser JSON serializable y nunca contener credenciales. Al ampliar 
 - [x] Clasificación y filtro de régimen de mercado.
 - [ ] Motor de confluencia y confianza de señales.
 - [x] Contexto y filtro multi-timeframe.
-- [ ] Riesgo agregado de cartera y correlación.
+- [ ] Riesgo agregado de cartera y correlación (parcial: daily-loss/open-bots/consecutive-loss/win-rate ya agregan v1+v2 en `src/risk-manager`; exposición cruzada por notional sigue solo v1).
+- [x] Predicción estadística de precio (AR+GARCH) con validación walk-forward.
 - [x] Reconciliación base de órdenes, posiciones y snapshots de balances.
 - [x] Slippage, spread, latencia, comisiones y costo neto base.
 - [ ] Intereses de margin y funding de futuros.
@@ -149,6 +170,23 @@ La confluencia multi-timeframe se configura en `config.multiTimeframe`:
 ```
 
 El timeframe primario siempre participa con peso 1. Solo `OPEN` y `ADJUST` pueden bloquearse; los cierres permanecen libres.
+
+## Convención de estado de cuenta (ledger)
+
+- `CapitalEvent` (single-entry, conectado al bot runner) es la fuente de verdad del movimiento de capital por tipo: `TRADE_PNL` (bruto), `FEE` (negativo), `FUNDING`, `INTEREST`, `REBATE`, `DEPOSIT`, `WITHDRAWAL`, `ADJUSTMENT`.
+- No usar `Account`/`AccountBalance`/`JournalEntry`/`JournalEntryLine` para bots: ese esquema modela cuentas reales de usuario con credenciales de exchange (`key`/`secretKey`/`email`/`password` obligatorios) para `TradingOrder` manual, no un plan de cuentas interno. Forzar ahí categorías contables del bot violaría la regla #4.
+- El estado de cuenta (`AnalyticsService.statement()`, `GET /analytics/statement` y `/analytics/statement.csv`) calcula el balance de apertura/cierre por moneda como `initialEquity` del runner (asignado a la moneda quote implícita de su símbolo) más la suma cronológica de `CapitalEvent`. Si el filtro `from` cae a mitad de un runner, el balance de apertura arrastra todo lo ocurrido antes de esa fecha -- nunca resetea a `initialEquity` del runner completo.
+- Nunca mezclar monedas en un mismo acumulado: cada bucket de balance es por moneda.
+- `reconciliation.service.ts#captureBalances` compara ese balance local contra el balance real del exchange, pero **solo en mercado SPOT** (en MARGIN/FUTURES el balance remoto incluye PnL no realizado de posiciones abiertas que el ledger, solo-realizado, no modela -- comparar ahí daría falsos positivos). Nunca autocorrige: toda discrepancia de balance queda `REQUIRES_MANUAL` (remoto por debajo de lo esperado = `CRITICAL`; por encima = `HIGH`, podría ser un depósito externo no reflejado).
+
+## Convención de predicción de precio
+
+- Modelo: AR(p) sobre log-retornos para el nivel de precio + GARCH(1,1) sobre los mismos retornos para la volatilidad del horizonte (`src/market-prediction/price-forecast.calculator.ts`). Deliberadamente sin librerías de ML de caja negra -- cada coeficiente es auditable, acorde a la regla de poder explicar cada decisión del sistema.
+- Requiere mínimo `MIN_SAMPLES` (120) velas cerradas; con menos, el resultado es `INSUFFICIENT_DATA` (mismo criterio que `MarketRegimeSnapshot` con sus 50 velas mínimas).
+- El intervalo de confianza del 95% se deriva de la varianza GARCH pronosticada del horizonte acumulado, no de una varianza constante -- se ensancha solo cuando el mercado está más volátil.
+- Es una ventaja probabilística, **no una garantía**: el resultado nunca coloca ni ajusta una orden por sí mismo. Solo alimenta el filtro opcional `config.priceForecast` (`{ enabled, horizonBars, maxDivergencePct, allowInsufficientData }`), que bloquea una señal `OPEN`/`ADJUST` si el forecast espera un movimiento en contra de la señal mayor a `maxDivergencePct`% -- igual que `config.regimeFilter`, nunca bloquea cierres y la señal que pasa sigue yendo íntegramente por el motor de riesgo (`gateSignal`/`RiskManagerService.check`).
+- Falla abierto (permite la señal) ante cualquier error de cómputo o de lectura -- un filtro auxiliar no debe convertirse en una fuente nueva de caídas del bot. Solo bloquea por datos insuficientes si `allowInsufficientData: false` se configuró explícitamente.
+- `PriceForecastService.evaluateAccuracy()` hace la validación walk-forward: completa `realizedPrice` de snapshots cuyo horizonte ya venció y devuelve MAE/RMSE/accuracy direccional agregados. **No activar `config.priceForecast.enabled` en un bot real sin antes revisar esta métrica** sobre el símbolo/timeframe/horizonte en cuestión -- es la manera de evitar que el forecast cause pérdidas por sobreajuste en vez de prevenirlas.
 
 ## Criterio de terminado
 

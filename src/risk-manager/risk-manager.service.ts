@@ -9,6 +9,10 @@ import {
 } from '@prisma/client';
 import { BotService } from 'src/bot/bot.service';
 import { DashboardService } from 'src/dashboard/dashboard.service';
+import {
+  BotRunnerService,
+  BotRunnerStatus,
+} from 'src/bot-runner/bot-runner.service';
 
 const DEFAULT_CONFIG: Omit<RiskConfig, 'updatedAt' | 'createdAt'> = {
   id: 1,
@@ -38,6 +42,7 @@ export class RiskManagerService {
     @Inject(forwardRef(() => BotService))
     private readonly botService: BotService,
     private readonly dashboard: DashboardService,
+    private readonly botRunner: BotRunnerService,
   ) {}
 
   async getConfig(): Promise<RiskConfig> {
@@ -95,6 +100,22 @@ export class RiskManagerService {
       } catch (err) {
         this.logger.error(
           `emergencyStop: failed to stop ${r.symbol}/${r.strategyId}`,
+          err as Error,
+        );
+      }
+    }
+
+    // El watchdog original solo paraba bots legacy (BotService) -- los
+    // runners v2 (BotRunnerService) corrían sin frenarse ante un stop de
+    // emergencia global. Se agregan acá para que el breaker cubra ambos
+    // motores.
+    for (const status of this.botRunner.list()) {
+      try {
+        await this.botRunner.stop(status.runId);
+        stopped += 1;
+      } catch (err) {
+        this.logger.error(
+          `emergencyStop: failed to stop v2 runner ${status.runId}`,
           err as Error,
         );
       }
@@ -185,6 +206,15 @@ export class RiskManagerService {
         dailyPnl += unrealizedTotal;
       }
 
+      // Agrega también el PnL diario realizado de los runners v2. El
+      // unrealized de v2 no se suma acá: BotRunnerStatus no expone el valor
+      // de las posiciones abiertas por separado del equity total, y
+      // reconstruirlo sin esa pieza daría un número falso. Queda pendiente
+      // como parte del ítem de roadmap "riesgo agregado de cartera".
+      for (const status of this.botRunner.list()) {
+        dailyPnl += status.dailyPnl ?? 0;
+      }
+
       const limit = cfg.maxDailyLossQuote.toNumber();
       if (dailyPnl <= -Math.abs(limit)) {
         await this.emergencyStopAll(
@@ -226,11 +256,12 @@ export class RiskManagerService {
       }
     }
 
-    // Check maxOpenBots
+    // Check maxOpenBots (cuenta legacy + v2, son el mismo límite de cartera)
     if (cfg.maxOpenBots) {
-      const activeCount = await this.prisma.botRun.count({
+      const legacyCount = await this.prisma.botRun.count({
         where: { status: BotRunStatus.RUNNING },
       });
+      const activeCount = legacyCount + this.botRunner.list().length;
       if (activeCount > cfg.maxOpenBots) {
         this.logger.warn(
           `Too many bots active: ${activeCount} > ${cfg.maxOpenBots}`,
@@ -248,6 +279,14 @@ export class RiskManagerService {
         await this.evaluateBot(run.id, run.symbol, run.strategyId, cfg);
       } catch (err) {
         this.logger.error(`evaluateBot ${run.id} err`, err as Error);
+      }
+    }
+
+    for (const status of this.botRunner.list()) {
+      try {
+        await this.evaluateBotV2(status, cfg);
+      } catch (err) {
+        this.logger.error(`evaluateBotV2 ${status.runId} err`, err as Error);
       }
     }
   }
@@ -344,6 +383,118 @@ export class RiskManagerService {
           metadata: { streak, limit: cfg.consecutiveLossLimit },
         });
       }
+    }
+  }
+
+  private async countConsecutiveLossesV2(
+    botRunnerRunId: number,
+    lookback = 50,
+  ): Promise<number> {
+    const trades = await this.prisma.botRunnerTrade.findMany({
+      where: { botRunnerRunId, closedAt: { not: null } },
+      orderBy: { closedAt: 'desc' },
+      take: lookback,
+      select: { pnl: true },
+    });
+    let streak = 0;
+    for (const t of trades) {
+      if (new Prisma.Decimal(t.pnl ?? 0).lte(0)) streak += 1;
+      else break;
+    }
+    return streak;
+  }
+
+  /** Equivalente a evaluateBot() pero para runners del motor v2 (BotRunnerService). */
+  private async evaluateBotV2(status: BotRunnerStatus, cfg: RiskConfig) {
+    const botRunnerRunId = status.dbId;
+    if (botRunnerRunId === undefined) return;
+
+    // Max loss per bot (PnL realizado acumulado del runner)
+    if (cfg.maxLossPerBotQuote) {
+      const limit = cfg.maxLossPerBotQuote.toNumber();
+      const realized = status.realizedPnl ?? 0;
+      if (realized <= -Math.abs(limit)) {
+        await this.stopV2WithEvent({
+          status,
+          type: 'MAX_LOSS',
+          message: `Runner v2 ${status.runId} loss ${realized} <= -${limit}`,
+        });
+        return;
+      }
+    }
+
+    // Max drawdown
+    if (cfg.maxDrawdownPct && (status.drawdownPct ?? 0) >= cfg.maxDrawdownPct) {
+      await this.stopV2WithEvent({
+        status,
+        type: 'MAX_DRAWDOWN',
+        message: `Runner v2 ${status.runId} drawdown ${(status.drawdownPct ?? 0).toFixed(2)}% >= ${cfg.maxDrawdownPct}%`,
+        metadata: { drawdown: status.drawdownPct },
+      });
+      return;
+    }
+
+    // Min win rate (solo si tiene suficientes trades cerrados)
+    if (cfg.minWinRatePct) {
+      const [total, winners] = await Promise.all([
+        this.prisma.botRunnerTrade.count({
+          where: { botRunnerRunId, closedAt: { not: null } },
+        }),
+        this.prisma.botRunnerTrade.count({
+          where: {
+            botRunnerRunId,
+            closedAt: { not: null },
+            pnl: { gt: 0 },
+          },
+        }),
+      ]);
+      if (total >= cfg.minTradesForWinRateEval) {
+        const winRate = (winners / total) * 100;
+        if (winRate < cfg.minWinRatePct) {
+          await this.stopV2WithEvent({
+            status,
+            type: 'WIN_RATE',
+            message: `Runner v2 ${status.runId} winRate ${winRate.toFixed(1)}% < ${cfg.minWinRatePct}% (${total} trades)`,
+            metadata: { winRate, trades: total },
+          });
+          return;
+        }
+      }
+    }
+
+    // Consecutive-loss circuit breaker
+    if (cfg.consecutiveLossLimit && cfg.consecutiveLossLimit > 0) {
+      const streak = await this.countConsecutiveLossesV2(botRunnerRunId);
+      if (streak >= cfg.consecutiveLossLimit) {
+        await this.stopV2WithEvent({
+          status,
+          type: 'CONSECUTIVE_LOSS',
+          message: `Runner v2 ${status.runId} consecutive losses ${streak} >= ${cfg.consecutiveLossLimit}`,
+          metadata: { streak, limit: cfg.consecutiveLossLimit },
+        });
+      }
+    }
+  }
+
+  private async stopV2WithEvent(input: {
+    status: BotRunnerStatus;
+    type: string;
+    message: string;
+    metadata?: Prisma.InputJsonValue;
+  }) {
+    try {
+      await this.botRunner.stop(input.status.runId);
+      await this.logEvent({
+        type: input.type,
+        botRunId: input.status.dbId,
+        symbol: input.status.symbol,
+        message: input.message,
+        action: 'STOPPED_BOT',
+        metadata: { ...(input.metadata as object), engine: 'v2', runId: input.status.runId },
+      });
+      this.logger.warn(`RISK (v2): ${input.message}`);
+    } catch (err) {
+      this.logger.error(`stopV2WithEvent err`, err as Error);
     }
   }
 

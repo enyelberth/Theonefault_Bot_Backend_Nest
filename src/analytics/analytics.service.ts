@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { CryptoPriceService } from '../crypto-price/crypto-price.service';
 import { calculateAnalytics } from './analytics-calculator';
 import { calculateExecutionMetrics } from './execution-calculator';
@@ -1113,6 +1113,184 @@ export class AnalyticsService {
     return den === 0 ? 0 : Number((num / den).toFixed(6));
   }
 
+  /**
+   * Moneda quote implícita de un símbolo (mismo criterio que
+   * bot-runner.service.ts#quoteCurrencyFromSymbol, usado al emitir
+   * CapitalEvent) -- se duplica acá porque no vale la pena un import
+   * cruzado solo por esta función de 10 líneas.
+   */
+  private quoteCurrencyFromSymbol(symbol: string): string {
+    const quotes = ['USDT', 'USDC', 'BUSD', 'FDUSD', 'TUSD', 'BTC', 'ETH', 'BNB'];
+    for (const q of quotes) {
+      if (symbol.endsWith(q)) return q;
+    }
+    return 'USDT';
+  }
+
+  /**
+   * Estado de cuenta: por cada runner seleccionado, el capital inicial
+   * configurado (en la moneda quote de su símbolo) más el movimiento
+   * cronológico completo de CapitalEvent (TRADE_PNL/FEE/FUNDING/INTEREST/
+   * REBATE/DEPOSIT/WITHDRAWAL/ADJUSTMENT) da el balance corriente real por
+   * moneda. No se mezclan monedas entre sí: cada bucket de moneda se arma
+   * y se cierra por separado para no sumar, por ejemplo, USDT con BTC.
+   */
+  async statement(filters: AnalyticsFilters) {
+    const dataset = await this.loadDataset(filters);
+    if (dataset.runs.length === 0) {
+      return {
+        generatedAt: new Date().toISOString(),
+        filters: this.serializableFilters(filters),
+        byCurrency: [],
+        totals: null,
+        trades: [],
+        capitalEvents: [],
+      };
+    }
+
+    const runIds = dataset.runs.map((run) => run.id);
+    const openingByCurrency = new Map<string, Prisma.Decimal>();
+    for (const run of dataset.runs) {
+      const currency = this.quoteCurrencyFromSymbol(run.symbol);
+      const current = openingByCurrency.get(currency) ?? new Prisma.Decimal(0);
+      openingByCurrency.set(
+        currency,
+        current.plus(run.initialEquity ?? 0),
+      );
+    }
+
+    // Si el filtro empieza en un punto intermedio, hay que arrastrar todo
+    // lo ocurrido antes de esa fecha para que el balance de apertura del
+    // período sea el balance real a esa fecha, no el capital inicial del
+    // runner completo.
+    if (filters.from) {
+      const prior = await this.prisma.capitalEvent.groupBy({
+        by: ['currency'],
+        where: {
+          botRunnerRunId: { in: runIds },
+          occurredAt: { lt: filters.from },
+        },
+        _sum: { amount: true },
+      });
+      for (const row of prior) {
+        const current = openingByCurrency.get(row.currency) ?? new Prisma.Decimal(0);
+        openingByCurrency.set(
+          row.currency,
+          current.plus(row._sum.amount ?? 0),
+        );
+      }
+    }
+
+    const occurredAtWindow =
+      filters.from || filters.to
+        ? { gte: filters.from, lte: filters.to }
+        : undefined;
+    const events = await this.prisma.capitalEvent.findMany({
+      where: { botRunnerRunId: { in: runIds }, occurredAt: occurredAtWindow },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+
+    const runningByCurrency = new Map<string, Prisma.Decimal>(
+      openingByCurrency,
+    );
+    const ledgerRows = events.map((event) => {
+      const amount = new Prisma.Decimal(event.amount);
+      const running = (
+        runningByCurrency.get(event.currency) ?? new Prisma.Decimal(0)
+      ).plus(amount);
+      runningByCurrency.set(event.currency, running);
+      return {
+        id: event.id,
+        occurredAt: event.occurredAt.toISOString(),
+        type: event.type,
+        amount: Number(amount.toFixed(8)),
+        currency: event.currency,
+        tradeId: event.tradeId,
+        correlationId: event.correlationId,
+        source: event.source,
+        runningBalance: Number(running.toFixed(8)),
+      };
+    });
+
+    const allCurrencies = new Set<string>([
+      ...openingByCurrency.keys(),
+      ...runningByCurrency.keys(),
+    ]);
+    const byCurrency = Array.from(allCurrencies).map((currency) => {
+      const opening = openingByCurrency.get(currency) ?? new Prisma.Decimal(0);
+      const closing = runningByCurrency.get(currency) ?? opening;
+      return {
+        currency,
+        openingBalance: Number(opening.toFixed(8)),
+        closingBalance: Number(closing.toFixed(8)),
+        netChange: Number(closing.minus(opening).toFixed(8)),
+      };
+    });
+
+    const result = calculateAnalytics(dataset.trades, dataset.initialEquity);
+    const tradeRows = dataset.trades.map((trade) => ({
+      tradeId: trade.id,
+      runId: trade.runId,
+      strategyId: trade.strategyId,
+      symbol: trade.symbol,
+      side: trade.side,
+      entryPrice: trade.entryPrice,
+      exitPrice: trade.exitPrice,
+      quantity: trade.quantity,
+      grossPnl: Number((trade.pnl + trade.fees).toFixed(8)),
+      fee: trade.fees,
+      netPnl: trade.pnl,
+      pnlPct: trade.pnlPct,
+      openedAt: trade.openedAt.toISOString(),
+      closedAt: trade.closedAt.toISOString(),
+    }));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      filters: this.serializableFilters(filters),
+      byCurrency,
+      totals: {
+        netPnl: result.metrics.netPnl,
+        grossPnlBeforeFees: result.metrics.grossPnlBeforeFees,
+        totalFees: result.metrics.totalFees,
+        totalTrades: result.metrics.totalTrades,
+        feeDragPct: result.metrics.feeDragPct,
+      },
+      trades: tradeRows,
+      capitalEvents: ledgerRows,
+    };
+  }
+
+  /** Mismo contenido que statement(), serializado a CSV (una fila por trade). */
+  async statementCsv(filters: AnalyticsFilters): Promise<string> {
+    const statement = await this.statement(filters);
+    const header = [
+      'tradeId',
+      'runId',
+      'strategyId',
+      'symbol',
+      'side',
+      'entryPrice',
+      'exitPrice',
+      'quantity',
+      'grossPnl',
+      'fee',
+      'netPnl',
+      'pnlPct',
+      'openedAt',
+      'closedAt',
+    ];
+    const escape = (value: unknown) => {
+      const s = value === null || value === undefined ? '' : String(value);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [header.join(',')];
+    for (const trade of statement.trades) {
+      lines.push(header.map((key) => escape((trade as any)[key])).join(','));
+    }
+    return lines.join('\n');
+  }
+
   private baseAssetFromSymbol(symbol: string): string {
     const quotes = [
       'USDT',
@@ -1456,7 +1634,12 @@ export class AnalyticsService {
   }
 
   private async loadDataset(filters: AnalyticsFilters): Promise<{
-    runs: Array<{ id: number; runId: string; initialEquity: number }>;
+    runs: Array<{
+      id: number;
+      runId: string;
+      symbol: string;
+      initialEquity: number;
+    }>;
     trades: AnalyticsTrade[];
     initialEquity: number;
   }> {
@@ -1469,7 +1652,7 @@ export class AnalyticsService {
     };
     const runs = await this.prisma.botRunnerRun.findMany({
       where: runWhere,
-      select: { id: true, runId: true, initialEquity: true },
+      select: { id: true, runId: true, symbol: true, initialEquity: true },
     });
     const runIds = runs.map((run) => run.id);
     if (runIds.length === 0) {
@@ -1551,6 +1734,7 @@ export class AnalyticsService {
     const normalizedRuns = runs.map((run) => ({
       id: run.id,
       runId: run.runId,
+      symbol: run.symbol,
       initialEquity: Number(run.initialEquity ?? 0),
     }));
     return {

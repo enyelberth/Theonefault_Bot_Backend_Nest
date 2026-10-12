@@ -427,6 +427,34 @@ model MultiTimeframeEvaluation {
   @@index([symbol, createdAt])
 }
 
+// Predicción estadística de precio (AR+GARCH) por símbolo/timeframe/vela
+// cerrada. Ventaja probabilística, no garantía -- nunca coloca ni ajusta
+// una orden por sí sola, solo alimenta un filtro opcional (config.priceForecast)
+// que pasa igual por el motor de riesgo.
+model PriceForecastSnapshot {
+  id                 Int       @id @default(autoincrement())
+  symbol             String
+  timeframe          String
+  candleCloseTime    DateTime
+  horizonBars        Int
+  lastPrice          Decimal
+  forecastPrice      Decimal
+  lowerBound         Decimal
+  upperBound         Decimal
+  confidencePct      Float
+  volatilityForecast Decimal
+  modelType          String
+  modelParams        Json?
+  samplesUsed        Int
+  realizedPrice      Decimal?
+  evaluatedAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@unique([symbol, timeframe, candleCloseTime, horizonBars])
+  @@index([symbol, timeframe, createdAt])
+  @@index([realizedPrice])
+}
+
 model Alert {
   id        Int      @id @default(autoincrement())
   symbol    String // Símbolo del activo (ejemplo: "BTCUSDT")

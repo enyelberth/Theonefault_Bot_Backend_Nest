@@ -48,6 +48,7 @@ import { OperationalAlertsModule } from './operational-alerts/operational-alerts
 import { CapitalLedgerModule } from './capital-ledger/capital-ledger.module';
 import { AuditModule } from './audit/audit.module';
 import { ConfluenceModule } from './confluence/confluence.module';
+import { MarketPredictionModule } from './market-prediction/market-prediction.module';
 @Module({
   imports: [
     AuthModule,
@@ -85,6 +86,7 @@ import { ConfluenceModule } from './confluence/confluence.module';
     TelegramSofiaModule,
     MarketDataModule,
     DashboardModule,
+    MarketPredictionModule,
     RiskManagerModule,
     SessionModule,
     TradingExecutionModule,
