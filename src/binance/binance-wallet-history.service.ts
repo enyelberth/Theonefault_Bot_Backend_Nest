@@ -39,6 +39,15 @@ export interface DividendEntry {
   enInfo: string;
 }
 
+export interface FundingFeeEntry {
+  externalId: string;
+  symbol: string;
+  asset: string;
+  /** Ya viene con signo de Binance: negativo = pagado, positivo = cobrado. */
+  income: number;
+  time: Date;
+}
+
 const MAX_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -159,6 +168,34 @@ export class BinanceWalletHistoryService {
         amount: Number(r.amount),
         divTime: new Date(Number(r.divTime)),
         enInfo: r.enInfo ?? '',
+      }));
+    });
+  }
+
+  /** Funding fee histórico de futuros perpetuos (USDⓈ-M) ya cobrado/pagado por la cuenta. */
+  async fetchFundingFees(
+    startTimeMs: number,
+    endTimeMs: number,
+  ): Promise<FundingFeeEntry[]> {
+    return this.paginate(startTimeMs, endTimeMs, async (from, to) => {
+      const data = await this.binance
+        .getSigned('/fapi/v1/income', {
+          incomeType: 'FUNDING_FEE',
+          startTime: from,
+          endTime: to,
+          limit: 1000,
+        })
+        .catch((e: any) => {
+          this.logger.warn(`fapi/v1/income (FUNDING_FEE): ${e?.message ?? e}`);
+          return null;
+        });
+      const rows: any[] = Array.isArray(data) ? data : [];
+      return rows.map((r) => ({
+        externalId: `funding:${r.tranId ?? `${r.symbol}:${r.time}`}`,
+        symbol: r.symbol,
+        asset: r.asset,
+        income: Number(r.income),
+        time: new Date(Number(r.time)),
       }));
     });
   }

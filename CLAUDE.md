@@ -45,10 +45,10 @@ No mezclar npm y Yarn. `package-lock.json` es el lockfile objetivo mientras no s
 - `src/risk-manager/risk-manager.service.ts`: watchdog **global/agregado**,
   cron cada 10s sobre `RiskConfig` (singleton), cubre límites de cartera
   (`maxDailyLossQuote`, `maxCrossBotExposurePct`, `consecutiveLossLimit`,
-  `minWinRatePct`, `maxOpenBots`). Agrega bots legacy (`BotRun`/`TradeResult`)
-  y bots v2 (`BotRunnerRun`/`BotRunnerTrade` vía `BotRunnerService.list()`) y
-  puede detener ambos. La exposición cruzada agregada (`maxCrossBotExposurePct`)
-  todavía solo cuenta bots legacy -- pendiente de dato de notional por runner v2.
+  `minWinRatePct`, `maxOpenBots`, `maxCrossBotExposurePct`). Agrega bots legacy
+  (`BotRun`/`TradeResult`/`BotMetric`) y bots v2 (`BotRunnerRun`/`BotRunnerTrade`,
+  incluida la exposición cruzada vía notional real `entryPrice*quantity` de
+  posiciones abiertas) y puede detener ambos.
 
 Al tocar cualquiera de los dos, verificar cuál es el que realmente aplica al
 caso (por-señal vs agregado-global) antes de asumir que es el otro.
@@ -90,15 +90,15 @@ El payload debe ser JSON serializable y nunca contener credenciales. Al ampliar 
 - [x] Clasificación y filtro de régimen de mercado.
 - [ ] Motor de confluencia y confianza de señales.
 - [x] Contexto y filtro multi-timeframe.
-- [ ] Riesgo agregado de cartera y correlación (parcial: daily-loss/open-bots/consecutive-loss/win-rate ya agregan v1+v2 en `src/risk-manager`; exposición cruzada por notional sigue solo v1).
+- [x] Riesgo agregado de cartera (daily-loss/open-bots/consecutive-loss/win-rate/cross-exposure ya agregan v1+v2 en `src/risk-manager`). Correlación entre runners ya existe (`AnalyticsService.runnerCorrelation`), falta usarla como input del propio watchdog.
 - [x] Predicción estadística de precio (AR+GARCH) con validación walk-forward.
 - [x] Reconciliación base de órdenes, posiciones y snapshots de balances.
 - [x] Slippage, spread, latencia, comisiones y costo neto base.
-- [ ] Intereses de margin y funding de futuros.
-- [ ] Comparación backtest/paper/real.
+- [x] Intereses de margin (`WalletSyncService.syncInterest`, ya existía) y funding de futuros perpetuos (`syncFunding`, nuevo -- `BinanceWalletHistoryService.fetchFundingFees` sobre `/fapi/v1/income`, `CapitalEvent.type = 'FUNDING'`).
+- [x] Comparación backtest/paper/real (`AnalyticsService.compareModes()`).
 - [x] Walk-forward y Monte Carlo (walk-forward de accuracy del forecast de precio vía `evaluateAccuracy()`; Monte Carlo de riesgo de ruina sobre la curva de equity vía `AnalyticsService.monteCarlo()`. Pendiente si se necesita walk-forward de *optimización de parámetros de estrategia*, que es un alcance distinto).
 - [ ] Alertas operativas con deduplicación.
-- [ ] Dashboard analítico y salud del sistema.
+- [x] Dashboard analítico y salud del sistema (`AnalyticsService.dashboardV2()` + `systemHealth()`; `GET /analytics/dashboard` -- el dashboard legacy en `/stats/dashboard` sigue existiendo aparte, solo ve bots v1).
 
 ## Convención de analítica
 
@@ -178,6 +178,7 @@ El timeframe primario siempre participa con peso 1. Solo `OPEN` y `ADJUST` puede
 - El estado de cuenta (`AnalyticsService.statement()`, `GET /analytics/statement` y `/analytics/statement.csv`) calcula el balance de apertura/cierre por moneda como `initialEquity` del runner (asignado a la moneda quote implícita de su símbolo) más la suma cronológica de `CapitalEvent`. Si el filtro `from` cae a mitad de un runner, el balance de apertura arrastra todo lo ocurrido antes de esa fecha -- nunca resetea a `initialEquity` del runner completo.
 - Nunca mezclar monedas en un mismo acumulado: cada bucket de balance es por moneda.
 - `reconciliation.service.ts#captureBalances` compara ese balance local contra el balance real del exchange, pero **solo en mercado SPOT** (en MARGIN/FUTURES el balance remoto incluye PnL no realizado de posiciones abiertas que el ledger, solo-realizado, no modela -- comparar ahí daría falsos positivos). Nunca autocorrige: toda discrepancia de balance queda `REQUIRES_MANUAL` (remoto por debajo de lo esperado = `CRITICAL`; por encima = `HIGH`, podría ser un depósito externo no reflejado).
+- `WalletSyncService` (cron horario) sincroniza desde Binance los `CapitalEvent` que no nacen de un trade propio: `INTEREST` (margin), `FUNDING` (futuros perpetuos, `/fapi/v1/income` con `incomeType=FUNDING_FEE`, signo ya viene de Binance), `REBATE`, `DEPOSIT`, `WITHDRAWAL` (+ `FEE` de la withdrawal si aplica). Todo idempotente vía `externalId` único por fuente.
 
 ## Convención de predicción de precio
 
@@ -188,6 +189,7 @@ El timeframe primario siempre participa con peso 1. Solo `OPEN` y `ADJUST` puede
 - Falla abierto (permite la señal) ante cualquier error de cómputo o de lectura -- un filtro auxiliar no debe convertirse en una fuente nueva de caídas del bot. Solo bloquea por datos insuficientes si `allowInsufficientData: false` se configuró explícitamente.
 - `PriceForecastService.evaluateAccuracy()` hace la validación walk-forward: completa `realizedPrice` de snapshots cuyo horizonte ya venció y devuelve MAE/RMSE/accuracy direccional agregados. **No activar `config.priceForecast.enabled` en un bot real sin antes revisar esta métrica** sobre el símbolo/timeframe/horizonte en cuestión -- es la manera de evitar que el forecast cause pérdidas por sobreajuste en vez de prevenirlas.
 - `PriceForecastService.accuracySummary()` es la variante de solo lectura (sin completar `realizedPrice`) pensada para consultarse en el hot path del bot runner sin cargarle un write de reconciliación a cada señal.
+- `ConfluenceService.compute()` puede incluir el forecast como un cuarto componente del score (`computeConfluence(..., config, forecast)`) cuando `config.usePriceForecast: true` -- sin ese flag, el score de confluencia es idéntico al de antes de que existiera el forecast (compatibilidad hacia atrás por defecto). El componente satura en ±2% de cambio esperado, mismo peso configurable (`weights.priceForecast`, default 0.2) que el resto de componentes.
 
 ## Convención de sizing por confianza del forecast
 

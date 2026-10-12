@@ -245,6 +245,34 @@ export class RiskManagerService {
             last.openPositions * new Prisma.Decimal(last.lastPrice).toNumber();
         }
       }
+
+      // v2: initialEquity de runners activos + notional real de sus
+      // posiciones abiertas (entryPrice*quantity -- más preciso que
+      // lastPositions*lastPrice de un BotMetric que puede estar stale).
+      const v2Runs = await this.prisma.botRunnerRun.findMany({
+        where: { status: 'RUNNING' },
+        select: { id: true, initialEquity: true },
+      });
+      if (v2Runs.length > 0) {
+        const openTrades = await this.prisma.botRunnerTrade.findMany({
+          where: {
+            botRunnerRunId: { in: v2Runs.map((r) => r.id) },
+            closedAt: null,
+          },
+          select: { entryPrice: true, quantity: true },
+        });
+        for (const r of v2Runs) {
+          if (r.initialEquity) {
+            equityBase += new Prisma.Decimal(r.initialEquity).toNumber();
+          }
+        }
+        for (const t of openTrades) {
+          openExposure += new Prisma.Decimal(t.entryPrice)
+            .times(t.quantity)
+            .toNumber();
+        }
+      }
+
       if (equityBase > 0) {
         const pct = (openExposure / equityBase) * 100;
         if (pct >= cfg.maxCrossBotExposurePct) {

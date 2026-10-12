@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { BotRunnerRun, Prisma, PrismaClient } from '@prisma/client';
 import { CryptoPriceService } from '../crypto-price/crypto-price.service';
 import { calculateAnalytics } from './analytics-calculator';
 import { calculateExecutionMetrics } from './execution-calculator';
@@ -1358,6 +1358,71 @@ export class AnalyticsService {
       filters: this.serializableFilters(filters),
       maxDrawdownPctThreshold: maxDrawdownPctThreshold ?? null,
       ...result,
+    };
+  }
+
+  /**
+   * Equivalente a GET /stats/dashboard (dashboard.service.ts) pero sobre
+   * el motor v2 (BotRunnerRun/BotRunnerTrade) -- el dashboard legacy
+   * nunca ve un bot corrido por BotRunnerService. No reemplaza al legacy
+   * (bots v1 siguen existiendo), es un endpoint adicional para no romper
+   * nada que ya dependa de /stats/dashboard.
+   */
+  async dashboardV2(ownerId?: number) {
+    const activeRuns = await this.prisma.botRunnerRun.findMany({
+      where: { status: 'RUNNING', ownerId },
+      orderBy: { startedAt: 'desc' },
+    });
+    const [bots, totalRuns, globalSummary] = await Promise.all([
+      Promise.all(activeRuns.map((run) => this.summarizeRunnerV2(run))),
+      this.prisma.botRunnerRun.count({ where: { ownerId } }),
+      this.summary({ ownerId }),
+    ]);
+    return {
+      generatedAt: new Date().toISOString(),
+      global: {
+        totalBotRuns: totalRuns,
+        activeBotRuns: activeRuns.length,
+        ...globalSummary.metrics,
+      },
+      bots,
+    };
+  }
+
+  private async summarizeRunnerV2(run: BotRunnerRun) {
+    const [lastSnapshot, tradesAgg, wins] = await Promise.all([
+      this.prisma.botRunnerSnapshot.findFirst({
+        where: { botRunnerRunId: run.id },
+        orderBy: { ts: 'desc' },
+      }),
+      this.prisma.botRunnerTrade.aggregate({
+        where: { botRunnerRunId: run.id, closedAt: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.botRunnerTrade.count({
+        where: {
+          botRunnerRunId: run.id,
+          closedAt: { not: null },
+          pnl: { gt: 0 },
+        },
+      }),
+    ]);
+    const tradesCount = tradesAgg._count._all;
+    const winRatePct = tradesCount === 0 ? 0 : (wins / tradesCount) * 100;
+    return {
+      runId: run.runId,
+      strategyId: run.strategyId,
+      symbol: run.symbol,
+      mode: run.exchangeMode,
+      startedAt: run.startedAt.toISOString(),
+      ageMinutes: Number(((Date.now() - run.startedAt.getTime()) / 60_000).toFixed(1)),
+      equity: lastSnapshot ? Number(lastSnapshot.equity) : Number(run.initialEquity ?? 0),
+      drawdownPct: lastSnapshot?.drawdownPct ?? 0,
+      openPositions: lastSnapshot?.openPositions ?? 0,
+      realizedPnl: Number(run.realizedPnl),
+      dailyPnl: Number(run.dailyPnl),
+      tradesCount,
+      winRatePct: Number(winRatePct.toFixed(2)),
     };
   }
 

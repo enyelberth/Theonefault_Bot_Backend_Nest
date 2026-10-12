@@ -4,6 +4,13 @@ export interface ConfluenceWeights {
   regime: number;
   multiTimeframe: number;
   momentum: number;
+  /**
+   * Peso del forecast AR+GARCH (src/market-prediction). Solo se usa si
+   * `compute()` recibe un forecast válido -- sin él, el componente ni
+   * siquiera se agrega y el score se comporta exactamente como antes
+   * (compatibilidad hacia atrás).
+   */
+  priceForecast?: number;
 }
 
 export const DEFAULT_CONFLUENCE_WEIGHTS: ConfluenceWeights = {
@@ -12,16 +19,26 @@ export const DEFAULT_CONFLUENCE_WEIGHTS: ConfluenceWeights = {
   momentum: 0.25,
 };
 
+export const DEFAULT_PRICE_FORECAST_WEIGHT = 0.2;
+
 export interface ConfluenceConfig {
   weights?: ConfluenceWeights;
   /** Zona muerta alrededor de 50 que se considera NEUTRAL. Default 5. */
   neutralBandPts?: number;
   /** Timeframes extra para el componente multi-timeframe (el primario ya participa con peso 1). */
   extraTimeframes?: Array<{ timeframe: string; weight?: number }>;
+  /**
+   * Si se pasa, agrega el componente priceForecast al score. `false`
+   * (default) deja el cálculo idéntico a como era antes de que existiera
+   * el forecast de precio.
+   */
+  usePriceForecast?: boolean;
+  /** Horizonte en velas para el forecast de precio. Default 5. */
+  priceForecastHorizonBars?: number;
 }
 
 export interface ConfluenceComponentDetail {
-  name: 'regime' | 'multiTimeframe' | 'momentum';
+  name: 'regime' | 'multiTimeframe' | 'momentum' | 'priceForecast';
   score: number; // 0-100
   weight: number;
   contribution: number; // score * weight

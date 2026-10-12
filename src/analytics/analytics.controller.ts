@@ -321,6 +321,24 @@ export class AnalyticsController {
     });
   }
 
+  @Get('dashboard')
+  @ApiOperation({
+    summary:
+      'Snapshot completo de bots v2 activos + stats globales (equivalente a /stats/dashboard pero sobre BotRunnerRun/BotRunnerTrade)',
+  })
+  @ApiQuery({ name: 'ownerId', required: false, type: 'number' })
+  dashboard(@Query('ownerId') ownerId?: string) {
+    let parsed: number | undefined;
+    if (ownerId !== undefined) {
+      const n = Number(ownerId);
+      if (!Number.isInteger(n) || n <= 0) {
+        throw new BadRequestException('ownerId must be positive integer');
+      }
+      parsed = n;
+    }
+    return this.analytics.dashboardV2(parsed);
+  }
+
   @Get('statement')
   @ApiOperation({
     summary:

@@ -1,10 +1,13 @@
 import type { MarketRegimeResult } from '../market-regime/market-regime.types';
 import type { MultiTimeframeResult } from '../market-regime/multi-timeframe';
 import type { IndicatorSnapshot } from '../indicators/indicators.service';
+import type { PriceForecastOutput } from '../market-prediction/price-forecast.calculator';
 import {
   ConfluenceConfig,
+  ConfluenceComponentDetail,
   ConfluenceResult,
   DEFAULT_CONFLUENCE_WEIGHTS,
+  DEFAULT_PRICE_FORECAST_WEIGHT,
   MomentumComponentDetail,
 } from './confluence.types';
 
@@ -103,6 +106,7 @@ export function computeConfluence(
   mtf: MultiTimeframeResult,
   indicators: IndicatorSnapshot,
   config: ConfluenceConfig = {},
+  forecast?: PriceForecastOutput | null,
 ): ConfluenceResult {
   const weights = config.weights ?? DEFAULT_CONFLUENCE_WEIGHTS;
   const neutralBand = config.neutralBandPts ?? 5;
@@ -119,16 +123,16 @@ export function computeConfluence(
       : 0;
   const momentumScore = 50 + momentumAvg * 50;
 
-  const components = [
+  const components: ConfluenceComponentDetail[] = [
     {
-      name: 'regime' as const,
+      name: 'regime',
       score: round(regimeScore),
       weight: weights.regime,
       contribution: round(regimeScore * weights.regime),
       reason: `régimen ${regime.trend} con confianza ${round(regime.confidence)}`,
     },
     {
-      name: 'multiTimeframe' as const,
+      name: 'multiTimeframe',
       score: round(mtfScore),
       weight: weights.multiTimeframe,
       contribution: round(mtfScore * weights.multiTimeframe),
@@ -137,7 +141,7 @@ export function computeConfluence(
         : 'timeframes sin alineación plena',
     },
     {
-      name: 'momentum' as const,
+      name: 'momentum',
       score: round(momentumScore),
       weight: weights.momentum,
       contribution: round(momentumScore * weights.momentum),
@@ -145,8 +149,28 @@ export function computeConfluence(
     },
   ];
 
-  const totalWeight =
-    weights.regime + weights.multiTimeframe + weights.momentum;
+  // Componente opcional: solo se agrega si el caller pasó un forecast
+  // AR+GARCH válido (sin esto, el score es idéntico al de antes de que
+  // existiera src/market-prediction -- compatibilidad hacia atrás). El
+  // cambio porcentual esperado satura en ±2% (misma lógica de saturación
+  // que ya usa momentum para RSI/MACD/Bollinger), igual que
+  // config.priceForecast.maxDivergencePct hace de puerta binaria en
+  // bot-runner -- acá en cambio es un input continuo del score.
+  if (forecast && forecast.status === 'OK' && forecast.lastPrice > 0) {
+    const forecastWeight = weights.priceForecast ?? DEFAULT_PRICE_FORECAST_WEIGHT;
+    const expectedChangePct =
+      ((forecast.forecastPrice - forecast.lastPrice) / forecast.lastPrice) * 100;
+    const forecastScore = 50 + clamp(expectedChangePct / 2, -1, 1) * 50;
+    components.push({
+      name: 'priceForecast',
+      score: round(forecastScore),
+      weight: forecastWeight,
+      contribution: round(forecastScore * forecastWeight),
+      reason: `forecast AR+GARCH espera ${round(expectedChangePct, 3)}% en el horizonte (satura en ±2%)`,
+    });
+  }
+
+  const totalWeight = components.reduce((sum, c) => sum + c.weight, 0);
   const score =
     totalWeight > 0
       ? components.reduce((sum, c) => sum + c.score * c.weight, 0) / totalWeight

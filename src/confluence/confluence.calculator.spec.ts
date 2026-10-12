@@ -154,3 +154,99 @@ describe('computeConfluence', () => {
     expect(onlyMomentum.score).toBeCloseTo(onlyMomentum.momentumScore, 1);
   });
 });
+
+function okForecast(forecastPrice: number, lastPrice = 100) {
+  return {
+    status: 'OK' as const,
+    lastPrice,
+    forecastPrice,
+    lowerBound: forecastPrice - 1,
+    upperBound: forecastPrice + 1,
+    confidencePct: 95,
+    volatilityForecast: 0.01,
+    modelType: 'AR+GARCH' as const,
+    modelParams: null,
+    samplesUsed: 300,
+  };
+}
+
+describe('computeConfluence -- priceForecast component', () => {
+  it('does not add the component (and leaves the score unchanged) when no forecast is passed', () => {
+    const withForecast = computeConfluence(regime(), mtf(), indicators(), {}, undefined);
+    const withoutForecast = computeConfluence(regime(), mtf(), indicators());
+
+    expect(withForecast.score).toBe(withoutForecast.score);
+    expect(
+      withForecast.breakdown.components.some((c) => c.name === 'priceForecast'),
+    ).toBe(false);
+  });
+
+  it('does not add the component when the forecast status is INSUFFICIENT_DATA', () => {
+    const result = computeConfluence(regime(), mtf(), indicators(), {}, {
+      status: 'INSUFFICIENT_DATA',
+      lastPrice: 100,
+      forecastPrice: 0,
+      lowerBound: 0,
+      upperBound: 0,
+      confidencePct: 95,
+      volatilityForecast: 0,
+      modelType: 'AR+GARCH',
+      modelParams: null,
+      samplesUsed: 10,
+    });
+
+    expect(
+      result.breakdown.components.some((c) => c.name === 'priceForecast'),
+    ).toBe(false);
+  });
+
+  it('pushes the score up when the forecast expects a rise, using the default weight', () => {
+    const baseline = computeConfluence(regime(), mtf(), indicators());
+    const withBullishForecast = computeConfluence(
+      regime(),
+      mtf(),
+      indicators(),
+      {},
+      okForecast(102, 100), // +2% -> satura el componente en score 100
+    );
+
+    const component = withBullishForecast.breakdown.components.find(
+      (c) => c.name === 'priceForecast',
+    );
+    expect(component?.score).toBe(100);
+    expect(component?.weight).toBe(0.2); // DEFAULT_PRICE_FORECAST_WEIGHT
+    expect(withBullishForecast.score).toBeGreaterThan(baseline.score);
+  });
+
+  it('pulls the score down when the forecast expects a drop', () => {
+    const baseline = computeConfluence(regime(), mtf(), indicators());
+    const withBearishForecast = computeConfluence(
+      regime(),
+      mtf(),
+      indicators(),
+      {},
+      okForecast(98, 100), // -2% -> satura el componente en score 0
+    );
+
+    const component = withBearishForecast.breakdown.components.find(
+      (c) => c.name === 'priceForecast',
+    );
+    expect(component?.score).toBe(0);
+    expect(withBearishForecast.score).toBeLessThan(baseline.score);
+  });
+
+  it('honors a custom weights.priceForecast', () => {
+    const result = computeConfluence(
+      regime(),
+      mtf(),
+      indicators(),
+      { weights: { regime: 0.4, multiTimeframe: 0.35, momentum: 0.25, priceForecast: 0.5 } },
+      okForecast(102, 100),
+    );
+
+    const component = result.breakdown.components.find(
+      (c) => c.name === 'priceForecast',
+    );
+    expect(component?.weight).toBe(0.5);
+  });
+});

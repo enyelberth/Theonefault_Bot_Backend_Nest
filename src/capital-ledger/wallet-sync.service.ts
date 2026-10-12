@@ -45,19 +45,22 @@ export class WalletSyncService {
     deposits: number;
     withdrawals: number;
     rebates: number;
+    funding: number;
   }> {
-    const [interest, deposits, withdrawals, rebates] = await Promise.all([
-      this.syncInterest(now),
-      this.syncDeposits(now),
-      this.syncWithdrawals(now),
-      this.syncRebates(now),
-    ]);
-    if (interest + deposits + withdrawals + rebates > 0) {
+    const [interest, deposits, withdrawals, rebates, funding] =
+      await Promise.all([
+        this.syncInterest(now),
+        this.syncDeposits(now),
+        this.syncWithdrawals(now),
+        this.syncRebates(now),
+        this.syncFunding(now),
+      ]);
+    if (interest + deposits + withdrawals + rebates + funding > 0) {
       this.logger.log(
-        `wallet sync: interest=${interest} deposits=${deposits} withdrawals=${withdrawals} rebates=${rebates}`,
+        `wallet sync: interest=${interest} deposits=${deposits} withdrawals=${withdrawals} rebates=${rebates} funding=${funding}`,
       );
     }
-    return { interest, deposits, withdrawals, rebates };
+    return { interest, deposits, withdrawals, rebates, funding };
   }
 
   private async syncInterest(now: number): Promise<number> {
@@ -150,6 +153,28 @@ export class WalletSyncService {
         externalId: r.externalId,
         occurredAt: r.divTime,
         payload: { enInfo: r.enInfo },
+      })),
+    );
+  }
+
+  /**
+   * Funding fee de futuros perpetuos (USDⓈ-M) ya cobrado/pagado -- hueco de
+   * roadmap distinto del interés de margin que ya cubre syncInterest().
+   */
+  private async syncFunding(now: number): Promise<number> {
+    const since = await this.lastOccurred('FUNDING', now);
+    const rows = await this.walletHistory
+      .fetchFundingFees(since, now)
+      .catch(() => []);
+    return this.ledger.recordMany(
+      rows.map((r) => ({
+        type: 'FUNDING' as CapitalEventType,
+        amount: r.income, // ya viene con signo (negativo = pagado)
+        currency: r.asset,
+        source: SOURCE,
+        externalId: r.externalId,
+        occurredAt: r.time,
+        payload: { symbol: r.symbol },
       })),
     );
   }

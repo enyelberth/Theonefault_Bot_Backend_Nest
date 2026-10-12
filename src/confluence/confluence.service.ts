@@ -5,6 +5,7 @@ import { MarketDataService } from '../market-data/market-data.service';
 import { MarketRegimeService } from '../market-regime/market-regime.service';
 import { evaluateTimeframeAlignment } from '../market-regime/multi-timeframe';
 import { IndicatorsService } from '../indicators/indicators.service';
+import { PriceForecastService } from '../market-prediction/price-forecast.service';
 import { computeConfluence } from './confluence.calculator';
 import type { ConfluenceConfig, ConfluenceResult } from './confluence.types';
 
@@ -20,6 +21,7 @@ export class ConfluenceService {
     private readonly marketData: MarketDataService,
     private readonly marketRegime: MarketRegimeService,
     private readonly indicators: IndicatorsService,
+    private readonly forecasts: PriceForecastService,
   ) {}
 
   private async loadDomainCandles(
@@ -93,7 +95,24 @@ export class ConfluenceService {
       timeframe,
     );
 
-    const result = computeConfluence(regime, mtf, indicatorSnapshot, config);
+    let forecast: Awaited<ReturnType<PriceForecastService['current']>>['forecast'] | null = null;
+    if (config.usePriceForecast) {
+      try {
+        const forecastResult = await this.forecasts.current({
+          symbol: upperSymbol,
+          timeframe,
+          horizonBars: config.priceForecastHorizonBars ?? 5,
+        });
+        forecast = forecastResult.forecast;
+      } catch (e: any) {
+        // Nunca romper el cálculo de confluencia por una falla del
+        // forecast -- mismo criterio fail-open que checkPriceForecast en
+        // bot-runner.
+        forecast = null;
+      }
+    }
+
+    const result = computeConfluence(regime, mtf, indicatorSnapshot, config, forecast);
 
     if (primaryCandles.length > 0) {
       await this.prisma.confluenceSnapshot.upsert({
