@@ -2120,14 +2120,16 @@ export class BotRunnerService {
           `[${handle.input.runId}] tpLadder fill trade=${tradeId} level=${decision.levelIndex} qty=${decision.quantity} target=${decision.targetPrice}`,
         );
 
+        const fillPrice = order.averagePrice || order.price || candle.close;
+        const fillFee = order.fee ?? 0;
+
         if (isTpLadderComplete(state, handle.tpLadderConfig)) {
-          const fillPrice = order.averagePrice || order.price || candle.close;
           const closedTp = await this.repo
             .closeTrade({
               tradeId,
               orderId: order.id,
               exitPrice: fillPrice,
-              additionalFee: order.fee ?? 0,
+              additionalFee: fillFee,
               reason: `tpLadder-complete@L${decision.levelIndex}`,
             })
             .catch((e) => {
@@ -2154,6 +2156,42 @@ export class BotRunnerService {
           });
           handle.tpLadderStates.delete(tradeId);
           handle.trailingStates.delete(tradeId);
+        } else {
+          // Fill parcial (no es el último nivel): registrar el pnl de ESTA
+          // porción nada más -- sin esto, closeTrade() en el nivel final
+          // termina valuando el 100% de la posición al precio del último
+          // nivel (el mejor), sobreestimando el pnl real del trade.
+          const partial = await this.repo
+            .recordPartialClose({
+              tradeId,
+              exitPrice: fillPrice,
+              quantity: decision.quantity,
+              fee: fillFee,
+            })
+            .catch((e) => {
+              this.logger.warn(`tpLadder recordPartialClose: ${e.message}`);
+              return null;
+            });
+          if (partial) {
+            await this.emitCloseCapitalEvents(
+              handle,
+              {
+                id: tradeId,
+                pnl: partial.pnl,
+                fee: partial.fee,
+                symbol,
+                side,
+              },
+              correlationId,
+            );
+            await this.trace(handle, correlationId, 'TRADE_PARTIAL_CLOSED', {
+              level: decision.levelIndex,
+              exitPrice: fillPrice,
+              quantity: decision.quantity,
+              pnl: partial.pnl,
+              fee: partial.fee,
+            });
+          }
         }
       } catch (e: any) {
         this.logger.warn(`tpLadder place order fail: ${e.message}`);

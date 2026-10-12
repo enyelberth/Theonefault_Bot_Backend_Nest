@@ -48,6 +48,21 @@ export interface CloseTradeInput {
   reason?: string;
 }
 
+export interface PartialCloseInput {
+  tradeId: number;
+  exitPrice: number;
+  /** Cantidad de ESTE fill parcial (no la posición completa). */
+  quantity: number;
+  fee: number;
+}
+
+export interface PartialCloseResult {
+  trade: BotRunnerTrade;
+  /** pnl de únicamente esta porción -- para emitir su propio CapitalEvent. */
+  pnl: number;
+  fee: number;
+}
+
 export interface CreateTraceInput {
   botRunnerRunId: number;
   correlationId: string;
@@ -203,6 +218,12 @@ export class BotRunnerRepository {
         entryPrice: new Prisma.Decimal(input.entryPrice),
         quantity: new Prisma.Decimal(input.quantity),
         fee: new Prisma.Decimal(input.fee),
+        // La fee de entrada es costo hundido desde ya -- arrancar
+        // realizedPnlToDate en -fee (en vez de 0) hace que cada bucket
+        // posterior (parciales + cierre final) solo tenga que descontar SU
+        // PROPIA fee de salida, sin tener que re-derivar cuánta fee de
+        // entrada "le toca" a cada fill parcial.
+        realizedPnlToDate: new Prisma.Decimal(input.fee).negated(),
         stopLossPrice:
           stopLossPrice === undefined
             ? undefined
@@ -229,6 +250,36 @@ export class BotRunnerRepository {
     });
   }
 
+  /**
+   * Cierre parcial (tp-ladder): registra el pnl de ESTA porción nada más,
+   * sin tocar exitPrice/closedAt -- el trade sigue abierto hasta el cierre
+   * final. Sin acumular closedQuantity/realizedPnlToDate acá, closeTrade()
+   * terminaría valuando el 100% de la posición al precio del último nivel
+   * (el mejor, porque el ladder vende en niveles crecientes de ganancia),
+   * sobreestimando el pnl real de cada trade con tp-ladder.
+   */
+  async recordPartialClose(input: PartialCloseInput): Promise<PartialCloseResult> {
+    const trade = await this.prisma.botRunnerTrade.findUnique({
+      where: { id: input.tradeId },
+    });
+    if (!trade) throw new NotFoundException(`Trade ${input.tradeId} not found`);
+    const entry = Number(trade.entryPrice);
+    const pnl =
+      trade.side === OrderSide.BUY
+        ? (input.exitPrice - entry) * input.quantity - input.fee
+        : (entry - input.exitPrice) * input.quantity - input.fee;
+
+    const updated = await this.prisma.botRunnerTrade.update({
+      where: { id: input.tradeId },
+      data: {
+        closedQuantity: { increment: new Prisma.Decimal(input.quantity) },
+        realizedPnlToDate: { increment: new Prisma.Decimal(pnl) },
+        fee: { increment: new Prisma.Decimal(input.fee) },
+      },
+    });
+    return { trade: updated, pnl, fee: input.fee };
+  }
+
   async closeTrade(input: CloseTradeInput): Promise<BotRunnerTrade> {
     const trade = await this.prisma.botRunnerTrade.findUnique({
       where: { id: input.tradeId },
@@ -236,12 +287,21 @@ export class BotRunnerRepository {
     if (!trade) throw new NotFoundException(`Trade ${input.tradeId} not found`);
     const entry = Number(trade.entryPrice);
     const qty = Number(trade.quantity);
+    // Si hubo cierres parciales previos (tp-ladder), solo lo que falta por
+    // cerrar se valúa a `input.exitPrice` -- lo ya realizado antes queda
+    // tal cual se registró en recordPartialClose(), a SU propio precio.
+    // Para un trade sin tp-ladder, closedQuantity/realizedPnlToDate son 0
+    // por default y esto se reduce exactamente a la fórmula de antes.
+    const alreadyClosedQty = Number(trade.closedQuantity);
+    const remainingQty = Math.max(0, qty - alreadyClosedQty);
+    const priorRealizedPnl = Number(trade.realizedPnlToDate);
     const prevFee = Number(trade.fee);
     const totalFee = prevFee + input.additionalFee;
-    const pnl =
+    const finalSlicePnl =
       trade.side === OrderSide.BUY
-        ? (input.exitPrice - entry) * qty - totalFee
-        : (entry - input.exitPrice) * qty - totalFee;
+        ? (input.exitPrice - entry) * remainingQty - input.additionalFee
+        : (entry - input.exitPrice) * remainingQty - input.additionalFee;
+    const pnl = priorRealizedPnl + finalSlicePnl;
     const notional = entry * qty;
     const pnlPct = notional > 0 ? (pnl / notional) * 100 : 0;
 
@@ -281,6 +341,11 @@ export class BotRunnerRepository {
         rMultiple:
           rMultiple === null ? undefined : new Prisma.Decimal(rMultiple),
         reason: input.reason ?? trade.reason,
+        // Marca la posición como 100% cerrada; realizedPnlToDate ya quedó
+        // incorporado en `pnl` arriba, no hace falta para nada más
+        // después de este punto pero lo dejamos consistente para debug.
+        closedQuantity: new Prisma.Decimal(qty),
+        realizedPnlToDate: new Prisma.Decimal(pnl),
       },
     });
   }

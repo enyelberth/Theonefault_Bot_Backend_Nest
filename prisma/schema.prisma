@@ -858,6 +858,14 @@ model BotRunnerTrade {
   fee            Decimal   @default(0)
   pnl            Decimal?
   pnlPct         Decimal?
+  // Cierres parciales (tp-ladder): cuánto de `quantity` ya se realizó antes
+  // del cierre final, y la suma de pnl ya realizado en esos fills
+  // parciales -- sin esto, closeTrade() valuaba el 100% de la posición al
+  // precio del ÚLTIMO nivel (el mejor, porque el ladder vende en niveles
+  // crecientes), sobreestimando la ganancia real de cada trade con
+  // tp-ladder. Ver convención de tp-ladder en CLAUDE.md.
+  closedQuantity      Decimal @default(0)
+  realizedPnlToDate   Decimal @default(0)
   mae            Decimal?
   maePct         Decimal?
   mfe            Decimal?
