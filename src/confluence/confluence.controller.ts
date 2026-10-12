@@ -16,11 +16,20 @@ export class ConfluenceController {
   })
   @ApiParam({ name: 'symbol', example: 'BTCUSDT' })
   @ApiParam({ name: 'timeframe', example: '15m' })
+  @ApiQuery({ name: 'usePriceForecast', required: false, type: 'boolean' })
+  @ApiQuery({ name: 'priceForecastHorizonBars', required: false, type: 'number' })
   current(
     @Param('symbol') symbol: string,
     @Param('timeframe') timeframe: string,
+    @Query('usePriceForecast') usePriceForecast?: string,
+    @Query('priceForecastHorizonBars') priceForecastHorizonBars?: string,
   ) {
-    return this.confluence.compute(symbol, timeframe);
+    return this.confluence.compute(symbol, timeframe, {
+      usePriceForecast: usePriceForecast === 'true',
+      priceForecastHorizonBars: priceForecastHorizonBars
+        ? Number(priceForecastHorizonBars)
+        : undefined,
+    });
   }
 
   @Get(':symbol/:timeframe/history')

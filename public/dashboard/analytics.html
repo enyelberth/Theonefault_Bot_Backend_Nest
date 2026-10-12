@@ -205,6 +205,65 @@
       <h2>Exposición cartera <span class="sub">notional agregado por asset — detecta concentración</span></h2>
       <div id="portfolio-exposure" class="loading">Cargando…</div>
     </div>
+
+    <div class="section">
+      <h2>Bots v2 activos <span class="sub">motor BotRunner — equity/drawdown/dailyPnl en vivo</span></h2>
+      <div id="dashboard-v2" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Estado de cuenta <span class="sub">balance por moneda · ledger CapitalEvent · fee/pnl bruto-neto por trade</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <input id="stmt-runid" placeholder="runId opt." style="width:160px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <button class="reload" onclick="loadStatement()">Cargar</button>
+        <button class="reload" onclick="downloadStatementCsv()">⬇ CSV</button>
+      </div>
+      <div id="statement" class="loading">Ingresa runId (opcional) y presiona Cargar</div>
+    </div>
+
+    <div class="section">
+      <h2>Monte Carlo <span class="sub">riesgo de ruina · resampleo bootstrap de trades históricos</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <input id="mc-runid" placeholder="runId opt." style="width:140px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <input id="mc-sims" placeholder="simulations" value="2000" style="width:110px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <input id="mc-horizon" placeholder="horizonTrades" value="100" style="width:120px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <button class="reload" onclick="loadMonteCarlo()">Simular</button>
+      </div>
+      <div id="monte-carlo" class="loading">Ingresa filtros y presiona Simular</div>
+    </div>
+
+    <div class="section">
+      <h2>Predicción de precio (AR+GARCH) <span class="sub">ventaja probabilística, no garantía</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <input id="fc-symbol" placeholder="symbol" value="BTCUSDT" style="width:140px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <input id="fc-timeframe" placeholder="timeframe" value="1h" style="width:90px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <input id="fc-horizon" placeholder="horizonBars" value="5" style="width:110px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <button class="reload" onclick="loadForecast()">Forecast</button>
+        <button class="reload" onclick="evaluateForecast()">Evaluar accuracy</button>
+      </div>
+      <div id="forecast" class="loading">Ingresa symbol/timeframe y presiona Forecast</div>
+    </div>
+
+    <div class="section">
+      <h2>Confluencia <span class="sub">régimen + MTF + momentum (+forecast opcional) — score 0-100, 50=neutral</span></h2>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+        <input id="cf-symbol" placeholder="symbol" value="BTCUSDT" style="width:140px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <input id="cf-timeframe" placeholder="timeframe" value="1h" style="width:90px;padding:6px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;color:var(--text);"/>
+        <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="cf-forecast"/> usar forecast</label>
+        <button class="reload" onclick="loadConfluence()">Calcular</button>
+      </div>
+      <div id="confluence" class="loading">Ingresa symbol/timeframe y presiona Calcular</div>
+    </div>
+
+    <div class="section">
+      <h2>Reconciliación <span class="sub">batches recientes · issues abiertos por severidad</span></h2>
+      <div id="reconciliation" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Risk watchdog <span class="sub">config global · emergency-stop · últimos eventos</span></h2>
+      <div id="risk-watchdog" class="loading">Cargando…</div>
+    </div>
   </div>
 
 <script>
@@ -225,18 +284,19 @@ function renderAuthStatus() {
   el.textContent = t ? '✓ token · ' + t.slice(0, 10) + '…' : '⚠ sin token';
   el.style.color = t ? 'var(--green)' : 'var(--yellow)';
 }
+const _origFetch = window.fetch.bind(window);
 async function authFetch(url, init = {}) {
   const token = getToken();
   const headers = Object.assign({}, init.headers || {});
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  const res = await fetch(url, Object.assign({}, init, { headers }));
+  const res = await _origFetch(url, Object.assign({}, init, { headers }));
   if (res.status === 401) throw new Error('401 sin autorización — pulsa 🔑 Token');
   return res;
 }
-window.fetch = ((origFetch) => (url, init) => {
+window.fetch = (url, init) => {
   if (typeof url === 'string' && url.startsWith('/')) return authFetch(url, init);
-  return origFetch(url, init);
-})(window.fetch);
+  return _origFetch(url, init);
+};
 
 const fmt = (v, dec = 2) => {
   const n = Number(v);
@@ -1141,6 +1201,303 @@ async function loadPortfolioExposure() {
   } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
 }
 
+async function loadDashboardV2() {
+  const el = document.getElementById('dashboard-v2');
+  try {
+    const res = await fetch('/analytics/dashboard');
+    const data = await res.json();
+    const g = data.global;
+    const kpi = (label, value, cls = '') =>
+      `<div style="flex:0 0 auto;padding:10px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;min-width:130px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div class="${cls}" style="font-size:15px;margin-top:2px;">${value}</div>
+      </div>`;
+    let html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">' +
+      kpi('Total runs', g.totalBotRuns) +
+      kpi('Activos', g.activeBotRuns) +
+      kpi('Net PnL', fmt(g.netPnl, 2), pnlClass(g.netPnl)) +
+      kpi('Win rate', fmt(g.winRatePct, 1) + '%') +
+      kpi('Profit factor', g.profitFactor === null ? '-' : fmt(g.profitFactor, 2)) +
+      kpi('Max DD', fmt(g.maxDrawdownPct, 2) + '%') +
+      '</div>';
+    if (!data.bots.length) { html += '<div class="loading">Sin runners v2 activos.</div>'; el.innerHTML = html; return; }
+    html += '<table><thead><tr><th>Run</th><th>Strategy</th><th>Symbol</th><th>Mode</th>' +
+      '<th class="num">Equity</th><th class="num">DD%</th><th class="num">Daily PnL</th><th class="num">Realized PnL</th>' +
+      '<th class="num">Trades</th><th class="num">Win%</th><th class="num">Abiertas</th><th class="num">Edad (min)</th></tr></thead><tbody>';
+    for (const b of data.bots) {
+      html += `<tr>
+        <td><span class="badge">${b.runId}</span></td>
+        <td>${b.strategyId}</td>
+        <td>${b.symbol}</td>
+        <td><code style="font-size:11px;">${b.mode}</code></td>
+        <td class="num">${fmt(b.equity, 2)}</td>
+        <td class="num ${b.drawdownPct > 0 ? 'neg' : ''}">${fmt(b.drawdownPct, 2)}</td>
+        <td class="num ${pnlClass(b.dailyPnl)}">${fmt(b.dailyPnl, 2)}</td>
+        <td class="num ${pnlClass(b.realizedPnl)}">${fmt(b.realizedPnl, 2)}</td>
+        <td class="num">${b.tradesCount}</td>
+        <td class="num">${fmt(b.winRatePct, 1)}</td>
+        <td class="num">${b.openPositions}</td>
+        <td class="num">${fmt(b.ageMinutes, 0)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+function statementQuery() {
+  const runId = document.getElementById('stmt-runid').value.trim();
+  const params = new URLSearchParams();
+  if (runId) params.set('runId', runId);
+  return params.toString();
+}
+
+async function loadStatement() {
+  const el = document.getElementById('statement');
+  el.innerHTML = '<div class="loading">Cargando…</div>';
+  try {
+    const res = await fetch('/analytics/statement?' + statementQuery());
+    const data = await res.json();
+    if (!data.byCurrency.length) { el.innerHTML = '<div class="loading">Sin datos para ese filtro.</div>'; return; }
+    let html = '<table style="margin-bottom:14px;"><thead><tr><th>Moneda</th><th class="num">Apertura</th><th class="num">Cierre</th><th class="num">Cambio neto</th></tr></thead><tbody>';
+    for (const c of data.byCurrency) {
+      html += `<tr><td><span class="badge">${c.currency}</span></td><td class="num">${fmt(c.openingBalance, 2)}</td><td class="num">${fmt(c.closingBalance, 2)}</td><td class="num ${pnlClass(c.netChange)}">${fmt(c.netChange, 2)}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    if (data.totals) {
+      html += `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+        ${data.totals.totalTrades} trades · netPnl <b class="${pnlClass(data.totals.netPnl)}">${fmt(data.totals.netPnl, 2)}</b> ·
+        gross <b>${fmt(data.totals.grossPnlBeforeFees, 2)}</b> · fees <b class="neg">${fmt(data.totals.totalFees, 2)}</b>
+        ${data.totals.feeDragPct !== null ? ' · fee drag ' + fmt(data.totals.feeDragPct, 2) + '%' : ''}
+      </div>`;
+    }
+    const trades = data.trades.slice(-50).reverse();
+    html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Últimos ' + trades.length + ' trades (de ' + data.trades.length + '):</div>';
+    html += '<table><thead><tr><th>Symbol</th><th>Side</th><th class="num">Entry</th><th class="num">Exit</th><th class="num">Qty</th>' +
+      '<th class="num">Gross</th><th class="num">Fee</th><th class="num">Net</th><th class="num">%</th><th>Cerrado</th></tr></thead><tbody>';
+    for (const t of trades) {
+      html += `<tr>
+        <td><span class="badge">${t.symbol}</span></td><td>${t.side}</td>
+        <td class="num">${fmt(t.entryPrice, 4)}</td><td class="num">${fmt(t.exitPrice, 4)}</td><td class="num">${fmt(t.quantity, 6)}</td>
+        <td class="num ${pnlClass(t.grossPnl)}">${fmt(t.grossPnl, 4)}</td><td class="num neg">${fmt(t.fee, 4)}</td>
+        <td class="num ${pnlClass(t.netPnl)}">${fmt(t.netPnl, 4)}</td><td class="num ${pnlClass(t.pnlPct)}">${fmt(t.pnlPct, 2)}</td>
+        <td style="font-size:11px;">${new Date(t.closedAt).toLocaleString()}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function downloadStatementCsv() {
+  try {
+    const res = await fetch('/analytics/statement.csv?' + statementQuery());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'statement.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert('Error descargando CSV: ' + e.message); }
+}
+
+async function loadMonteCarlo() {
+  const el = document.getElementById('monte-carlo');
+  el.innerHTML = '<div class="loading">Simulando…</div>';
+  try {
+    const runId = document.getElementById('mc-runid').value.trim();
+    const sims = document.getElementById('mc-sims').value.trim() || '2000';
+    const horizon = document.getElementById('mc-horizon').value.trim() || '100';
+    const params = new URLSearchParams({ simulations: sims, horizonTrades: horizon });
+    if (runId) params.set('runId', runId);
+    const res = await fetch('/analytics/monte-carlo?' + params.toString());
+    const data = await res.json();
+    if (data.status === 'INSUFFICIENT_DATA') {
+      el.innerHTML = `<div class="loading">Datos insuficientes: ${data.tradesAvailable}/${data.minRequired} trades mínimo.</div>`;
+      return;
+    }
+    const kpi = (label, value, cls = '') =>
+      `<div style="flex:0 0 auto;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;min-width:140px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div class="${cls}" style="font-size:18px;font-variant-numeric:tabular-nums;margin-top:2px;">${value}</div>
+      </div>`;
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${data.tradesSampled} trades resampleados · ${data.simulations} simulaciones · ${data.horizonTrades} trades de horizonte · capital inicial ${fmt(data.startingEquity, 2)}</div>`;
+    html += '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      kpi('P(ruina)', fmt(data.probabilityOfRuinPct, 2) + '%', data.probabilityOfRuinPct > 10 ? 'neg' : '') +
+      (data.probabilityOfBreachingMaxDrawdownPct !== null
+        ? kpi('P(breach maxDD ' + fmt(data.maxDrawdownPctThreshold, 0) + '%)', fmt(data.probabilityOfBreachingMaxDrawdownPct, 2) + '%', data.probabilityOfBreachingMaxDrawdownPct > 10 ? 'neg' : '')
+        : '') +
+      kpi('Equity final p5', fmt(data.finalEquity.p5, 2)) +
+      kpi('Equity final p50', fmt(data.finalEquity.p50, 2)) +
+      kpi('Equity final p95', fmt(data.finalEquity.p95, 2)) +
+      kpi('Max DD p50', fmt(data.maxDrawdownPct.p50, 2) + '%') +
+      kpi('Max DD p95', fmt(data.maxDrawdownPct.p95, 2) + '%', 'neg') +
+      '</div>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+function forecastQuery() {
+  const symbol = document.getElementById('fc-symbol').value.trim() || 'BTCUSDT';
+  const timeframe = document.getElementById('fc-timeframe').value.trim() || '1h';
+  const horizonBars = document.getElementById('fc-horizon').value.trim() || '5';
+  return { symbol, timeframe, horizonBars };
+}
+
+async function loadForecast() {
+  const el = document.getElementById('forecast');
+  el.innerHTML = '<div class="loading">Calculando…</div>';
+  try {
+    const { symbol, timeframe, horizonBars } = forecastQuery();
+    const res = await fetch(`/market-prediction/forecast?symbol=${symbol}&timeframe=${timeframe}&horizonBars=${horizonBars}`);
+    const data = await res.json();
+    if (data.status !== 'OK' || !data.forecast || data.forecast.status !== 'OK') {
+      el.innerHTML = `<div class="loading">Datos insuficientes para ${symbol}/${timeframe} (mínimo 120 velas cerradas).</div>`;
+      return;
+    }
+    const f = data.forecast;
+    const kpi = (label, value, cls = '') =>
+      `<div style="flex:0 0 auto;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;min-width:140px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div class="${cls}" style="font-size:18px;font-variant-numeric:tabular-nums;margin-top:2px;">${value}</div>
+      </div>`;
+    const expectedPct = ((f.forecastPrice - f.lastPrice) / f.lastPrice) * 100;
+    let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${symbol}/${timeframe} · horizonte ${horizonBars} velas · vela ${new Date(data.candleCloseTime).toLocaleString()} · ${f.samplesUsed} muestras · modelo ${f.modelType}</div>`;
+    html += '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+      kpi('Último precio', fmt(f.lastPrice, 4)) +
+      kpi('Forecast', fmt(f.forecastPrice, 4), pnlClass(expectedPct)) +
+      kpi('Cambio esperado', fmt(expectedPct, 3) + '%', pnlClass(expectedPct)) +
+      kpi('Banda 95% baja', fmt(f.lowerBound, 4)) +
+      kpi('Banda 95% alta', fmt(f.upperBound, 4)) +
+      kpi('Volatilidad forecast', fmt(f.volatilityForecast * 100, 3) + '%') +
+      '</div>';
+    html += `<div id="forecast-eval" style="margin-top:12px;font-size:12px;color:var(--muted);"></div>`;
+    html += `<div style="margin-top:10px;font-size:11px;color:var(--muted);">AR(${f.modelParams.arOrder}) coeffs=[${f.modelParams.arCoeffs.map(c => fmt(c, 5)).join(', ')}] · GARCH(1,1) α=${fmt(f.modelParams.garchAlpha, 3)} β=${fmt(f.modelParams.garchBeta, 3)} — ventaja probabilística, no garantía.</div>`;
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function evaluateForecast() {
+  const evalEl = document.getElementById('forecast-eval');
+  if (!evalEl) { alert('Primero calcula un Forecast.'); return; }
+  evalEl.textContent = 'Evaluando accuracy walk-forward…';
+  try {
+    const { symbol, timeframe, horizonBars } = forecastQuery();
+    const res = await fetch(`/market-prediction/evaluate?symbol=${symbol}&timeframe=${timeframe}&horizonBars=${horizonBars}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.sampleSize === 0) {
+      evalEl.textContent = 'Sin snapshots evaluados todavía (necesita que pase el horizonte de al menos un forecast calculado antes).';
+      return;
+    }
+    evalEl.innerHTML = `Walk-forward (${data.sampleSize} muestras, ${data.newlyEvaluated} nuevas): MAE ${fmt(data.mae, 4)} · RMSE ${fmt(data.rmse, 4)} · accuracy direccional <b class="${data.directionalAccuracyPct >= 50 ? 'pos' : 'neg'}">${fmt(data.directionalAccuracyPct, 1)}%</b> (50% = moneda al aire)`;
+  } catch (e) { evalEl.innerHTML = `Error: ${e.message}`; }
+}
+
+async function loadConfluence() {
+  const el = document.getElementById('confluence');
+  el.innerHTML = '<div class="loading">Calculando…</div>';
+  try {
+    const symbol = document.getElementById('cf-symbol').value.trim() || 'BTCUSDT';
+    const timeframe = document.getElementById('cf-timeframe').value.trim() || '1h';
+    const useFc = document.getElementById('cf-forecast').checked;
+    const res = await fetch(`/confluence/${symbol}/${timeframe}?usePriceForecast=${useFc}`);
+    const data = await res.json();
+    const biasColor = data.bias === 'BULLISH' ? 'var(--green)' : data.bias === 'BEARISH' ? 'var(--red)' : 'var(--muted)';
+    let html = `<div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <div style="font-size:32px;font-weight:600;color:${biasColor};">${fmt(data.score, 1)}</div>
+      <div><span class="badge" style="color:${biasColor};border-color:${biasColor};">${data.bias}</span>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;">confianza ${fmt(data.confidence, 1)}%</div></div>
+    </div>`;
+    html += '<table><thead><tr><th>Componente</th><th class="num">Score</th><th class="num">Peso</th><th class="num">Contribución</th><th>Razón</th></tr></thead><tbody>';
+    for (const c of data.breakdown.components) {
+      html += `<tr><td>${c.name}</td><td class="num">${fmt(c.score, 1)}</td><td class="num">${fmt(c.weight, 2)}</td><td class="num">${fmt(c.contribution, 2)}</td><td style="font-size:12px;color:var(--muted);">${c.reason}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadReconciliation() {
+  const el = document.getElementById('reconciliation');
+  try {
+    const [batchesRes, issuesRes] = await Promise.all([
+      fetch('/reconciliation/batches?limit=10'),
+      fetch('/reconciliation/issues?status=OPEN&limit=20'),
+    ]);
+    const batches = await batchesRes.json();
+    const issues = await issuesRes.json();
+    let html = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Últimos batches:</div>';
+    if (!batches.length) {
+      html += '<div class="loading">Sin batches todavía.</div>';
+    } else {
+      html += '<table style="margin-bottom:14px;"><thead><tr><th>Run</th><th>Trigger</th><th>Status</th><th class="num">Issues</th><th class="num">Repairs</th><th>Inició</th></tr></thead><tbody>';
+      for (const b of batches) {
+        html += `<tr><td>${b.botRunnerRun ? b.botRunnerRun.runId : b.botRunnerRunId}</td><td>${b.trigger}</td>
+          <td><span class="badge" style="${b.status === 'FAILED' ? 'color:var(--red);border-color:var(--red);' : ''}">${b.status}</span></td>
+          <td class="num ${b.issuesFound > 0 ? 'neg' : ''}">${b.issuesFound}</td><td class="num">${b.repairsApplied}</td>
+          <td style="font-size:11px;">${new Date(b.startedAt).toLocaleString()}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    html += `<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Issues abiertos (${issues.length}):</div>`;
+    if (!issues.length) {
+      html += '<div class="loading">Sin issues abiertos.</div>';
+    } else {
+      html += '<table><thead><tr><th>Severidad</th><th>Tipo</th><th>Entidad</th><th class="num">Ocurrencias</th><th>Visto</th></tr></thead><tbody>';
+      for (const i of issues) {
+        const sevColor = i.severity === 'CRITICAL' ? 'var(--red)' : i.severity === 'HIGH' ? 'var(--yellow)' : 'var(--muted)';
+        html += `<tr><td><span class="badge" style="color:${sevColor};border-color:${sevColor};">${i.severity}</span></td>
+          <td>${i.type}</td><td>${i.entityType}${i.entityId ? ' · ' + i.entityId : ''}</td>
+          <td class="num">${i.occurrenceCount}</td><td style="font-size:11px;">${new Date(i.lastSeenAt).toLocaleString()}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
+async function loadRiskWatchdog() {
+  const el = document.getElementById('risk-watchdog');
+  try {
+    const [cfgRes, statusRes, eventsRes] = await Promise.all([
+      fetch('/risk/config'),
+      fetch('/risk/status'),
+      fetch('/risk/events?limit=10'),
+    ]);
+    const cfg = await cfgRes.json();
+    const status = await statusRes.json();
+    const events = await eventsRes.json();
+    const kpi = (label, value, cls = '') =>
+      `<div style="flex:0 0 auto;padding:10px 14px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;min-width:140px;">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+        <div class="${cls}" style="font-size:14px;margin-top:2px;">${value}</div>
+      </div>`;
+    let html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">' +
+      kpi('Watchdog', status.enabled ? '✓ activo' : '⚠ apagado', status.enabled ? 'pos' : 'neg') +
+      kpi('Emergency stop', status.emergencyActive ? '🛑 ACTIVO' : 'no', status.emergencyActive ? 'neg' : 'pos') +
+      kpi('Max daily loss', cfg.maxDailyLossQuote ?? 'sin límite') +
+      kpi('Max drawdown %', cfg.maxDrawdownPct ?? 'sin límite') +
+      kpi('Max open bots', cfg.maxOpenBots ?? 'sin límite') +
+      kpi('Max cross exposure %', cfg.maxCrossBotExposurePct ?? 'sin límite') +
+      kpi('Consecutive loss limit', cfg.consecutiveLossLimit ?? 'sin límite') +
+      '</div>';
+    if (!events.length) {
+      html += '<div class="loading">Sin eventos de riesgo todavía.</div>';
+    } else {
+      html += '<table><thead><tr><th>Tipo</th><th>Acción</th><th>Mensaje</th><th>Cuándo</th></tr></thead><tbody>';
+      for (const e2 of events) {
+        html += `<tr><td><span class="badge">${e2.type}</span></td><td>${e2.action}</td><td style="font-size:12px;">${e2.message}</td><td style="font-size:11px;">${new Date(e2.createdAt).toLocaleString()}</td></tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = `<div class="loading">Error: ${e.message}</div>`; }
+}
+
 function loadAll() {
   loadSystemHealth();
   loadROI();
@@ -1167,6 +1524,9 @@ function loadAll() {
   loadCorrelation();
   loadRunnerCorr();
   loadPortfolioExposure();
+  loadDashboardV2();
+  loadReconciliation();
+  loadRiskWatchdog();
 }
 
 renderAuthStatus();

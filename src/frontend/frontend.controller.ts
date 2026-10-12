@@ -1,7 +1,9 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { join } from 'path';
+import { Public } from '../authA/auth.guard';
 
+@Public()
 @Controller()
 export class FrontendController {
   @Get('dashboard/bot/:id')
