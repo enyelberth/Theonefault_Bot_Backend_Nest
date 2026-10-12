@@ -51,6 +51,7 @@ import {
   computeConfidenceMultiplier,
   type ConfidenceMultiplierConfig,
 } from '../market-prediction/price-forecast.calculator';
+import { ConfluenceService } from '../confluence/confluence.service';
 
 const WS_TRACKED_TIMEFRAMES = new Set<Timeframe>(['1m', '5m', '15m', '1h']);
 // Default si la estrategia no trae config.maxOrderAgeMs. Mismo orden de
@@ -172,6 +173,7 @@ export class BotRunnerService {
     private readonly alerts: OperationalAlertsService,
     private readonly ledger: CapitalLedgerService,
     private readonly forecasts: PriceForecastService,
+    private readonly confluence: ConfluenceService,
   ) {}
 
   private async emitCloseCapitalEvents(
@@ -667,19 +669,34 @@ export class BotRunnerService {
                 .touchStats(handle.input.runId, { ordersRejected: 1 })
                 .catch(() => undefined);
             } else {
-              const gated = await this.gateSignal(
+              const confluenceAllowed = await this.checkConfluence(
                 handle,
                 forecastCheck.signal,
+                isEntry,
                 correlationId,
               );
-              if (gated) {
-                await this.executeSignal(handle, gated, correlationId);
-                this.copyBus.publish({
-                  masterRunId: handle.input.runId,
-                  masterEquity: handle.currentEquity,
-                  signal: gated,
-                  emittedAt: Date.now(),
-                });
+              if (!confluenceAllowed) {
+                handle.status.ordersRejected += 1;
+                handle.status.lastRejectReason =
+                  'CONFLUENCE_FILTER: score insuficiente o en contra de la señal';
+                await this.repo
+                  .touchStats(handle.input.runId, { ordersRejected: 1 })
+                  .catch(() => undefined);
+              } else {
+                const gated = await this.gateSignal(
+                  handle,
+                  forecastCheck.signal,
+                  correlationId,
+                );
+                if (gated) {
+                  await this.executeSignal(handle, gated, correlationId);
+                  this.copyBus.publish({
+                    masterRunId: handle.input.runId,
+                    masterEquity: handle.currentEquity,
+                    signal: gated,
+                    emittedAt: Date.now(),
+                  });
+                }
               }
             }
           }
@@ -792,6 +809,93 @@ export class BotRunnerService {
       { forecast, expectedChangePct, filter, sizeMultiplier },
     );
     return { allowed, signal: adjustedSignal };
+  }
+
+  /**
+   * Filtro opcional (config.confluenceFilter) que unifica régimen + MTF +
+   * momentum (+ forecast AR+GARCH si usePriceForecast) en un solo score
+   * 0-100 vía ConfluenceService. No reemplaza regimeFilter/multiTimeframe/
+   * priceForecast -- son gates independientes, pueden convivir; este es un
+   * criterio adicional, apagado por defecto. Recalcula régimen/MTF por su
+   * cuenta (no reusa `regime`/`timeframeConfig` ya calculados antes en este
+   * mismo tick) -- costo extra de cómputo aceptado a cambio de no acoplar
+   * ConfluenceService a los objetos internos del bot-runner.
+   */
+  private async checkConfluence(
+    handle: RunnerHandle,
+    signal: Signal,
+    isEntry: boolean,
+    correlationId: string,
+  ): Promise<boolean> {
+    if (!isEntry || !signal.side) return true;
+    const filter = this.confluenceFilterConfig(handle.input.config);
+    if (!filter?.enabled) return true;
+
+    let result: Awaited<ReturnType<ConfluenceService['compute']>> | null = null;
+    try {
+      result = await this.confluence.compute(signal.symbol, handle.input.timeframe, {
+        usePriceForecast: filter.usePriceForecast,
+        priceForecastHorizonBars: filter.priceForecastHorizonBars,
+      });
+    } catch (e: any) {
+      this.logger.warn(`confluence check failed: ${e.message}`);
+      await this.trace(handle, correlationId, 'CONFLUENCE_ALLOWED', {
+        reason: 'confluence error, fail-open',
+        error: e.message,
+      });
+      return true;
+    }
+
+    const biasOk = result.bias !== 'NEUTRAL' || filter.allowNeutral;
+    const confidenceOk = result.confidence >= filter.minConfidence;
+    const allowed =
+      biasOk &&
+      confidenceOk &&
+      (signal.side === 'BUY'
+        ? result.score >= filter.minScore
+        : result.score <= 100 - filter.minScore);
+
+    await this.trace(
+      handle,
+      correlationId,
+      allowed ? 'CONFLUENCE_ALLOWED' : 'CONFLUENCE_REJECTED',
+      { confluence: result, filter },
+    );
+    return allowed;
+  }
+
+  private confluenceFilterConfig(config: Record<string, unknown>):
+    | {
+        enabled: boolean;
+        minScore: number;
+        minConfidence: number;
+        allowNeutral: boolean;
+        usePriceForecast: boolean;
+        priceForecastHorizonBars: number;
+      }
+    | undefined {
+    const raw = config.confluenceFilter;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const value = raw as Record<string, unknown>;
+    return {
+      enabled: value.enabled === true,
+      minScore:
+        typeof value.minScore === 'number'
+          ? Math.max(50, Math.min(100, value.minScore))
+          : 55,
+      minConfidence:
+        typeof value.minConfidence === 'number'
+          ? Math.max(0, Math.min(100, value.minConfidence))
+          : 0,
+      allowNeutral: value.allowNeutral === true,
+      usePriceForecast: value.usePriceForecast === true,
+      priceForecastHorizonBars:
+        typeof value.priceForecastHorizonBars === 'number' &&
+        Number.isInteger(value.priceForecastHorizonBars) &&
+        value.priceForecastHorizonBars > 0
+          ? value.priceForecastHorizonBars
+          : 5,
+    };
   }
 
   private async gateSignal(

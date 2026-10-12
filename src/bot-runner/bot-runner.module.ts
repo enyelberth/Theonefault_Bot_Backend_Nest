@@ -15,6 +15,7 @@ import { MarketDataModule } from '../market-data/market-data.module';
 import { OperationalAlertsModule } from '../operational-alerts/operational-alerts.module';
 import { CapitalLedgerModule } from '../capital-ledger/capital-ledger.module';
 import { MarketPredictionModule } from '../market-prediction/market-prediction.module';
+import { ConfluenceModule } from '../confluence/confluence.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { MarketPredictionModule } from '../market-prediction/market-prediction.m
     OperationalAlertsModule,
     CapitalLedgerModule,
     MarketPredictionModule,
+    ConfluenceModule,
   ],
   providers: [
     BotRunnerService,

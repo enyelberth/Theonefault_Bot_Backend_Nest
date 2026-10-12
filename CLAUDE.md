@@ -88,7 +88,7 @@ El payload debe ser JSON serializable y nunca contener credenciales. Al ampliar 
 - [x] Trazabilidad base de señal, riesgo, orden y trade en BotRunner v2.
 - [x] Analítica unificada por estrategia/símbolo/periodo.
 - [x] Clasificación y filtro de régimen de mercado.
-- [ ] Motor de confluencia y confianza de señales.
+- [x] Motor de confluencia y confianza de señales (`ConfluenceService` ya existía; `config.confluenceFilter` lo conecta como gate opcional del bot runner, con el forecast AR+GARCH integrable como componente del score).
 - [x] Contexto y filtro multi-timeframe.
 - [x] Riesgo agregado de cartera (daily-loss/open-bots/consecutive-loss/win-rate/cross-exposure ya agregan v1+v2 en `src/risk-manager`). Correlación entre runners ya existe (`AnalyticsService.runnerCorrelation`), falta usarla como input del propio watchdog.
 - [x] Predicción estadística de precio (AR+GARCH) con validación walk-forward.
@@ -190,6 +190,7 @@ El timeframe primario siempre participa con peso 1. Solo `OPEN` y `ADJUST` puede
 - `PriceForecastService.evaluateAccuracy()` hace la validación walk-forward: completa `realizedPrice` de snapshots cuyo horizonte ya venció y devuelve MAE/RMSE/accuracy direccional agregados. **No activar `config.priceForecast.enabled` en un bot real sin antes revisar esta métrica** sobre el símbolo/timeframe/horizonte en cuestión -- es la manera de evitar que el forecast cause pérdidas por sobreajuste en vez de prevenirlas.
 - `PriceForecastService.accuracySummary()` es la variante de solo lectura (sin completar `realizedPrice`) pensada para consultarse en el hot path del bot runner sin cargarle un write de reconciliación a cada señal.
 - `ConfluenceService.compute()` puede incluir el forecast como un cuarto componente del score (`computeConfluence(..., config, forecast)`) cuando `config.usePriceForecast: true` -- sin ese flag, el score de confluencia es idéntico al de antes de que existiera el forecast (compatibilidad hacia atrás por defecto). El componente satura en ±2% de cambio esperado, mismo peso configurable (`weights.priceForecast`, default 0.2) que el resto de componentes.
+- `config.confluenceFilter: { enabled, minScore, minConfidence, allowNeutral, usePriceForecast, priceForecastHorizonBars }` en el bot runner (`BotRunnerService.checkConfluence`) es un gate adicional e independiente de `regimeFilter`/`multiTimeframe`/`priceForecast` -- no los reemplaza, pueden convivir todos prendidos a la vez. BUY necesita `score >= minScore`; SELL necesita `score <= 100-minScore`; bias `NEUTRAL` bloquea salvo `allowNeutral: true`. Recalcula régimen/MTF por su cuenta (no reusa los ya calculados en el mismo tick por bot-runner) -- costo de cómputo extra aceptado, apagado por defecto. Falla abierto ante error, igual que el resto de filtros.
 
 ## Convención de sizing por confianza del forecast
 

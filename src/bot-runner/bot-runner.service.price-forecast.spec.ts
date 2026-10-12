@@ -18,6 +18,7 @@ function buildService(forecasts: {
     dummy, // alerts
     dummy, // ledger
     forecasts as any,
+    dummy, // confluence
   );
   return { service, createTrace };
 }
