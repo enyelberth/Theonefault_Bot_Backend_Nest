@@ -2191,6 +2191,20 @@ export class BotRunnerService {
               pnl: partial.pnl,
               fee: partial.fee,
             });
+            // Si también hay trailingStop en el mismo trade, su
+            // `quantity` quedó fijada en initTrailingStop() con el tamaño
+            // ORIGINAL completo y nunca se enteraba de que tpLadder ya
+            // vendió una porción -- sin este ajuste, un trailing-stop que
+            // dispare después intentaría cerrar MÁS cantidad de la que
+            // realmente queda abierta (orden de venta sobre balance que no
+            // existe).
+            const trailing = handle.trailingStates.get(tradeId);
+            if (trailing) {
+              trailing.quantity = Math.max(
+                0,
+                trailing.quantity - decision.quantity,
+              );
+            }
           }
         }
       } catch (e: any) {
