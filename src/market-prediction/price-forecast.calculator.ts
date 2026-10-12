@@ -117,6 +117,14 @@ export function fitAr(returns: ReadonlyArray<number>, order: number): ArFit {
       for (let j = 0; j < p; j++) xtx[i][j] += design[r][i] * design[r][j];
     }
   }
+  // Ridge chico y proporcional a la escala de cada diagonal: sin esto,
+  // retornos casi colineales (tendencia geométrica muy suave, lags
+  // redundantes) dejan X'X singular y gaussianSolve explota. El ridge
+  // garantiza una solución de mínimos cuadrados finita sin mover
+  // perceptiblemente el ajuste en el caso normal (bien condicionado).
+  for (let i = 0; i < p; i++) {
+    xtx[i][i] += 1e-10 * Math.max(1, Math.abs(xtx[i][i]));
+  }
   const beta = gaussianSolve(xtx, xty);
   const residuals = design.map((row, idx) => target[idx] - dot(row, beta));
   return {

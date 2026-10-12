@@ -10,8 +10,9 @@ import { ExchangeFactory } from '../exchanges/exchange.factory';
 import { StrategyRegistry } from '../strategies/v2/registry/strategy-registry';
 import { runBacktest } from './engine/simulator';
 import { DEFAULT_FEES, FeesConfig } from './engine/fees';
-import type { Timeframe } from '../exchanges/domain';
+import type { Candle, Timeframe } from '../exchanges/domain';
 import type { RunBacktestDto } from './dto/run-backtest.dto';
+import { DEFAULT_EXTRA_TIMEFRAMES } from '../confluence/confluence.service';
 
 @Injectable()
 export class BacktestingService {
@@ -61,6 +62,13 @@ export class BacktestingService {
       });
       if (candles.length === 0) throw new Error('No candles loaded for range');
 
+      const extraTimeframeCandles = await this.loadExtraTimeframeCandles(
+        dto.symbol,
+        dto.config,
+        startTime,
+        endTime,
+      );
+
       const fees: FeesConfig = { ...DEFAULT_FEES, ...(dto.fees ?? {}) };
       const result = await runBacktest({
         strategy,
@@ -73,6 +81,7 @@ export class BacktestingService {
         exchange,
         fees,
         warmupBars: dto.warmupBars ?? 0,
+        extraTimeframeCandles,
       });
 
       const m = result.metrics;
@@ -116,7 +125,12 @@ export class BacktestingService {
         });
       }
 
-      return { run: updated, metrics: m, tradesCount: result.trades.length };
+      return {
+        run: updated,
+        metrics: m,
+        tradesCount: result.trades.length,
+        filteredSignals: result.filteredSignals,
+      };
     } catch (err: any) {
       this.logger.error(`Backtest ${run.id} failed: ${err.message}`);
       await this.prisma.backtestRun.update({
@@ -153,6 +167,48 @@ export class BacktestingService {
 
   listStrategies() {
     return this.registry.list();
+  }
+
+  /**
+   * Precarga, para todo el rango del backtest, las velas de los timeframes
+   * extra que config.multiTimeframe y/o config.confluenceFilter van a
+   * necesitar -- unión deduplicada de ambos, cargada una sola vez (no por
+   * barra). Si ninguna de las dos claves está habilitada, no carga nada.
+   */
+  private async loadExtraTimeframeCandles(
+    symbol: string,
+    config: Record<string, unknown>,
+    startTime: number,
+    endTime: number,
+  ): Promise<Record<string, Candle[]>> {
+    const timeframes = new Set<string>();
+    const mtf = config.multiTimeframe as
+      | { enabled?: boolean; contexts?: Array<{ timeframe: string }> }
+      | undefined;
+    if (mtf?.enabled) {
+      for (const c of mtf.contexts ?? []) timeframes.add(c.timeframe);
+    }
+    const confluenceFilter = config.confluenceFilter as
+      | { enabled?: boolean; extraTimeframes?: Array<{ timeframe: string }> }
+      | undefined;
+    if (confluenceFilter?.enabled) {
+      const extras = confluenceFilter.extraTimeframes ?? DEFAULT_EXTRA_TIMEFRAMES;
+      for (const c of extras) timeframes.add(c.timeframe);
+    }
+    if (timeframes.size === 0) return {};
+
+    const out: Record<string, Candle[]> = {};
+    await Promise.all(
+      Array.from(timeframes).map(async (tf) => {
+        out[tf] = await this.candleLoader.loadRange({
+          symbol,
+          timeframe: tf as Timeframe,
+          startTime,
+          endTime,
+        });
+      }),
+    );
+    return out;
   }
 }
 

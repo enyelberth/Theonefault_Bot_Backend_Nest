@@ -6,7 +6,7 @@ import {
   evaluateTimeframeAlignment,
   type MultiTimeframeConfig,
 } from './multi-timeframe';
-import { detectMarketRegime } from './market-regime.detector';
+import { detectMarketRegime, regimeAllowsFilter } from './market-regime.detector';
 import type {
   MarketRegimeResult,
   RegimeFilterConfig,
@@ -42,28 +42,7 @@ export class MarketRegimeService {
   }
 
   allows(result: MarketRegimeResult, config?: RegimeFilterConfig): boolean {
-    if (!config?.enabled) return true;
-    if (result.trend === 'UNKNOWN') return config.allowUnknown === true;
-    if (
-      config.minConfidence !== undefined &&
-      result.confidence < config.minConfidence
-    ) {
-      return false;
-    }
-    if (
-      config.allowedRegimes?.length &&
-      !config.allowedRegimes.includes(result.regime)
-    ) {
-      return false;
-    }
-    if (
-      config.allowedTrends?.length &&
-      !config.allowedTrends.includes(result.trend)
-    ) {
-      return false;
-    }
-    if (config.blockedVolatility?.includes(result.volatility)) return false;
-    return true;
+    return regimeAllowsFilter(result, config);
   }
 
   async current(symbol: string, timeframe: string, limit = 100) {

@@ -42,6 +42,14 @@ describe('fitAr', () => {
   it('throws when there is not enough data for the requested order', () => {
     expect(() => fitAr([0.01, 0.02, 0.01], 5)).toThrow();
   });
+
+  it('does not throw on perfectly collinear returns (constant geometric trend, rank-deficient design matrix)', () => {
+    const constantReturn = 0.004;
+    const returns = new Array(150).fill(constantReturn);
+    const fit = fitAr(returns, 2);
+    expect(Number.isFinite(fit.intercept)).toBe(true);
+    expect(fit.coeffs.every((c) => Number.isFinite(c))).toBe(true);
+  });
 });
 
 describe('forecastAr', () => {

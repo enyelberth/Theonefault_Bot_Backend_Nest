@@ -88,9 +88,17 @@ export class RiskManagerService {
       const spec = profile.sizer as unknown as SizerSpec;
       try {
         const sizer = buildSizer(spec);
+        // Una señal MARKET (la mayoría) nunca trae signal.price -- el
+        // precio lo decide el exchange al llenar la orden. Sin este
+        // fallback a la última vela conocida, el sizer recibía price=0,
+        // devolvía quoteQuantity=0 y CADA entrada con un RiskProfile.sizer
+        // configurado quedaba rechazada con "sizer produced zero",
+        // neutralizando el sizing para cualquier estrategia MARKET.
+        const referencePrice =
+          signal.price ?? input.history?.[input.history.length - 1]?.close ?? 0;
         sizing = sizer.compute({
           equity: context.accountEquity,
-          price: signal.price ?? 0,
+          price: referencePrice,
           stopPrice: signal.stopLossPrice,
           history: input.history,
           requestedQuote: signal.quoteQuantity,

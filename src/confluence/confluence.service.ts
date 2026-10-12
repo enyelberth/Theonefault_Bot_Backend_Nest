@@ -9,7 +9,7 @@ import { PriceForecastService } from '../market-prediction/price-forecast.servic
 import { computeConfluence } from './confluence.calculator';
 import type { ConfluenceConfig, ConfluenceResult } from './confluence.types';
 
-const DEFAULT_EXTRA_TIMEFRAMES = [
+export const DEFAULT_EXTRA_TIMEFRAMES = [
   { timeframe: '1h', weight: 2 },
   { timeframe: '4h', weight: 3 },
 ];

@@ -1,6 +1,7 @@
 import type { Candle } from '../exchanges/domain';
 import type {
   MarketRegimeResult,
+  RegimeFilterConfig,
   TrendRegime,
   VolatilityRegime,
   VolumeRegime,
@@ -161,4 +162,37 @@ export function detectMarketRegime(
       samples: candles.length,
     },
   };
+}
+
+/**
+ * Lógica pura de MarketRegimeService.allows() -- extraída acá para que el
+ * backtest engine pueda aplicar el mismo filtro que el bot runner en vivo
+ * sin depender de PrismaClient ni de la clase del servicio.
+ */
+export function regimeAllowsFilter(
+  result: MarketRegimeResult,
+  config?: RegimeFilterConfig,
+): boolean {
+  if (!config?.enabled) return true;
+  if (result.trend === 'UNKNOWN') return config.allowUnknown === true;
+  if (
+    config.minConfidence !== undefined &&
+    result.confidence < config.minConfidence
+  ) {
+    return false;
+  }
+  if (
+    config.allowedRegimes?.length &&
+    !config.allowedRegimes.includes(result.regime)
+  ) {
+    return false;
+  }
+  if (
+    config.allowedTrends?.length &&
+    !config.allowedTrends.includes(result.trend)
+  ) {
+    return false;
+  }
+  if (config.blockedVolatility?.includes(result.volatility)) return false;
+  return true;
 }

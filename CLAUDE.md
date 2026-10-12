@@ -95,7 +95,7 @@ El payload debe ser JSON serializable y nunca contener credenciales. Al ampliar 
 - [x] Reconciliación base de órdenes, posiciones y snapshots de balances.
 - [x] Slippage, spread, latencia, comisiones y costo neto base.
 - [x] Intereses de margin (`WalletSyncService.syncInterest`, ya existía) y funding de futuros perpetuos (`syncFunding`, nuevo -- `BinanceWalletHistoryService.fetchFundingFees` sobre `/fapi/v1/income`, `CapitalEvent.type = 'FUNDING'`).
-- [x] Comparación backtest/paper/real (`AnalyticsService.compareModes()`).
+- [x] Comparación backtest/paper/real (`AnalyticsService.compareModes()`; desde que el backtest aplica regimeFilter/multiTimeframe/priceForecast/confluenceFilter/riskProfile igual que en vivo, la comparación deja de ser "pelado vs con filtros").
 - [x] Walk-forward y Monte Carlo (walk-forward de accuracy del forecast de precio vía `evaluateAccuracy()`; Monte Carlo de riesgo de ruina sobre la curva de equity vía `AnalyticsService.monteCarlo()`. Pendiente si se necesita walk-forward de *optimización de parámetros de estrategia*, que es un alcance distinto).
 - [ ] Alertas operativas con deduplicación.
 - [x] Dashboard analítico y salud del sistema (`AnalyticsService.dashboardV2()` + `systemHealth()`; `GET /analytics/dashboard` -- el dashboard legacy en `/stats/dashboard` sigue existiendo aparte, solo ve bots v1).
@@ -205,6 +205,15 @@ El timeframe primario siempre participa con peso 1. Solo `OPEN` y `ADJUST` puede
 - Requiere mínimo 20 trades cerrados; con menos, devuelve `INSUFFICIENT_DATA` en vez de simular sobre una muestra que no significa nada.
 - Si `filters.runId` apunta a un único runner con `RiskProfile`, usa su `maxDrawdownPct` como umbral para `probabilityOfBreachingMaxDrawdownPct` -- no inventa un umbral si no hay uno configurado.
 - Es una proyección basada en el propio historial de la cuenta (contabilidad), no en precio -- complementa, no reemplaza, la predicción de precio AR+GARCH.
+
+## Convención de paridad backtest/vivo
+
+- `RunBacktestDto.config` es el mismo blob plano que `BotRunnerRun.config` en vivo: las mismas claves `regimeFilter`/`multiTimeframe`/`priceForecast`/`confluenceFilter` que `BotRunnerService` lee para gatear señales, más una clave nueva solo-backtest `riskProfile` (objeto inline con forma de `RiskProfile`, no un id de DB) para aplicar sizing. Todo opcional: un backtest sin ninguna de estas claves se comporta exactamente igual que antes de que existiera este bloque.
+- `src/backtesting/engine/filters.ts#applyEntryFilters()` reusa las mismas funciones puras que el bot runner (`detectMarketRegime`/`regimeAllowsFilter`, `evaluateTimeframeAlignment`, `forecastPrice`, `computeConfluence`) sobre el slice de velas hasta la barra actual -- sin look-ahead, sin ir a DB/exchange en el loop. `confluenceFilter` replica el default de `ConfluenceService` (1h/4h, `DEFAULT_EXTRA_TIMEFRAMES`) salvo que `confluenceFilter.extraTimeframes` lo override.
+- `BacktestingService.run()` precarga las velas de timeframes extra que `multiTimeframe`/`confluenceFilter` necesiten (unión deduplicada, una sola carga para todo el rango) y se las pasa al simulador vía `extraTimeframeCandles`.
+- `config.riskProfile` activa `RiskManagerService.check()` **dentro del loop del backtest** (misma clase que usa `BotRunnerService` en vivo, instanciada sin PrismaClient real porque `check()` nunca toca la DB cuando el profile se pasa inline) -- aplica sizer + cap de `maxPositionSizePct`/`freeMargin`/`maxDrawdownPct`/`maxDailyLossPct` igual que en vivo. **No** simula el kill-switch/watchdog global (`killSwitchEnabled` siempre `false`): eso reacciona a pérdidas reales en vivo, no tiene un equivalente limpio para "replayear" dentro de un backtest.
+- `SimulatorResult.filteredSignals` cuenta las señales `OPEN` que la estrategia emitió pero que algún filtro o el risk check bloquearon -- sin esto, un backtest con filtros muy estrictos podía dar "0 trades" sin ninguna pista de si fue la estrategia o un filtro.
+- Bug encontrado y arreglado en el camino: `RiskManagerService.check()` usaba `signal.price ?? 0` para el sizer -- una señal `MARKET` (el caso común, `sma-cross.strategy.ts` incluido) nunca trae `.price`, así que **cualquier bot en vivo con `RiskProfile.sizer` configurado rechazaba el 100% de sus entradas** con `sizer produced zero`. Ahora cae a `history[history.length-1].close` cuando `signal.price` falta.
 
 ## Criterio de terminado
 
