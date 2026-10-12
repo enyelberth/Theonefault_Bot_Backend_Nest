@@ -96,7 +96,7 @@ El payload debe ser JSON serializable y nunca contener credenciales. Al ampliar 
 - [x] Slippage, spread, latencia, comisiones y costo neto base.
 - [ ] Intereses de margin y funding de futuros.
 - [ ] Comparación backtest/paper/real.
-- [ ] Walk-forward y Monte Carlo.
+- [x] Walk-forward y Monte Carlo (walk-forward de accuracy del forecast de precio vía `evaluateAccuracy()`; Monte Carlo de riesgo de ruina sobre la curva de equity vía `AnalyticsService.monteCarlo()`. Pendiente si se necesita walk-forward de *optimización de parámetros de estrategia*, que es un alcance distinto).
 - [ ] Alertas operativas con deduplicación.
 - [ ] Dashboard analítico y salud del sistema.
 
@@ -187,6 +187,21 @@ El timeframe primario siempre participa con peso 1. Solo `OPEN` y `ADJUST` puede
 - Es una ventaja probabilística, **no una garantía**: el resultado nunca coloca ni ajusta una orden por sí mismo. Solo alimenta el filtro opcional `config.priceForecast` (`{ enabled, horizonBars, maxDivergencePct, allowInsufficientData }`), que bloquea una señal `OPEN`/`ADJUST` si el forecast espera un movimiento en contra de la señal mayor a `maxDivergencePct`% -- igual que `config.regimeFilter`, nunca bloquea cierres y la señal que pasa sigue yendo íntegramente por el motor de riesgo (`gateSignal`/`RiskManagerService.check`).
 - Falla abierto (permite la señal) ante cualquier error de cómputo o de lectura -- un filtro auxiliar no debe convertirse en una fuente nueva de caídas del bot. Solo bloquea por datos insuficientes si `allowInsufficientData: false` se configuró explícitamente.
 - `PriceForecastService.evaluateAccuracy()` hace la validación walk-forward: completa `realizedPrice` de snapshots cuyo horizonte ya venció y devuelve MAE/RMSE/accuracy direccional agregados. **No activar `config.priceForecast.enabled` en un bot real sin antes revisar esta métrica** sobre el símbolo/timeframe/horizonte en cuestión -- es la manera de evitar que el forecast cause pérdidas por sobreajuste en vez de prevenirlas.
+- `PriceForecastService.accuracySummary()` es la variante de solo lectura (sin completar `realizedPrice`) pensada para consultarse en el hot path del bot runner sin cargarle un write de reconciliación a cada señal.
+
+## Convención de sizing por confianza del forecast
+
+- `config.priceForecast.sizeConfidence: { enabled, minSampleSize, floorMultiplier, ceilingMultiplier }` (anidado dentro de `config.priceForecast`, requiere que `priceForecast.enabled` también esté activo) traduce el accuracy direccional walk-forward de `accuracySummary()` en un multiplicador de tamaño de posición vía `computeConfidenceMultiplier()` (`src/market-prediction/price-forecast.calculator.ts`).
+- 50% de accuracy (moneda al aire) = multiplicador 1 (neutral). Por encima escala linealmente hacia `ceilingMultiplier`, por debajo hacia `floorMultiplier`, siempre clampeado. Con menos de `minSampleSize` evaluaciones walk-forward, el multiplicador es 1 -- no hay suficiente evidencia para confiar en el número.
+- El multiplicador se guarda en `signal.metadata.forecastSizeMultiplier` (`BotRunnerService.checkPriceForecast`) y se aplica en `RiskManagerService.check()` (`src/risk/risk-manager.service.ts`) **después** de que el sizer (Kelly/ATR-vol/fixed-pct) ya calculó el tamaño, escalando lo que sea que haya en `quoteQuantity`/`quantity` -- nunca inventa un valor que la señal no tenía. El cap de `maxPositionSizePct`/`freeMargin` sigue aplicándose después del multiplicador, así que un `ceilingMultiplier` agresivo nunca se salta el techo de riesgo ya configurado.
+- Solo se calcula cuando la señal ya pasó el filtro de divergencia de `config.priceForecast` (una señal rechazada nunca llega a esta parte).
+
+## Convención de Monte Carlo (riesgo de ruina)
+
+- `AnalyticsService.monteCarlo()` / `GET /analytics/monte-carlo` (`src/analytics/monte-carlo.calculator.ts`) resamplea con reemplazo el PnL neto de trades ya cerrados que matchean los filtros, para proyectar la curva de equity `horizonTrades` operaciones hacia adelante. Convención aditiva (`equity += pnl_resampleado`), igual que `analytics-calculator.ts` -- no geométrica.
+- Requiere mínimo 20 trades cerrados; con menos, devuelve `INSUFFICIENT_DATA` en vez de simular sobre una muestra que no significa nada.
+- Si `filters.runId` apunta a un único runner con `RiskProfile`, usa su `maxDrawdownPct` como umbral para `probabilityOfBreachingMaxDrawdownPct` -- no inventa un umbral si no hay uno configurado.
+- Es una proyección basada en el propio historial de la cuenta (contabilidad), no en precio -- complementa, no reemplaza, la predicción de precio AR+GARCH.
 
 ## Criterio de terminado
 

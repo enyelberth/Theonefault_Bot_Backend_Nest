@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { CryptoPriceService } from '../crypto-price/crypto-price.service';
 import { calculateAnalytics } from './analytics-calculator';
 import { calculateExecutionMetrics } from './execution-calculator';
+import { simulateEquityPaths } from './monte-carlo.calculator';
 import type {
   AnalyticsFilters,
   AnalyticsGroupBy,
@@ -1289,6 +1290,75 @@ export class AnalyticsService {
       lines.push(header.map((key) => escape((trade as any)[key])).join(','));
     }
     return lines.join('\n');
+  }
+
+  /**
+   * Monte Carlo de riesgo de ruina: resamplea con reemplazo el PnL neto de
+   * los trades cerrados que matchean `filters` para proyectar la curva de
+   * equity `horizonTrades` operaciones hacia adelante. Si `filters.runId`
+   * apunta a un único runner con RiskProfile, usa su `maxDrawdownPct` como
+   * umbral para reportar probabilidad de breach -- no inventa un umbral
+   * default si no hay uno configurado.
+   */
+  async monteCarlo(
+    filters: AnalyticsFilters,
+    options: {
+      simulations?: number;
+      horizonTrades?: number;
+      ruinThreshold?: number;
+    } = {},
+  ) {
+    const simulations = options.simulations ?? 2000;
+    const horizonTrades = options.horizonTrades ?? 100;
+    if (!Number.isInteger(simulations) || simulations < 100 || simulations > 20_000) {
+      throw new BadRequestException('simulations debe ser un entero 100..20000');
+    }
+    if (!Number.isInteger(horizonTrades) || horizonTrades < 1 || horizonTrades > 5000) {
+      throw new BadRequestException('horizonTrades debe ser un entero 1..5000');
+    }
+
+    const dataset = await this.loadDataset(filters);
+    const MIN_TRADES = 20;
+    if (dataset.trades.length < MIN_TRADES) {
+      return {
+        status: 'INSUFFICIENT_DATA' as const,
+        filters: this.serializableFilters(filters),
+        tradesAvailable: dataset.trades.length,
+        minRequired: MIN_TRADES,
+      };
+    }
+
+    let maxDrawdownPctThreshold: number | undefined;
+    if (filters.runId) {
+      const run = await this.prisma.botRunnerRun.findUnique({
+        where: { runId: filters.runId },
+        select: { riskProfileId: true },
+      });
+      if (run?.riskProfileId) {
+        const profile = await this.prisma.riskProfile.findUnique({
+          where: { id: run.riskProfileId },
+          select: { maxDrawdownPct: true },
+        });
+        maxDrawdownPctThreshold = profile?.maxDrawdownPct;
+      }
+    }
+
+    const result = simulateEquityPaths({
+      historicalPnl: dataset.trades.map((trade) => trade.pnl),
+      startingEquity: dataset.initialEquity,
+      horizonTrades,
+      simulations,
+      ruinThreshold: options.ruinThreshold ?? 0,
+      maxDrawdownPctThreshold,
+    });
+
+    return {
+      status: 'OK' as const,
+      generatedAt: new Date().toISOString(),
+      filters: this.serializableFilters(filters),
+      maxDrawdownPctThreshold: maxDrawdownPctThreshold ?? null,
+      ...result,
+    };
   }
 
   private baseAssetFromSymbol(symbol: string): string {

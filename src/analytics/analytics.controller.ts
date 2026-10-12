@@ -347,6 +347,32 @@ export class AnalyticsController {
     res.send(csv);
   }
 
+  @Get('monte-carlo')
+  @ApiOperation({
+    summary:
+      'Monte Carlo de riesgo de ruina: resamplea trades históricos para proyectar la curva de equity',
+  })
+  @ApiQuery({ name: 'simulations', required: false, type: 'number' })
+  @ApiQuery({ name: 'horizonTrades', required: false, type: 'number' })
+  @ApiQuery({ name: 'ruinThreshold', required: false, type: 'number' })
+  monteCarlo(
+    @Query()
+    query: AnalyticsQuery & {
+      simulations?: string;
+      horizonTrades?: string;
+      ruinThreshold?: string;
+    },
+  ) {
+    const { simulations, horizonTrades, ruinThreshold, ...filterQuery } = query;
+    return this.analytics.monteCarlo(this.analytics.parseFilters(filterQuery), {
+      simulations: simulations === undefined ? undefined : Number(simulations),
+      horizonTrades:
+        horizonTrades === undefined ? undefined : Number(horizonTrades),
+      ruinThreshold:
+        ruinThreshold === undefined ? undefined : Number(ruinThreshold),
+    });
+  }
+
   @Get('execution')
   @ApiOperation({ summary: 'Costos, slippage, spread y latencia de ejecución' })
   execution(@Query() query: AnalyticsQuery & { groupBy?: string }) {

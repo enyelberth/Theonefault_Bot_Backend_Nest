@@ -157,16 +157,35 @@ export class PriceForecastService {
       updated += 1;
     }
 
+    return this.aggregateAccuracy(sym, timeframe, horizonBars, updated);
+  }
+
+  /**
+   * Igual que evaluateAccuracy() pero sin el paso de completar
+   * realizedPrice -- solo lee lo que ya está evaluado. Pensada para
+   * consultarse en el hot path del bot runner (sizing por confianza) sin
+   * cargarle un write de reconciliación a cada señal.
+   */
+  async accuracySummary(symbol: string, timeframe: string, horizonBars: number) {
+    return this.aggregateAccuracy(symbol.toUpperCase(), timeframe, horizonBars, 0);
+  }
+
+  private async aggregateAccuracy(
+    symbol: string,
+    timeframe: string,
+    horizonBars: number,
+    newlyEvaluated: number,
+  ) {
     const evaluated = await this.prisma.priceForecastSnapshot.findMany({
-      where: { symbol: sym, timeframe, horizonBars, realizedPrice: { not: null } },
+      where: { symbol, timeframe, horizonBars, realizedPrice: { not: null } },
       select: { forecastPrice: true, lastPrice: true, realizedPrice: true },
     });
     if (evaluated.length === 0) {
       return {
-        symbol: sym,
+        symbol,
         timeframe,
         horizonBars,
-        newlyEvaluated: updated,
+        newlyEvaluated,
         sampleSize: 0,
         mae: null,
         rmse: null,
@@ -190,10 +209,10 @@ export class PriceForecastService {
       }
     }
     return {
-      symbol: sym,
+      symbol,
       timeframe,
       horizonBars,
-      newlyEvaluated: updated,
+      newlyEvaluated,
       sampleSize: evaluated.length,
       mae: Number((absError / evaluated.length).toFixed(8)),
       rmse: Number(Math.sqrt(sqError / evaluated.length).toFixed(8)),

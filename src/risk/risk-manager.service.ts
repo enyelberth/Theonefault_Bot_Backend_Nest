@@ -121,6 +121,32 @@ export class RiskManagerService {
       }
     }
 
+    // Multiplicador de confianza por accuracy walk-forward del forecast de
+    // precio (ver config.priceForecast.sizeConfidence en bot-runner). Se
+    // aplica sobre lo que el sizer/estrategia ya decidió -- nunca
+    // reemplaza ese cálculo, solo lo escala -- y sigue sujeto al cap de
+    // maxPositionSizePct/freeMargin de abajo, así que un ceilingMultiplier
+    // agresivo nunca puede saltarse el techo de riesgo ya configurado.
+    const sizeMultiplier = (signal.metadata as Record<string, unknown> | undefined)
+      ?.forecastSizeMultiplier;
+    if (
+      typeof sizeMultiplier === 'number' &&
+      Number.isFinite(sizeMultiplier) &&
+      sizeMultiplier !== 1
+    ) {
+      adjustedSignal = {
+        ...adjustedSignal,
+        quoteQuantity:
+          adjustedSignal.quoteQuantity !== undefined
+            ? adjustedSignal.quoteQuantity * sizeMultiplier
+            : undefined,
+        quantity:
+          adjustedSignal.quantity !== undefined
+            ? adjustedSignal.quantity * sizeMultiplier
+            : undefined,
+      };
+    }
+
     const requestedQuote = adjustedSignal.quoteQuantity ?? 0;
     if (requestedQuote > 0) {
       const maxQuote =

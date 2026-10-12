@@ -4,6 +4,7 @@ import {
   fitGarch11,
   forecastGarchVariance,
   forecastPrice,
+  computeConfidenceMultiplier,
   MIN_SAMPLES,
 } from './price-forecast.calculator';
 
@@ -82,6 +83,37 @@ describe('forecastGarchVariance', () => {
       fit.unconditionalVariance,
       4,
     );
+  });
+});
+
+describe('computeConfidenceMultiplier', () => {
+  const config = { minSampleSize: 30, floorMultiplier: 0.25, ceilingMultiplier: 1.5 };
+
+  it('returns neutral (1) when the sample size is below minSampleSize', () => {
+    expect(computeConfidenceMultiplier(90, 10, config)).toBe(1);
+  });
+
+  it('returns neutral (1) when accuracy is exactly 50% (coin flip)', () => {
+    expect(computeConfidenceMultiplier(50, 100, config)).toBe(1);
+  });
+
+  it('returns neutral (1) when accuracy is unavailable (null)', () => {
+    expect(computeConfidenceMultiplier(null, 100, config)).toBe(1);
+  });
+
+  it('scales up towards ceilingMultiplier as accuracy approaches 100%', () => {
+    expect(computeConfidenceMultiplier(100, 100, config)).toBeCloseTo(1.5, 6);
+    expect(computeConfidenceMultiplier(75, 100, config)).toBeCloseTo(1.25, 6);
+  });
+
+  it('scales down towards floorMultiplier as accuracy approaches 0%', () => {
+    expect(computeConfidenceMultiplier(0, 100, config)).toBeCloseTo(0.25, 6);
+    expect(computeConfidenceMultiplier(25, 100, config)).toBeCloseTo(0.625, 6);
+  });
+
+  it('never exceeds the configured floor/ceiling even outside the 0..100 range', () => {
+    expect(computeConfidenceMultiplier(500, 100, config)).toBe(1.5);
+    expect(computeConfidenceMultiplier(-500, 100, config)).toBe(0.25);
   });
 });
 

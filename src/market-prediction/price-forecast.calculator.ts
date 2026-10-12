@@ -242,6 +242,39 @@ export function forecastGarchVariance(
   return forecasts;
 }
 
+export interface ConfidenceMultiplierConfig {
+  minSampleSize: number;
+  floorMultiplier: number;
+  ceilingMultiplier: number;
+}
+
+/**
+ * Traduce el accuracy direccional walk-forward (evaluateAccuracy) a un
+ * multiplicador de tamaño de posición. 50% de accuracy (moneda al aire) =
+ * multiplicador 1 (neutral, el sizer normal decide). Por encima escala
+ * hacia ceilingMultiplier, por debajo hacia floorMultiplier -- siempre
+ * clampeado, nunca por fuera del rango configurado. Con muestra chica
+ * (< minSampleSize) devuelve 1: no hay suficiente evidencia walk-forward
+ * todavía para confiar en el número y no hay que ni agrandar ni achicar
+ * el tamaño a partir de ruido.
+ */
+export function computeConfidenceMultiplier(
+  accuracyPct: number | null,
+  sampleSize: number,
+  config: ConfidenceMultiplierConfig,
+): number {
+  if (accuracyPct === null || sampleSize < config.minSampleSize) return 1;
+  const clampedAccuracy = Math.max(0, Math.min(100, accuracyPct));
+  let multiplier: number;
+  if (clampedAccuracy >= 50) {
+    multiplier =
+      1 + ((clampedAccuracy - 50) / 50) * (config.ceilingMultiplier - 1);
+  } else {
+    multiplier = 1 - ((50 - clampedAccuracy) / 50) * (1 - config.floorMultiplier);
+  }
+  return Math.max(config.floorMultiplier, Math.min(config.ceilingMultiplier, multiplier));
+}
+
 const Z_95 = 1.959963984540054;
 
 /**

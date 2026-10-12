@@ -47,6 +47,10 @@ import type { RegimeFilterConfig } from '../market-regime/market-regime.types';
 import type { MultiTimeframeConfig } from '../market-regime/multi-timeframe';
 import { KlineCollectorService } from '../market-data/kline-collector.service';
 import { PriceForecastService } from '../market-prediction/price-forecast.service';
+import {
+  computeConfidenceMultiplier,
+  type ConfidenceMultiplierConfig,
+} from '../market-prediction/price-forecast.calculator';
 
 const WS_TRACKED_TIMEFRAMES = new Set<Timeframe>(['1m', '5m', '15m', '1h']);
 // Default si la estrategia no trae config.maxOrderAgeMs. Mismo orden de
@@ -649,13 +653,13 @@ export class BotRunnerService {
               .touchStats(handle.input.runId, { ordersRejected: 1 })
               .catch(() => undefined);
           } else {
-            const forecastAllowed = await this.checkPriceForecast(
+            const forecastCheck = await this.checkPriceForecast(
               handle,
               candidate,
               isEntry,
               correlationId,
             );
-            if (!forecastAllowed) {
+            if (!forecastCheck.allowed) {
               handle.status.ordersRejected += 1;
               handle.status.lastRejectReason =
                 'PRICE_FORECAST_FILTER: divergencia estadística contra la señal';
@@ -665,7 +669,7 @@ export class BotRunnerService {
             } else {
               const gated = await this.gateSignal(
                 handle,
-                candidate,
+                forecastCheck.signal,
                 correlationId,
               );
               if (gated) {
@@ -711,10 +715,10 @@ export class BotRunnerService {
     signal: Signal,
     isEntry: boolean,
     correlationId: string,
-  ): Promise<boolean> {
-    if (!isEntry || !signal.side) return true;
+  ): Promise<{ allowed: boolean; signal: Signal }> {
+    if (!isEntry || !signal.side) return { allowed: true, signal };
     const filter = this.priceForecastFilter(handle.input.config);
-    if (!filter?.enabled) return true;
+    if (!filter?.enabled) return { allowed: true, signal };
 
     let result: Awaited<ReturnType<PriceForecastService['current']>> | null = null;
     try {
@@ -729,7 +733,7 @@ export class BotRunnerService {
         reason: 'forecast error, fail-open',
         error: e.message,
       });
-      return true;
+      return { allowed: true, signal };
     }
 
     if (!result || result.forecast?.status !== 'OK') {
@@ -741,7 +745,7 @@ export class BotRunnerService {
           : 'PRICE_FORECAST_REJECTED',
         { reason: 'insufficient data', filter },
       );
-      return filter.allowInsufficientData;
+      return { allowed: filter.allowInsufficientData, signal };
     }
 
     const forecast = result.forecast;
@@ -755,13 +759,39 @@ export class BotRunnerService {
         ? expectedChangePct >= -filter.maxDivergencePct
         : expectedChangePct <= filter.maxDivergencePct;
 
+    let adjustedSignal = signal;
+    let sizeMultiplier: number | undefined;
+    if (allowed && filter.sizeConfidence) {
+      const accuracy = await this.forecasts
+        .accuracySummary(signal.symbol, handle.input.timeframe, filter.horizonBars)
+        .catch((e: any) => {
+          this.logger.warn(`accuracySummary failed: ${e.message}`);
+          return null;
+        });
+      if (accuracy) {
+        sizeMultiplier = computeConfidenceMultiplier(
+          accuracy.directionalAccuracyPct,
+          accuracy.sampleSize,
+          filter.sizeConfidence,
+        );
+        adjustedSignal = {
+          ...signal,
+          metadata: {
+            ...(signal.metadata ?? {}),
+            forecastSizeMultiplier: sizeMultiplier,
+            forecastAccuracy: accuracy,
+          },
+        };
+      }
+    }
+
     await this.trace(
       handle,
       correlationId,
       allowed ? 'PRICE_FORECAST_ALLOWED' : 'PRICE_FORECAST_REJECTED',
-      { forecast, expectedChangePct, filter },
+      { forecast, expectedChangePct, filter, sizeMultiplier },
     );
-    return allowed;
+    return { allowed, signal: adjustedSignal };
   }
 
   private async gateSignal(
@@ -1507,11 +1537,17 @@ export class BotRunnerService {
         horizonBars: number;
         maxDivergencePct: number;
         allowInsufficientData: boolean;
+        sizeConfidence?: ConfidenceMultiplierConfig;
       }
     | undefined {
     const raw = config.priceForecast;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
     const value = raw as Record<string, unknown>;
+    const sizeRaw = value.sizeConfidence;
+    const sizeConfidence =
+      sizeRaw && typeof sizeRaw === 'object' && !Array.isArray(sizeRaw)
+        ? this.priceForecastSizeConfidence(sizeRaw as Record<string, unknown>)
+        : undefined;
     return {
       enabled: value.enabled === true,
       horizonBars:
@@ -1525,6 +1561,27 @@ export class BotRunnerService {
           ? value.maxDivergencePct
           : 1,
       allowInsufficientData: value.allowInsufficientData !== false,
+      sizeConfidence,
+    };
+  }
+
+  private priceForecastSizeConfidence(
+    value: Record<string, unknown>,
+  ): ConfidenceMultiplierConfig | undefined {
+    if (value.enabled !== true) return undefined;
+    return {
+      minSampleSize:
+        typeof value.minSampleSize === 'number' && value.minSampleSize > 0
+          ? value.minSampleSize
+          : 30,
+      floorMultiplier:
+        typeof value.floorMultiplier === 'number' && value.floorMultiplier > 0
+          ? value.floorMultiplier
+          : 0.25,
+      ceilingMultiplier:
+        typeof value.ceilingMultiplier === 'number' && value.ceilingMultiplier >= 1
+          ? value.ceilingMultiplier
+          : 1.5,
     };
   }
 
