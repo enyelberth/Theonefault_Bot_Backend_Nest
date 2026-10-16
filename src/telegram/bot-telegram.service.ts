@@ -18,24 +18,50 @@ interface ChatState {
   role?: 'admin' | 'user';
 }
 
-interface PriceAlert {
-  chatId: number;
-  symbol: string;
-  threshold: number;
-  condition: 'up' | 'down';
-}
-
 @Injectable()
 export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
-  private readonly botToken = '8105793514:AAGjn1pUF2HFSKFe5ZDOofBR8mbv53wvvp4';
+  private readonly botToken = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? '';
   private readonly apiUrl = `https://api.telegram.org/bot${this.botToken}`;
   private readonly logger = new Logger(BotTelegramService.name);
   private offset = 0;
   private chatStates = new Map<number, ChatState>();
-  private alerts: PriceAlert[] = [];
 
-  private readonly adminUserIds = [7276654069 /* otros IDs autorizados */];
-  private readonly notifyChats = [7276654069];
+  private readonly adminUserIds = BotTelegramService.parseIdList(
+    process.env.TELEGRAM_ADMIN_IDS,
+    [7276654069],
+  );
+  private readonly notifyChats = BotTelegramService.parseIdList(
+    process.env.TELEGRAM_NOTIFY_CHAT_IDS,
+    [7276654069],
+  );
+
+  private readonly pnlAlertThresholdUsd =
+    Number(process.env.PNL_ALERT_THRESHOLD_USD) > 0
+      ? Number(process.env.PNL_ALERT_THRESHOLD_USD)
+      : 1;
+  private lastKnownPnl: number | null = null;
+
+  private static parseIdList(raw: string | undefined, fallback: number[]) {
+    if (!raw) return fallback;
+    const ids = raw
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n));
+    return ids.length ? ids : fallback;
+  }
+
+  private isAdmin(userId?: number): boolean {
+    return userId !== undefined && this.adminUserIds.includes(userId);
+  }
+
+  private describeError(error: any): string {
+    return (
+      error?.response?.data?.description ??
+      error?.response?.data ??
+      error?.message ??
+      String(error)
+    );
+  }
 
   constructor(
     private cryptoPrice: CryptoPriceService,
@@ -47,10 +73,37 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
+    if (!this.botToken) {
+      this.logger.error(
+        'TELEGRAM_BOT_TOKEN no configurado; bot de Telegram deshabilitado.',
+      );
+      return;
+    }
     this.logger.log('Iniciando polling para Telegram bot...');
     await this.ensureWebhookDeleted();
+    await this.discardPendingUpdates();
     this.pollMessages();
     setInterval(() => this.checkAlerts(), 60000);
+    setInterval(() => this.checkPnlAlert(), 30000);
+  }
+
+  private async discardPendingUpdates(): Promise<void> {
+    try {
+      const res = await axios.get(`${this.apiUrl}/getUpdates`, {
+        params: { timeout: 0 },
+      });
+      const results = res.data?.result ?? [];
+      if (results.length) {
+        this.offset = results[results.length - 1].update_id;
+        this.logger.warn(
+          `${results.length} updates pendientes descartados al arrancar (evita reejecutar comandos viejos).`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo descartar backlog de updates: ${this.describeError(error)}`,
+      );
+    }
   }
 
   private async ensureWebhookDeleted(): Promise<void> {
@@ -98,17 +151,25 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
           }
         }
       } catch (error) {
-        this.logger.error('Error en polling', error);
+        this.logger.error(`Error en polling: ${this.describeError(error)}`);
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
   }
 
   async handleMessage(chatId: number, text: string, fromUserId?: number) {
+    this.logger.log(
+      `Mensaje de userId=${fromUserId} chatId=${chatId}: ${text}`,
+    );
     const state = this.chatStates.get(chatId) || {};
     if (!state.userId && fromUserId) {
       state.userId = fromUserId;
       state.role = this.adminUserIds.includes(fromUserId) ? 'admin' : 'user';
+      this.chatStates.set(chatId, state);
+    }
+
+    if (state.waitingForSymbol && text.startsWith('/')) {
+      state.waitingForSymbol = false;
       this.chatStates.set(chatId, state);
     }
 
@@ -132,6 +193,10 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (text.startsWith('/crear_estrategia_json')) {
+      if (!this.isAdmin(fromUserId)) {
+        await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+        return;
+      }
       // Separar el texto después del comando como JSON
       const jsonString = text.replace('/crear_estrategia_json', '').trim();
       this.handleCreateStrategyFromJson(chatId, jsonString);
@@ -199,11 +264,15 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case '/fondo':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         await this.handleFondo(chatId);
         break;
 
       case '/alertadelete':
-        await this.handleDeleteAlert(chatId, args);
+        await this.handleDeleteAlert(chatId, args, fromUserId);
         break;
 
       case '/estrategias':
@@ -211,13 +280,21 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case '/cuentas':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         await this.handleListAccounts(chatId);
         break;
       case '/alertas':
-        await this.handleShowAlerts(chatId);
+        await this.handleShowAlerts(chatId, fromUserId);
         break;
 
       case '/cuenta':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         if (args.length !== 1 || isNaN(Number(args[0]))) {
           await this.sendMessage(chatId, 'Uso: /cuenta [id]');
         } else {
@@ -229,12 +306,24 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         await this.clearChatData(chatId);
         break;
       case '/crear_estrategia':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         await this.handleCreateStrategy(chatId, args);
         break;
       case '/add_level':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         await this.handleAddLevelStrategy(chatId, args);
         break;
       case '/stop_estrategia':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         if (args.length !== 2) {
           await this.sendMessage(
             chatId,
@@ -265,12 +354,12 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case '/actualizarsaldo':
-        if (state.role !== 'admin') {
+        if (!this.isAdmin(fromUserId)) {
           await this.sendMessage(
             chatId,
             'No tienes permiso para actualizar saldo',
           );
-          return;
+          break;
         }
         if (
           args.length !== 3 ||
@@ -434,11 +523,6 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
     // Elimina el estado guardado en memoria
     this.chatStates.delete(chatId);
 
-    // Elimina alertas que pertenezcan a este chat
-    this.alerts = this.alerts.filter((alert) => alert.chatId !== chatId);
-
-    // Si tienes otros datos almacenados por chat, elimínalos aquí también
-
     await this.sendMessage(
       chatId,
       'Toda tu información y alertas en este chat han sido borradas de nuestro sistema.',
@@ -464,6 +548,7 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
 
   async handleCallbackQuery(callbackQuery: any) {
     const chatId = callbackQuery.message.chat.id;
+    const fromUserId = callbackQuery.from?.id;
     const data = callbackQuery.data;
     switch (data) {
       case 'show_prices':
@@ -485,6 +570,10 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
         );
         break;
       case 'list_accounts':
+        if (!this.isAdmin(fromUserId)) {
+          await this.sendMessage(chatId, 'No tienes permiso para este comando.');
+          break;
+        }
         await this.handleListAccounts(chatId);
         break;
       case 'list_strategies':
@@ -528,8 +617,11 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       .join('\n');
     await this.sendMessage(chatId, `Precios actuales:\n${msg}`);
   }
-  private async handleShowAlerts(chatId: number) {
-    const alerts = await this.alertService.getAlerts();
+  private async handleShowAlerts(chatId: number, fromUserId?: number) {
+    const all = await this.alertService.getAlerts();
+    const alerts = this.isAdmin(fromUserId)
+      ? all
+      : all.filter((a) => a.chatId !== null && Number(a.chatId) === chatId);
     if (!alerts.length) {
       await this.sendMessage(chatId, 'No tienes alertas activas.');
       return;
@@ -555,20 +647,22 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       await this.sendMessage(chatId, 'Formato incorrecto.');
       return;
     }
-    this.alerts.push({
-      chatId,
+    await this.alertService.createAlertPrice(
       symbol,
       threshold,
-      condition: condition,
-    });
-
-    await this.alertService.createAlertPrice(symbol, threshold, condition);
+      condition,
+      chatId,
+    );
     await this.sendMessage(
       chatId,
       `Alerta creada para ${symbol} ${condition} $${threshold}`,
     );
   }
-  private async handleDeleteAlert(chatId: number, args: string[]) {
+  private async handleDeleteAlert(
+    chatId: number,
+    args: string[],
+    fromUserId?: number,
+  ) {
     // Se espera que args contenga solo el ID de la alerta, por ejemplo: ['/alertaDelete', '123'] → args = ['123']
     if (args.length !== 1) {
       await this.sendMessage(chatId, 'Uso: /alertaDelete [id]');
@@ -580,6 +674,16 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
+      const alert = await this.alertService.getOneAlert(alertId);
+      const ownsAlert =
+        alert.chatId === null || Number(alert.chatId) === chatId;
+      if (!ownsAlert && !this.isAdmin(fromUserId)) {
+        await this.sendMessage(
+          chatId,
+          'Esa alerta no te pertenece, no puedes borrarla.',
+        );
+        return;
+      }
       await this.alertService.deleteAlert(alertId);
       await this.sendMessage(chatId, `Alerta eliminada: ${alertId}`);
     } catch (error) {
@@ -668,17 +772,57 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       const price = await this.cryptoPrice.findOne(alert.symbol);
       if (price === null) continue;
 
-      if (
+      const triggered =
         (alert.up_down === 'up' && price >= alert.price) ||
-        (alert.up_down === 'down' && price <= alert.price)
-      ) {
-        this.adminUserIds.forEach(async (chatId) => {
+        (alert.up_down === 'down' && price <= alert.price);
+      if (!triggered) continue;
+
+      const targetChatIds = alert.chatId
+        ? [Number(alert.chatId)]
+        : this.adminUserIds;
+      for (const chatId of targetChatIds) {
+        await this.sendMessage(
+          chatId,
+          `Alerta: ${alert.symbol} está ${alert.up_down} de $${alert.price}. Precio actual: $${price.toFixed(4)}`,
+        );
+      }
+
+      try {
+        await this.alertService.deleteAlert(alert.id);
+      } catch (error) {
+        this.logger.error(
+          `No se pudo borrar alerta ${alert.id} tras dispararse: ${this.describeError(error)}`,
+        );
+      }
+    }
+  }
+
+  async checkPnlAlert() {
+    try {
+      const data = await this.binanceService.getCrossMarginPNLSummary();
+      const pnl = Number(data?.totalUnrealizedPNL);
+      if (!Number.isFinite(pnl)) return;
+
+      if (this.lastKnownPnl === null) {
+        this.lastKnownPnl = pnl;
+        return;
+      }
+
+      const delta = pnl - this.lastKnownPnl;
+      if (Math.abs(delta) >= this.pnlAlertThresholdUsd) {
+        const sign = delta >= 0 ? '+' : '';
+        for (const chatId of this.notifyChats) {
           await this.sendMessage(
             chatId,
-            `Alerta: ${alert.symbol} está ${alert.up_down} de $${alert.price}. Precio actual: $${price.toFixed(4)}`,
+            `PnL no realizado cambió ${sign}$${delta.toFixed(2)} (de $${this.lastKnownPnl.toFixed(2)} a $${pnl.toFixed(2)}).`,
           );
-        });
+        }
+        this.lastKnownPnl = pnl;
       }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo evaluar alerta de PnL: ${this.describeError(error)}`,
+      );
     }
   }
 
@@ -691,7 +835,9 @@ export class BotTelegramService implements OnModuleInit, OnModuleDestroy {
       });
       this.logger.log(`Mensaje enviado a ${chatId}: ${text}`);
     } catch (error) {
-      this.logger.error('Error enviando mensaje', error);
+      this.logger.error(
+        `Error enviando mensaje a ${chatId}: ${this.describeError(error)}`,
+      );
     }
   }
 }

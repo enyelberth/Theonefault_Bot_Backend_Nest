@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>KAIZEN · Ejecuciones activas</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #0d1117; --panel2: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff; --purple: #a371f7; --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .topbar { background: linear-gradient(90deg,#0d1117 0%,#161b22 100%); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .topbar h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; }
+  .topbar .badge { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.4); padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .topbar .spacer { flex: 1; }
+  .topbar a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  .topbar a:hover { color: var(--blue); }
+  button { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border); background: #21262d; color: var(--text); cursor: pointer; font-size: 13px; }
+  button:hover { background: #30363d; }
+  .btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  .btn-primary:hover { background: #388bfd; }
+  .btn-danger { background: #da3633; border-color: #da3633; color: #fff; }
+  .btn-danger:hover { background: #f85149; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 28px 60px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 4px 0 20px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .card-head h3 { margin: 0; font-size: 16px; }
+  .status-pill { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .status-RUNNING { background: rgba(46,160,67,0.15); color: var(--green); border: 1px solid rgba(46,160,67,0.4); }
+  .status-STOPPED { background: rgba(139,148,158,0.15); color: var(--muted); border: 1px solid var(--border); }
+  .status-ERROR { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.4); }
+  .strategy-tag { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat .v { font-family: ui-monospace, monospace; font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .stat .v.pos { color: var(--green); }
+  .stat .v.neg { color: var(--red); }
+  .card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .card-actions a { text-decoration: none; }
+  .empty { color: var(--muted); text-align: center; padding: 60px 0; grid-column: 1/-1; }
+  .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: flex-start; justify-content: center; padding-top: 60px; z-index: 100; }
+  .modal-mask.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; width: min(560px, 92vw); padding: 20px; }
+  .modal h2 { margin: 0 0 14px 0; font-size: 16px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; background: #0d1117; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, monospace; font-size: 13px;
+  }
+  .modal textarea { min-height: 100px; resize: vertical; }
+  .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 200;
+    background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--blue);
+    border-radius: 6px; padding: 12px 16px; font-size: 13px; max-width: 400px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .toast.err { border-left-color: var(--red); }
+  .toast.ok { border-left-color: var(--green); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Ejecuciones activas</h1>
+    <span class="badge" id="live-badge">Live · 0</span>
+    <div class="spacer"></div>
+    <span id="auth-status" style="font-size:12px;color:var(--muted);"></span>
+    <button onclick="setAuthToken()">🔑 Token</button>
+    <a href="/">← Dashboard</a>
+    <button onclick="loadBots()">↻</button>
+    <button class="btn-primary" onclick="openStartModal()">+ Iniciar bot</button>
+  </div>
+
+  <div class="wrap">
+    <div class="sub">BotRuns activos persistidos en base de datos. Click en detalle para ver niveles, órdenes, comisiones y PnL.</div>
+    <div class="cards" id="cards">
+      <div class="empty">Cargando…</div>
+    </div>
+  </div>
+
+  <div id="start-modal" class="modal-mask" onclick="if(event.target===this) closeStartModal()">
+    <div class="modal">
+      <h2>+ Iniciar bot</h2>
+      <label>Symbol</label>
+      <input id="sm-symbol" placeholder="BNBFDUSD" />
+      <label>Strategy type</label>
+      <input id="sm-strategytype" placeholder="gridBuyMargin / gridSellMargin / gridBuy" />
+      <label>typeId</label>
+      <input id="sm-typeid" type="number" value="4" />
+      <label>Id (único)</label>
+      <input id="sm-id" placeholder="bnbfdusd-grid-xxxx" />
+      <label>Config (JSON)</label>
+      <textarea id="sm-config" placeholder='{"dryRun":false,"lowerPrice":720,"upperPrice":730,"gridCount":50,"totalQuantity":0.5,"profitMargin":0.004,"stopLossMargin":0.05,"minOrderNotional":6}'></textarea>
+      <div class="row">
+        <button onclick="closeStartModal()">Cancelar</button>
+        <button class="btn-primary" onclick="submitStart()">Iniciar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+<script>
+const API = window.location.origin.replace(/:\d+$/, ':50000');
+const TOKEN_KEY = 'kaizen_jwt';
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setAuthToken() {
+  const cur = getToken();
+  const val = prompt('Pega tu JWT (Bearer). Vacío para borrar.', cur);
+  if (val === null) return;
+  if (val.trim() === '') { localStorage.removeItem(TOKEN_KEY); }
+  else { localStorage.setItem(TOKEN_KEY, val.trim()); }
+  renderAuthStatus();
+  loadBots();
+}
+function renderAuthStatus() {
+  const el = document.getElementById('auth-status');
+  const t = getToken();
+  el.textContent = t ? '✓ token · ' + t.slice(0, 10) + '…' : '⚠ sin token';
+  el.style.color = t ? 'var(--green)' : 'var(--yellow)';
+}
+const _origFetch = window.fetch.bind(window);
+window.fetch = (url, init = {}) => {
+  const token = getToken();
+  const headers = Object.assign({}, init.headers || {});
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return _origFetch(url, Object.assign({}, init, { headers }));
+};
+
+function toast(msg, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (kind || '');
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+
+const fmt = (v, dec = 2) => {
+  const n = Number(v);
+  if (!isFinite(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+};
+
+function fmtElapsed(ageSeconds) {
+  const s = Number(ageSeconds || 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function loadBots() {
+  const cardsEl = document.getElementById('cards');
+  try {
+    const data = await fetch(`${API}/stats/dashboard`).then(r => r.json());
+    const bots = data.bots || [];
+    document.getElementById('live-badge').textContent = `Live · ${bots.length}`;
+    if (!bots.length) {
+      cardsEl.innerHTML = '<div class="empty">Sin ejecuciones activas.</div>';
+      return;
+    }
+    const uniqueSymbols = Array.from(new Set(bots.map((b) => b.symbol)));
+    const prices = {};
+    await Promise.all(uniqueSymbols.map(async (sym) => {
+      try {
+        const p = await fetch(`${API}/binance/price/${sym}`).then(r => r.json());
+        if (p?.price) prices[sym] = p.price;
+      } catch (e) { /* ignore */ }
+    }));
+    cardsEl.innerHTML = bots.map((b) => renderCard(b, prices[b.symbol])).join('');
+  } catch (e) {
+    cardsEl.innerHTML = `<div class="empty">Error cargando: ${e.message}</div>`;
+  }
+}
+
+function renderCard(b, livePrice) {
+  const pnl = Number(b.realizedPnl || 0);
+  const pnlClass = pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : '';
+  const roi = b.roiPct;
+  const roiClass = roi > 0 ? 'pos' : roi < 0 ? 'neg' : '';
+  const capital = b.initialQuote !== null && b.initialQuote !== undefined ? fmt(b.initialQuote, 2) : '—';
+  const roiStr = roi !== null && roi !== undefined ? fmt(roi, 2) + '%' : '—';
+  return `
+    <div class="card">
+      <div class="card-head">
+        <h3>${b.symbol}</h3>
+        <span class="status-pill status-${b.status}">${b.status}</span>
+        <span style="color:var(--blue);font-family:ui-monospace,monospace;font-size:13px;margin-left:auto">${livePrice ? fmt(livePrice, 4) : '—'}</span>
+      </div>
+      <div class="strategy-tag">${b.strategyId}<br/>${b.strategyType || '-'}</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Run ID</div><div class="v">#${b.botRunId}</div></div>
+        <div class="stat"><div class="k">Tiempo</div><div class="v" style="font-size:13px">${fmtElapsed(b.ageSeconds)}</div></div>
+        <div class="stat"><div class="k">Capital</div><div class="v" style="font-size:13px">${capital}</div></div>
+        <div class="stat"><div class="k">Ganancia/pérdida</div><div class="v ${pnlClass}">${fmt(pnl, 2)}</div></div>
+        <div class="stat"><div class="k">Rentabilidad</div><div class="v ${roiClass}" style="font-size:14px">${roiStr}</div></div>
+        <div class="stat"><div class="k">Trades W/L</div><div class="v" style="font-size:14px">${b.winCount}/${b.lossCount}</div></div>
+      </div>
+      <div class="card-actions">
+        <button onclick="quickResize('${b.symbol}','${b.strategyId}')">⚙ Ajustar grid</button>
+        <a href="/dashboard/bot/${b.botRunId}"><button class="btn-primary">Ver detalle →</button></a>
+        <button class="btn-danger" onclick="stopBot('${b.symbol}','${b.strategyId}')">Detener</button>
+      </div>
+    </div>
+  `;
+}
+
+async function quickResize(symbol, id) {
+  const lowerPrice = Number(prompt('Nuevo lowerPrice:'));
+  if (!lowerPrice) return;
+  const upperPrice = Number(prompt('Nuevo upperPrice:'));
+  if (!upperPrice || upperPrice <= lowerPrice) { toast('upperPrice debe ser mayor que lowerPrice', 'err'); return; }
+  const gridCountRaw = prompt('gridCount (vacío = mantener actual):');
+  const gridCount = gridCountRaw ? Number(gridCountRaw) : undefined;
+  try {
+    const res = await fetch(`${API}/bot/resizeGrid/${symbol}/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lowerPrice, upperPrice, ...(gridCount ? { gridCount } : {}) }),
+    }).then(r => r.json());
+    if (res?.ok) toast(`Resize aplicado: ${res.canceled} canceladas, ${res.placed} colocadas`, 'ok');
+    else toast('Respuesta: ' + JSON.stringify(res), 'err');
+    loadBots();
+  } catch (e) { toast('Resize err: ' + e.message, 'err'); }
+}
+
+async function stopBot(symbol, id) {
+  if (!confirm(`Detener ${symbol}/${id}?`)) return;
+  try {
+    await fetch(`${API}/bot/stop/${symbol}/${id}`, { method: 'DELETE' });
+    toast('Bot detenido', 'ok');
+    loadBots();
+  } catch (e) { toast('Stop err: ' + e.message, 'err'); }
+}
+
+function openStartModal() { document.getElementById('start-modal').classList.add('open'); }
+function closeStartModal() { document.getElementById('start-modal').classList.remove('open'); }
+
+async function submitStart() {
+  const symbol = document.getElementById('sm-symbol').value.trim().toUpperCase();
+  const strategyType = document.getElementById('sm-strategytype').value.trim();
+  const typeId = Number(document.getElementById('sm-typeid').value);
+  const id = document.getElementById('sm-id').value.trim();
+  const configRaw = document.getElementById('sm-config').value.trim();
+  if (!symbol || !strategyType || !id || !configRaw) { toast('Todos los campos son requeridos', 'err'); return; }
+  let config;
+  try { config = JSON.parse(configRaw); } catch (e) { toast('Config no es JSON válido: ' + e.message, 'err'); return; }
+  try {
+    const res = await fetch(`${API}/bot/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, strategyType, typeId, id, config }),
+    }).then(r => r.json());
+    toast(res?.message || JSON.stringify(res), 'ok');
+    closeStartModal();
+    loadBots();
+  } catch (e) { toast('Start err: ' + e.message, 'err'); }
+}
+
+renderAuthStatus();
+loadBots();
+setInterval(loadBots, 5000);
+</script>
+</body>
+</html>

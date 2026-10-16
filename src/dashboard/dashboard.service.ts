@@ -17,6 +17,8 @@ export interface BotLiveSummary {
   winRate: number;
   lastPrice: string | null;
   ageSeconds: number;
+  initialQuote: string | null;
+  roiPct: number | null;
 }
 
 export interface AggregateByKey {
@@ -83,6 +85,11 @@ export class DashboardService {
     const tradesCount = agg._count._all;
     const winRate = tradesCount === 0 ? 0 : (wins / tradesCount) * 100;
     const ageMs = Date.now() - run.startedAt.getTime();
+    const realizedPnl = agg._sum.pnl ?? new Prisma.Decimal(0);
+    const initialQuote = run.initialQuote ?? null;
+    const roiPct = initialQuote && initialQuote.toNumber() > 0
+      ? (realizedPnl.toNumber() / initialQuote.toNumber()) * 100
+      : null;
 
     return {
       botRunId: run.id,
@@ -91,7 +98,7 @@ export class DashboardService {
       strategyType: run.strategyType,
       status: run.status,
       startedAt: run.startedAt,
-      realizedPnl: (agg._sum.pnl ?? new Prisma.Decimal(0)).toString(),
+      realizedPnl: realizedPnl.toString(),
       unrealizedPnl: (
         lastMetric?.unrealizedPnl ?? new Prisma.Decimal(0)
       ).toString(),
@@ -102,6 +109,8 @@ export class DashboardService {
       winRate,
       lastPrice: lastMetric?.lastPrice?.toString() ?? null,
       ageSeconds: Math.floor(ageMs / 1000),
+      initialQuote: initialQuote?.toString() ?? null,
+      roiPct,
     };
   }
 

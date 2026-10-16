@@ -40,6 +40,7 @@ export class AlertService {
     symbol: string,
     price: number,
     up_down: 'up' | 'down',
+    chatId?: number,
   ): Promise<Alert> {
     try {
       const timestamp = new Date();
@@ -49,6 +50,7 @@ export class AlertService {
           price,
           up_down,
           timestamp,
+          chatId: chatId !== undefined ? BigInt(chatId) : undefined,
         },
       });
       return newAlert;

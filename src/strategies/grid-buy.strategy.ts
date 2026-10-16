@@ -44,6 +44,9 @@ export class GridBuyStrategy implements TradingStrategy {
     minOrderNotional?: number; // Notional mínimo por orden (USDT). Sube qty si es menor.
     uniformQuantity?: boolean; // Si true, no aplica distanceFactor; qty igual en todos niveles.
     postOnly?: boolean; // Default true: usa LIMIT_MAKER para pagar fee maker (-25% con BNB burn = 0.5625bps)
+    autoAdjustRange?: boolean; // Si true, recentra [lowerPrice, upperPrice] automáticamente cuando el precio se acerca a un borde.
+    rangeEdgeBufferPct?: number; // Fracción del ancho total que dispara el recentrado al acercarse a un borde. Default 0.1 (10%).
+    rangeAdjustCooldownMs?: number; // Mínimo tiempo entre recentrados, evita thrashing. Default 5 min.
   };
 
   private readonly logger = new Logger(GridBuyStrategy.name);
@@ -66,6 +69,8 @@ export class GridBuyStrategy implements TradingStrategy {
   private manualLevels = new Map<number, Order>(); // niveles agregados vía addOrderLevel
   private sleepTicks = 0;
   private lastSleepLogAt = 0;
+  private lastRangeAdjustAt = 0;
+  private rangeAdjustCount = 0;
 
   constructor(private readonly binanceService: BinanceService) {}
 
@@ -144,6 +149,8 @@ export class GridBuyStrategy implements TradingStrategy {
       try {
         const currentPrice = await this.getCurrentPrice();
 
+        await this.maybeAutoAdjustRange(currentPrice, priceFilter, lotSizeFilter);
+
         await this.tryPlaceSkippedLevels(
           currentPrice,
           priceFilter,
@@ -173,7 +180,7 @@ export class GridBuyStrategy implements TradingStrategy {
         }
         await this.sleep(sleepDuration);
       } catch (err) {
-        this.logError('Error in monitoring loop:', err);
+        this.logError(`Error in monitoring loop: ${this.describeError(err)}`);
         await this.exponentialBackoff(30000, 5);
       }
     }
@@ -269,7 +276,7 @@ export class GridBuyStrategy implements TradingStrategy {
         `[HYDRATE] botRun=${this.botRunId} legs=${restoredLegs} openBuys=${this.openBuyOrders.size} openSells=${this.openSellOrders.size} openSL=${this.openStopLossOrders.size}`,
       );
     } catch (err) {
-      this.logError(`[HYDRATE] failed:`, err);
+      this.logError(`[HYDRATE] failed: ${this.describeError(err)}`);
     }
   }
 
@@ -295,13 +302,155 @@ export class GridBuyStrategy implements TradingStrategy {
               `ALERTA: Orden abierta cancelada ID ${o.orderId} precio ${o.price} dentro del rango [${lowerPrice}, ${upperPrice}]`,
             );
           } catch (err) {
-            this.logError(`Error al cancelar orden ID ${o.orderId}:`, err);
+            this.logError(`Error al cancelar orden ID ${o.orderId}: ${this.describeError(err)}`);
           }
         }
       }
     } catch (err) {
-      this.logError('Error obteniendo/cancelando órdenes existentes:', err);
+      this.logError(`Error obteniendo/cancelando órdenes existentes: ${this.describeError(err)}`);
     }
+  }
+
+  /**
+   * Recentra [lowerPrice, upperPrice] cuando el precio se acerca a un borde,
+   * manteniendo el mismo ancho total. Solo cancela BUY sin llenar que quedaron
+   * fuera del rango nuevo — nunca toca posiciones ya abiertas (openSellOrders/
+   * openStopLossOrders), esas siguen su ciclo de vida normal sin importar dónde
+   * esté la caja ahora.
+   */
+  private async maybeAutoAdjustRange(
+    currentPrice: number,
+    priceFilter: any,
+    lotSizeFilter: any,
+  ): Promise<void> {
+    if (!this.config.autoAdjustRange) return;
+
+    const width = this.config.upperPrice - this.config.lowerPrice;
+    if (width <= 0) return;
+
+    const cooldownMs = this.config.rangeAdjustCooldownMs ?? 300_000;
+    const now = Date.now();
+    if (now - this.lastRangeAdjustAt < cooldownMs) return;
+
+    const bufferPct = this.config.rangeEdgeBufferPct ?? 0.1;
+    const buffer = width * bufferPct;
+    const nearTop = currentPrice >= this.config.upperPrice - buffer;
+    const nearBottom = currentPrice <= this.config.lowerPrice + buffer;
+    if (!nearTop && !nearBottom) return;
+
+    let newLower: number;
+    let newUpper: number;
+    if (nearTop) {
+      newUpper = this.roundToStep(currentPrice + buffer, priceFilter.tickSize);
+      newLower = this.roundToStep(newUpper - width, priceFilter.tickSize);
+    } else {
+      newLower = this.roundToStep(currentPrice - buffer, priceFilter.tickSize);
+      newUpper = this.roundToStep(newLower + width, priceFilter.tickSize);
+    }
+
+    this.rangeAdjustCount++;
+    await this.applyNewRange(
+      newLower,
+      newUpper,
+      undefined,
+      priceFilter,
+      lotSizeFilter,
+      currentPrice,
+      `auto #${this.rangeAdjustCount}`,
+    );
+    this.lastRangeAdjustAt = now;
+  }
+
+  /**
+   * Núcleo compartido entre el auto-ajuste y el resize manual (`resizeGrid`):
+   * cambia [lowerPrice, upperPrice] (y opcionalmente gridCount), cancela SOLO
+   * las BUY sin llenar que quedaron fuera de la caja nueva, y coloca niveles
+   * frescos en el rango actualizado. Nunca toca openSellOrders ni
+   * openStopLossOrders — una posición ya abierta sigue su ciclo hasta que
+   * su propio take-profit o stop-loss la cierre, sin importar cómo cambie
+   * la caja de ahí en adelante.
+   */
+  private async applyNewRange(
+    newLower: number,
+    newUpper: number,
+    newGridCount: number | undefined,
+    priceFilter: any,
+    lotSizeFilter: any,
+    currentPrice: number,
+    reason: string,
+  ): Promise<{ canceled: number; placedBefore: number }> {
+    const oldLower = this.config.lowerPrice;
+    const oldUpper = this.config.upperPrice;
+    const oldGridCount = this.config.gridCount;
+
+    this.config.lowerPrice = newLower;
+    this.config.upperPrice = newUpper;
+    if (newGridCount !== undefined && newGridCount >= 2) {
+      this.config.gridCount = newGridCount;
+    }
+
+    this.logWarn(
+      `Rango ajustado (${reason}): [${oldLower}, ${oldUpper}] gridCount=${oldGridCount} -> [${newLower}, ${newUpper}] gridCount=${this.config.gridCount} (precio actual ${currentPrice})`,
+    );
+
+    let canceled = 0;
+    for (const [i, order] of Array.from(this.openBuyOrders.entries())) {
+      const p = parseFloat(order.price);
+      if (p < newLower || p > newUpper) {
+        try {
+          await this.binanceService.cancelOrder(this.symbol, order.orderId);
+          canceled++;
+        } catch (e) {
+          this.logError(
+            `Error cancelando orden fuera de rango nivel ${i}: ${this.describeError(e)}`,
+          );
+        }
+        this.openBuyOrders.delete(i);
+      }
+    }
+    this.skippedLevels.clear();
+
+    const placedBefore = this.openBuyOrders.size;
+    const newGridStep = (newUpper - newLower) / this.config.gridCount;
+    await this.placeBuyOrders(
+      newLower,
+      newGridStep,
+      priceFilter,
+      lotSizeFilter,
+      currentPrice,
+    );
+    return { canceled, placedBefore };
+  }
+
+  /**
+   * Resize manual del grid vía API (botService.resizeGrid), independiente
+   * del loop interno. Cualquier BUY ya llenado (con su SELL/stop-loss
+   * pendiente) sigue abierto esperando su propio cierre, sin que importe
+   * si su nivel original quedó fuera de la caja nueva.
+   */
+  public async resizeGrid(input: {
+    lowerPrice: number;
+    upperPrice: number;
+    gridCount?: number;
+  }): Promise<{ ok: boolean; canceled: number; placed: number }> {
+    if (input.upperPrice <= input.lowerPrice) {
+      throw new Error('resizeGrid: upperPrice debe ser mayor que lowerPrice');
+    }
+    const { priceFilter, lotSizeFilter } =
+      await this.binanceService.obtenerFiltrosSimbolo(this.symbol);
+    const currentPrice = await this.getCurrentPrice();
+
+    const { canceled } = await this.applyNewRange(
+      input.lowerPrice,
+      input.upperPrice,
+      input.gridCount,
+      priceFilter,
+      lotSizeFilter,
+      currentPrice,
+      'manual',
+    );
+
+    return { ok: true, canceled, placed: this.openBuyOrders.size };
   }
 
   private async placeBuyOrders(
@@ -535,7 +684,7 @@ export class GridBuyStrategy implements TradingStrategy {
               `SELL order created ID: ${normalizedSell.orderId} at level ${i} with price ${sellPrice}`,
             );
           } catch (err) {
-            this.logError(`Error creating SELL order level ${i}:`, err);
+            this.logError(`Error creating SELL order level ${i}: ${this.describeError(err)}`);
           }
 
           if (stopLossMargin > 0) {
@@ -562,7 +711,7 @@ export class GridBuyStrategy implements TradingStrategy {
                 `Stop Loss order created at ${stopLossPrice} for level ${i}`,
               );
             } catch (err) {
-              this.logError(`Error creating Stop Loss order level ${i}:`, err);
+              this.logError(`Error creating Stop Loss order level ${i}: ${this.describeError(err)}`);
             }
           }
         } else if (Date.now() - order.timestamp > maxAgeMs) {
@@ -576,15 +725,20 @@ export class GridBuyStrategy implements TradingStrategy {
             toReinsertLevels.add(i);
           } catch (e) {
             this.logError(
-              `Error canceling stuck order ID ${order.orderId}:`,
-              e,
+              `Error canceling stuck order ID ${order.orderId}: ${this.describeError(e)}`,
             );
           }
         }
       } catch (err) {
+        if (this.isUnknownOrderError(err)) {
+          this.logWarn(
+            `BUY order ID ${order.orderId} level ${i} ya no existe en Binance — liberando nivel.`,
+          );
+          this.openBuyOrders.delete(i);
+          continue;
+        }
         this.logError(
-          `Error checking BUY order status ID ${order.orderId}:`,
-          err,
+          `Error checking BUY order status ID ${order.orderId}: ${this.describeError(err)}`,
         );
       }
     }
@@ -623,8 +777,7 @@ export class GridBuyStrategy implements TradingStrategy {
               );
             } catch (e) {
               this.logError(
-                `Error canceling paired SELL ${pairedSell.orderId}:`,
-                e,
+                `Error canceling paired SELL ${pairedSell.orderId}: ${this.describeError(e)}`,
               );
             }
             this.openSellOrders.delete(i);
@@ -642,9 +795,15 @@ export class GridBuyStrategy implements TradingStrategy {
           this.openStopLossOrders.delete(i);
         }
       } catch (err) {
+        if (this.isUnknownOrderError(err)) {
+          this.logWarn(
+            `STOP-LOSS ID ${order.orderId} nivel ${i} ya no existe en Binance — liberando nivel.`,
+          );
+          this.openStopLossOrders.delete(i);
+          continue;
+        }
         this.logError(
-          `Error checking STOP-LOSS status ID ${order.orderId}:`,
-          err,
+          `Error checking STOP-LOSS status ID ${order.orderId}: ${this.describeError(err)}`,
         );
       }
     }
@@ -681,8 +840,7 @@ export class GridBuyStrategy implements TradingStrategy {
               );
             } catch (e) {
               this.logError(
-                `Error canceling paired STOP-LOSS ${pairedSl.orderId}:`,
-                e,
+                `Error canceling paired STOP-LOSS ${pairedSl.orderId}: ${this.describeError(e)}`,
               );
             }
             this.openStopLossOrders.delete(i);
@@ -699,15 +857,20 @@ export class GridBuyStrategy implements TradingStrategy {
             // Opcional: reinsertar órdenes de compra o manejar según diseño
           } catch (e) {
             this.logError(
-              `Error canceling stuck SELL order ID ${order.orderId}:`,
-              e,
+              `Error canceling stuck SELL order ID ${order.orderId}: ${this.describeError(e)}`,
             );
           }
         }
       } catch (err) {
+        if (this.isUnknownOrderError(err)) {
+          this.logWarn(
+            `SELL order ID ${order.orderId} level ${i} ya no existe en Binance — liberando nivel.`,
+          );
+          this.openSellOrders.delete(i);
+          continue;
+        }
         this.logError(
-          `Error checking SELL order status ID ${order.orderId}:`,
-          err,
+          `Error checking SELL order status ID ${order.orderId}: ${this.describeError(err)}`,
         );
       }
     }
@@ -820,6 +983,25 @@ export class GridBuyStrategy implements TradingStrategy {
   }
 
   // Mejora en función para ajustes numéricos al step con precisión decimal exacta y redondeo hacia abajo para evitar errores
+  // Nunca loguear el error de axios crudo: trae headers con el API key en
+  // texto plano (X-MBX-APIKEY) dentro del objeto de config de la request.
+  private describeError(err: any): string {
+    return (
+      err?.response?.data?.msg ??
+      (err?.response?.data ? JSON.stringify(err.response.data) : undefined) ??
+      err?.message ??
+      String(err)
+    );
+  }
+
+  // -2011 "Unknown order sent" / -2013 "Order does not exist": Binance ya no
+  // tiene esa orden. Sin esto, el nivel queda "ocupado" por un fantasma para
+  // siempre y nunca se libera para una orden nueva.
+  private isUnknownOrderError(err: any): boolean {
+    const code = err?.response?.data?.code;
+    return code === -2011 || code === -2013;
+  }
+
   private roundToStep(value: number, step: string): number {
     const stepFloat = parseFloat(step);
     const precision = (step.split('.')[1] || '').length;
@@ -915,6 +1097,9 @@ export class GridBuyStrategy implements TradingStrategy {
       filledCount: this.filledBuyCount + this.filledSellCount,
       canceledCount: this.canceledCount,
       profitLoss: this.profitLoss,
+      lowerPrice: this.config.lowerPrice,
+      upperPrice: this.config.upperPrice,
+      rangeAdjustCount: this.rangeAdjustCount,
       buyLevels: Array.from(this.openBuyOrders.entries()).map(([level, o]) => ({
         level,
         orderId: o.orderId,
@@ -1033,6 +1218,9 @@ export class GridBuyStrategy implements TradingStrategy {
       'maxOrderAgeMs',
       'minSleepMs',
       'maxSleepMs',
+      'autoAdjustRange',
+      'rangeEdgeBufferPct',
+      'rangeAdjustCooldownMs',
     ];
     const applied: string[] = [];
     for (const k of HOT) {

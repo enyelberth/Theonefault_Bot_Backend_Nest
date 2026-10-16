@@ -141,9 +141,12 @@
       <span>Strategy: <b id="bot-strategyid">-</b></span>
       <span>Type: <b id="bot-strategytype">-</b></span>
       <span>Iniciado: <b id="bot-started">-</b></span>
+      <span>Precio en vivo: <b id="bot-liveprice" style="color:var(--blue);font-family:ui-monospace,monospace">-</b></span>
     </div>
   </div>
   <div class="spacer"></div>
+  <span id="auth-status" style="font-size:12px;color:var(--muted);margin-right:4px;"></span>
+  <button onclick="setAuthToken()">🔑 Token</button>
   <span id="bot-status" class="status-pill status-RUNNING">-</span>
   <button class="btn-primary" onclick="refresh()">↻ Refrescar</button>
   <button class="btn-danger" onclick="stopBot()">■ Stop</button>
@@ -199,10 +202,40 @@
       <div class="v"><span id="c-wincount">0</span> / <span id="c-losscount">0</span></div>
       <div class="sub">Winrate: <span id="c-winrate">0</span>%</div>
     </div>
+    <div class="card">
+      <div class="k">Capital inicial</div>
+      <div class="v" id="c-capital">—</div>
+      <div class="sub">initialQuote del BotRun</div>
+    </div>
+    <div class="card" id="c-roi-card">
+      <div class="k">Rentabilidad</div>
+      <div class="v" id="c-roi">—</div>
+      <div class="sub">PnL realizado / capital inicial</div>
+    </div>
+  </div>
+
+  <div class="add-box" style="background:linear-gradient(135deg,#102a3a 0%,#123648 100%);border-color:rgba(88,166,255,0.5);">
+    <h3 style="color:var(--blue)">⚙ Resize grid (caliente, sin reiniciar)</h3>
+    <div class="row">
+      <input id="rz-lower" type="number" step="0.01" placeholder="lowerPrice" />
+      <input id="rz-upper" type="number" step="0.01" placeholder="upperPrice" />
+      <input id="rz-gridcount" type="number" step="1" placeholder="gridCount (opcional)" />
+      <button class="btn-primary" onclick="resizeGrid()">Aplicar resize</button>
+    </div>
+    <div class="hint" style="margin-top:6px">Cancela solo las órdenes sin llenar fuera del rango nuevo. Posiciones ya abiertas (SELL/stop-loss pendiente) siguen intactas hasta su propio cierre.</div>
   </div>
 
   <div class="add-box">
-    <h3>+ Agregar nivel manual (LIMIT BUY)</h3>
+    <h3>⚙ Ajustar profit margin</h3>
+    <div class="row">
+      <input id="pm-value" type="number" step="0.0001" placeholder="profitMargin (ej. 0.004)" />
+      <button class="btn-primary" onclick="updateProfitMarginUI()">Aplicar</button>
+      <span class="hint">Aplica en caliente, ya se usa en el próximo take-profit</span>
+    </div>
+  </div>
+
+  <div class="add-box">
+    <h3>+ Agregar nivel manual (BUY si el bot es gridBuy*, SELL si es gridSellMargin)</h3>
     <div class="row">
       <input id="al-price" type="number" step="0.0001" placeholder="Precio" />
       <input id="al-qty" type="number" step="0.0001" placeholder="Qty (opcional)" />
@@ -253,6 +286,35 @@
   const botRunId = path ? Number(path[1]) : null;
   const state = { symbol: null, id: null, type: null };
 
+  const TOKEN_KEY = 'kaizen_jwt';
+  function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+  function setAuthToken() {
+    const cur = getToken();
+    const val = prompt('Pega tu JWT (Bearer). Vacío para borrar.', cur);
+    if (val === null) return;
+    if (val.trim() === '') { localStorage.removeItem(TOKEN_KEY); }
+    else { localStorage.setItem(TOKEN_KEY, val.trim()); }
+    renderAuthStatus();
+    refresh();
+  }
+  function renderAuthStatus() {
+    const el = document.getElementById('auth-status');
+    const t = getToken();
+    if (!el) return;
+    el.textContent = t ? '✓ token · ' + t.slice(0, 10) + '…' : '⚠ sin token';
+    el.style.color = t ? 'var(--green)' : 'var(--yellow)';
+  }
+  // Todas las llamadas de esta página van a ${API} (puede ser otro puerto/origen
+  // que el de la página misma), así que se inyecta el Bearer en TODO fetch,
+  // no solo en paths relativos.
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = (url, init = {}) => {
+    const token = getToken();
+    const headers = Object.assign({}, init.headers || {});
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    return _origFetch(url, Object.assign({}, init, { headers }));
+  };
+
   function toast(msg, kind) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -294,11 +356,16 @@
 
   async function refresh() {
     try {
-      const [runtimeR, summaryR, cfgR] = await Promise.all([
+      const [runtimeR, summaryR, cfgR, priceR] = await Promise.all([
         state.symbol ? fetch(`${API}/bot/runtime/${state.symbol}/${state.id}`).then(r => r.json()).catch(() => null) : null,
         fetch(`${API}/bot/runs/${botRunId}/summary`).then(r => r.json()).catch(() => null),
         state.symbol ? fetch(`${API}/bot/config/${state.symbol}/${state.id}`).then(r => r.json()).catch(() => null) : null,
+        state.symbol ? fetch(`${API}/binance/price/${state.symbol}`).then(r => r.json()).catch(() => null) : null,
       ]);
+
+      if (priceR?.price) {
+        setV('bot-liveprice', fmt(priceR.price, 4));
+      }
 
       if (runtimeR && !runtimeR.warning) {
         setV('c-filled', runtimeR.filledCount ?? 0);
@@ -327,10 +394,30 @@
         setV('c-losscount', summaryR.lossCount ?? 0);
         setV('c-winrate', (summaryR.winRate ?? 0).toFixed(1));
         if (summaryR.status) applyRunMeta(summaryR);
+
+        const capital = summaryR.initialQuote !== null && summaryR.initialQuote !== undefined
+          ? Number(summaryR.initialQuote) : null;
+        setV('c-capital', capital !== null ? fmt(capital, 2) : '—');
+        if (capital && capital > 0) {
+          const roi = (Number(summaryR.realizedPnl || 0) / capital) * 100;
+          setV('c-roi', roi.toFixed(2) + '%');
+          document.getElementById('c-roi-card').className = 'card ' + (roi >= 0 ? 'pnl-pos' : 'pnl-neg');
+        } else {
+          setV('c-roi', '—');
+        }
       }
 
       if (cfgR) {
-        document.getElementById('cfg-json').textContent = JSON.stringify(cfgR.config ?? cfgR, null, 2);
+        const cfg = cfgR.config ?? cfgR;
+        document.getElementById('cfg-json').textContent = JSON.stringify(cfg, null, 2);
+        const rzLower = document.getElementById('rz-lower');
+        const rzUpper = document.getElementById('rz-upper');
+        const rzGrid = document.getElementById('rz-gridcount');
+        const pmValue = document.getElementById('pm-value');
+        if (rzLower && !rzLower.value && cfg.lowerPrice !== undefined) rzLower.placeholder = `lowerPrice (actual ${cfg.lowerPrice})`;
+        if (rzUpper && !rzUpper.value && cfg.upperPrice !== undefined) rzUpper.placeholder = `upperPrice (actual ${cfg.upperPrice})`;
+        if (rzGrid && !rzGrid.value && cfg.gridCount !== undefined) rzGrid.placeholder = `gridCount (actual ${cfg.gridCount})`;
+        if (pmValue && !pmValue.value && cfg.profitMargin !== undefined) pmValue.placeholder = `profitMargin (actual ${cfg.profitMargin})`;
       }
 
       document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
@@ -365,6 +452,45 @@
         <td><button class="btn-danger" style="padding:4px 10px" onclick="removeLevel(${l.level})">×</button></td>`;
       tb.appendChild(tr);
     }
+  }
+
+  async function resizeGrid() {
+    const lowerPrice = Number(document.getElementById('rz-lower').value);
+    const upperPrice = Number(document.getElementById('rz-upper').value);
+    const gridCountRaw = document.getElementById('rz-gridcount').value;
+    const gridCount = gridCountRaw ? Number(gridCountRaw) : undefined;
+    if (!lowerPrice || !upperPrice || upperPrice <= lowerPrice) {
+      toast('lowerPrice/upperPrice requeridos (upper > lower)', 'err');
+      return;
+    }
+    if (!confirm(`Resize a [${lowerPrice}, ${upperPrice}]${gridCount ? ' gridCount=' + gridCount : ''}? Cancela órdenes sin llenar fuera del rango nuevo.`)) return;
+    try {
+      const res = await fetch(`${API}/bot/resizeGrid/${state.symbol}/${state.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lowerPrice, upperPrice, ...(gridCount ? { gridCount } : {}) }),
+      }).then(r => r.json());
+      if (res?.ok) {
+        toast(`Resize aplicado: ${res.canceled} canceladas, ${res.placed} colocadas`, 'ok');
+      } else {
+        toast('Respuesta: ' + JSON.stringify(res), 'err');
+      }
+      refresh();
+    } catch (e) { toast('Resize err: ' + e.message, 'err'); }
+  }
+
+  async function updateProfitMarginUI() {
+    const profitMargin = Number(document.getElementById('pm-value').value);
+    if (!profitMargin || profitMargin <= 0) { toast('profitMargin requerido', 'err'); return; }
+    try {
+      const res = await fetch(`${API}/bot/profitMargin/${state.symbol}/${state.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profitMargin }),
+      }).then(r => r.json());
+      toast(res?.message || JSON.stringify(res), res?.message ? 'ok' : 'err');
+      refresh();
+    } catch (e) { toast('ProfitMargin err: ' + e.message, 'err'); }
   }
 
   async function addLevel() {
@@ -420,6 +546,7 @@
   }
 
   (async () => {
+    renderAuthStatus();
     await loadRun();
     await refresh();
     setInterval(refresh, 5000);

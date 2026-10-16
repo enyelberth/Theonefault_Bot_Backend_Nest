@@ -6,6 +6,11 @@ import { Public } from '../authA/auth.guard';
 @Public()
 @Controller()
 export class FrontendController {
+  @Get('dashboard/bot')
+  botList(@Res() res: Response) {
+    return res.sendFile(join(process.cwd(), 'public', 'dashboard', 'bots.html'));
+  }
+
   @Get('dashboard/bot/:id')
   botDetail(@Res() res: Response) {
     return res.sendFile(join(process.cwd(), 'public', 'dashboard', 'bot.html'));
@@ -15,6 +20,13 @@ export class FrontendController {
   analytics(@Res() res: Response) {
     return res.sendFile(
       join(process.cwd(), 'public', 'dashboard', 'analytics.html'),
+    );
+  }
+
+  @Get('dashboard/orders')
+  orders(@Res() res: Response) {
+    return res.sendFile(
+      join(process.cwd(), 'public', 'dashboard', 'orders.html'),
     );
   }
 }

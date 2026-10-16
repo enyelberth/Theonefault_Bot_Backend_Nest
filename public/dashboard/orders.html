@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>KAIZEN · Órdenes en vivo</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #0d1117; --panel2: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff; --purple: #a371f7; --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .topbar { background: linear-gradient(90deg,#0d1117 0%,#161b22 100%); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .topbar h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; }
+  .topbar .spacer { flex: 1; }
+  .topbar a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  .topbar a:hover { color: var(--blue); }
+  button.reload { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: #21262d; color: var(--text); cursor: pointer; font-size: 12px; }
+  button.reload:hover { background: #30363d; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 28px 60px; display: grid; gap: 20px; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .section h2 { margin: 0 0 12px 0; font-size: 15px; letter-spacing: 0.3px; color: var(--text); display: flex; align-items: center; gap: 10px; }
+  .section h2 .sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--panel2); color: var(--muted); border: 1px solid var(--border); margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; background: var(--panel2); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .side-buy { color: var(--green); font-weight: 600; }
+  .side-sell { color: var(--red); font-weight: 600; }
+  .table-wrap { max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .loading, .empty, .err { color: var(--muted); text-align: center; padding: 20px; font-size: 13px; }
+  .err { color: var(--red); }
+  .last-updated { color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>KAIZEN · Órdenes en vivo</h1>
+    <span class="last-updated" id="last-updated">-</span>
+    <div class="spacer"></div>
+    <span id="auth-status" style="font-size:12px;color:var(--muted);"></span>
+    <button class="reload" onclick="setAuthToken()">🔑 Token</button>
+    <a href="/">← Dashboard</a>
+    <button class="reload" onclick="loadAll()">↻ Recargar</button>
+  </div>
+
+  <div class="wrap">
+    <div class="section">
+      <h2>Spot <span class="sub">todos los símbolos</span> <span class="badge" id="count-spot">-</span></h2>
+      <div id="orders-spot" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Margin Cruzado <span class="sub">todos los símbolos</span> <span class="badge" id="count-cross">-</span></h2>
+      <div id="orders-cross" class="loading">Cargando…</div>
+    </div>
+
+    <div class="section">
+      <h2>Margin Aislado <span class="sub">pares con posición aislada</span> <span class="badge" id="count-isolated">-</span></h2>
+      <div id="orders-isolated" class="loading">Cargando…</div>
+    </div>
+  </div>
+
+<script>
+const API = window.location.origin.replace(/:\d+$/, ':50000');
+const TOKEN_KEY = 'kaizen_jwt';
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setAuthToken() {
+  const cur = getToken();
+  const val = prompt('Pega tu JWT (Bearer). Vacío para borrar.', cur);
+  if (val === null) return;
+  if (val.trim() === '') { localStorage.removeItem(TOKEN_KEY); }
+  else { localStorage.setItem(TOKEN_KEY, val.trim()); }
+  renderAuthStatus();
+  loadAll();
+}
+function renderAuthStatus() {
+  const el = document.getElementById('auth-status');
+  const t = getToken();
+  el.textContent = t ? '✓ token · ' + t.slice(0, 10) + '…' : '⚠ sin token';
+  el.style.color = t ? 'var(--green)' : 'var(--yellow)';
+}
+async function authFetch(url) {
+  const token = getToken();
+  const headers = token ? { Authorization: 'Bearer ' + token } : {};
+  const res = await fetch(url, { headers });
+  if (res.status === 401) throw new Error('401 sin autorización — pulsa 🔑 Token');
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+const fmt = (v, dec = 4) => {
+  const n = Number(v);
+  if (!isFinite(n)) return '-';
+  return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+};
+
+function renderOrders(containerId, countId, orders) {
+  const el = document.getElementById(containerId);
+  document.getElementById(countId).textContent = `${orders.length} abiertas`;
+  if (!orders.length) {
+    el.innerHTML = '<div class="empty">Sin órdenes abiertas</div>';
+    return;
+  }
+  orders.sort((a, b) => (b.time || 0) - (a.time || 0));
+  let html = '<div class="table-wrap"><table><thead><tr>' +
+    '<th>Símbolo</th><th>Lado</th><th>Tipo</th><th class="num">Precio</th>' +
+    '<th class="num">Stop</th><th class="num">Cantidad</th><th class="num">Ejecutada</th>' +
+    '<th>Estado</th><th class="num">Edad</th></tr></thead><tbody>';
+  const now = Date.now();
+  for (const o of orders) {
+    const ageS = o.time ? Math.floor((now - o.time) / 1000) : null;
+    const age = ageS === null ? '-' : ageS < 60 ? `${ageS}s` : ageS < 3600 ? `${Math.floor(ageS / 60)}m` : `${Math.floor(ageS / 3600)}h`;
+    const sideClass = o.side === 'BUY' ? 'side-buy' : 'side-sell';
+    html += `<tr>
+      <td>${o.symbol || '-'}</td>
+      <td class="${sideClass}">${o.side || '-'}</td>
+      <td>${o.type || '-'}</td>
+      <td class="num">${fmt(o.price)}</td>
+      <td class="num">${o.stopPrice && Number(o.stopPrice) > 0 ? fmt(o.stopPrice) : '-'}</td>
+      <td class="num">${fmt(o.origQty, 6)}</td>
+      <td class="num">${fmt(o.executedQty, 6)}</td>
+      <td>${o.status || '-'}</td>
+      <td class="num">${age}</td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+async function loadSection(url, containerId, countId) {
+  try {
+    const data = await authFetch(url);
+    renderOrders(containerId, countId, Array.isArray(data) ? data : []);
+  } catch (e) {
+    document.getElementById(containerId).innerHTML = `<div class="err">Error: ${e.message}</div>`;
+    document.getElementById(countId).textContent = '-';
+  }
+}
+
+async function loadAll() {
+  await Promise.all([
+    loadSection(`${API}/binance/orders/open/spot`, 'orders-spot', 'count-spot'),
+    loadSection(`${API}/binance/orders/open/margin-cross`, 'orders-cross', 'count-cross'),
+    loadSection(`${API}/binance/orders/open/margin-isolated`, 'orders-isolated', 'count-isolated'),
+  ]);
+  document.getElementById('last-updated').textContent = 'Última actualización: ' + new Date().toLocaleTimeString();
+}
+
+renderAuthStatus();
+loadAll();
+setInterval(loadAll, 5000);
+</script>
+</body>
+</html>

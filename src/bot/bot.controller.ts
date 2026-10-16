@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Param,
+  ParseIntPipe,
   Get,
   UseGuards,
   Query,
@@ -261,6 +262,38 @@ export class BotController {
     };
   }
 
+  // Resize en caliente del grid: cambia lowerPrice/upperPrice/gridCount sin
+  // tocar posiciones ya abiertas — solo cancela y recoloca BUY sin llenar.
+  @Patch('resizeGrid/:symbol/:id')
+  @ApiOperation({
+    summary:
+      'Resize en caliente: nuevo [lowerPrice, upperPrice] (y opcional gridCount). ' +
+      'Cancela solo BUY sin llenar fuera del rango nuevo; posiciones abiertas ' +
+      '(SELL/stop-loss pendientes) siguen esperando su propio cierre.',
+  })
+  @ApiParam({ name: 'symbol', required: true, example: 'BNBFDUSD' })
+  @ApiParam({ name: 'id', required: true, example: 'bnbfdusd-grid-margin-720-730' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        lowerPrice: { type: 'number', example: 725 },
+        upperPrice: { type: 'number', example: 730 },
+        gridCount: { type: 'number', example: 50 },
+      },
+      required: ['lowerPrice', 'upperPrice'],
+    },
+  })
+  async resizeGrid(
+    @Param('symbol') symbol: string,
+    @Param('id') id: string,
+    @Body() body: { lowerPrice: number; upperPrice: number; gridCount?: number },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    await this.botService.assertOwnership(symbol, id, req.user!.sub);
+    return this.botService.resizeGrid(id, symbol, body);
+  }
+
   // Agregar nivel de orden
   @Post('orderLevel/:symbol/:id')
   @ApiOperation({
@@ -312,7 +345,7 @@ export class BotController {
   async removeOrderLevel(
     @Param('symbol') symbol: string,
     @Param('id') id: string,
-    @Param('levelIndex') levelIndex: number,
+    @Param('levelIndex', ParseIntPipe) levelIndex: number,
     @Req() req: AuthenticatedRequest,
   ) {
     await this.botService.assertOwnership(symbol, id, req.user!.sub);
@@ -342,7 +375,7 @@ export class BotController {
   async updateOrderLevelPrice(
     @Param('symbol') symbol: string,
     @Param('id') id: string,
-    @Param('levelIndex') levelIndex: number,
+    @Param('levelIndex', ParseIntPipe) levelIndex: number,
     @Body() body: { newPrice: number },
     @Req() req: AuthenticatedRequest,
   ) {

@@ -6,7 +6,6 @@ import {
 import { Server, Socket } from 'socket.io';
 import { PrismaClient, RiskConfig } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
-import { AccountService } from '../account/account.service';
 import { BinanceService } from '../binance/binance.service';
 import { BotService } from '../bot/bot.service';
 import { jwtConstants } from '../authA/constantes';
@@ -22,8 +21,8 @@ export class CryptoGuardGateway implements OnGatewayInit {
   private binanceWSConnections: Map<string, WebSocket> = new Map();
   private cryptoSymbols = ['btcusdt', 'ethusdt', 'bnbusdt'];
 
-  private userCryptos: Array<{ symbol: string; balance: number }> = [];
-  private fdusdBalance = 0;
+  private fdusdBalance = 0; // FDUSD real en spot (Binance), no el ledger interno de Account.
+  private marginFdusdBalance = 0; // FDUSD real en margin cruzado (netAsset).
   private lastBalanceRefreshAt = 0;
 
   private btcusdtPrice: string | null = null;
@@ -42,7 +41,6 @@ export class CryptoGuardGateway implements OnGatewayInit {
   private readonly prisma = new PrismaClient();
 
   constructor(
-    private accountService: AccountService,
     private binanceService: BinanceService,
     private botService: BotService,
     private readonly jwtService: JwtService,
@@ -106,21 +104,34 @@ export class CryptoGuardGateway implements OnGatewayInit {
     const now = Date.now();
     if (!force && now - this.lastBalanceRefreshAt < BALANCE_REFRESH_MS) return;
     try {
-      const cryptosRaw = await this.accountService.findCryptosByUserId(1);
-      this.userCryptos = cryptosRaw.map((c) => ({
-        symbol: c.symbol,
-        balance: Number(c.balance),
-      }));
-      const fdusdEntry = this.userCryptos.find(
-        (c) => c.symbol.toUpperCase() === 'FDUSD',
+      const spotBalances = await this.binanceService.getNonZeroBalances();
+      const fdusdSpot = spotBalances.find(
+        (b: any) => b.asset === 'FDUSD',
       );
-      this.fdusdBalance = fdusdEntry ? fdusdEntry.balance : 0;
-      this.lastBalanceRefreshAt = now;
+      this.fdusdBalance = fdusdSpot
+        ? Number(fdusdSpot.free) + Number(fdusdSpot.locked)
+        : 0;
     } catch (err) {
       console.warn(
-        `[CryptoGuard] refreshBalance fail: ${(err as Error).message}`,
+        `[CryptoGuard] refreshBalance (spot) fail: ${(err as Error).message}`,
       );
     }
+
+    try {
+      const margin = await this.binanceService.getCrossMarginLoans();
+      const fdusdMargin = margin?.userAssets?.find(
+        (a: any) => a.asset === 'FDUSD',
+      );
+      this.marginFdusdBalance = fdusdMargin
+        ? Number(fdusdMargin.netAsset)
+        : 0;
+    } catch (err) {
+      console.warn(
+        `[CryptoGuard] refreshBalance (margin) fail: ${(err as Error).message}`,
+      );
+    }
+
+    this.lastBalanceRefreshAt = now;
   }
 
   private guardEnabled(): boolean {
@@ -129,7 +140,11 @@ export class CryptoGuardGateway implements OnGatewayInit {
 
   private computeThreshold(): number {
     const bufferPct = this.riskConfig?.guardBufferPct ?? 4;
-    return this.fdusdBalance - this.fdusdBalance * (bufferPct / 100);
+    // Capital real total (spot + margin cruzado), no solo spot: si el capital
+    // vive en margin (ej. transferido a propósito), el umbral no debe colapsar
+    // a 0 y volverse hipersensible a cualquier PnL negativo microscópico.
+    const totalCapital = this.fdusdBalance + this.marginFdusdBalance;
+    return totalCapital - totalCapital * (bufferPct / 100);
   }
 
   async connectBinanceStream(symbol: string) {

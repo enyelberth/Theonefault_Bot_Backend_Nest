@@ -1,0 +1,14 @@
+ {                                      
+    "dryRun": true,                      
+    "gridCount": 50,
+    "lowerPrice": 63700,
+    "upperPrice": 64700,                                                                                                                                                                                                                      
+    "profitMargin": 0.003,
+    "maxOrderAgeMs": 3600000,                                                                                                                                                                                                                 
+    "totalQuantity": 0.15,
+    "paperAccountId": 1,                                                                                                                                                                                                                      
+    "stopLossMargin": 0.02,
+    "buySafetyMargin": 0.001,                                                                                                                                                                                                                 
+    "minSleepMs": 15000,
+    "maxSleepMs": 30000                  
+  }         

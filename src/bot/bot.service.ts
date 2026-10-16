@@ -1,9 +1,13 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   forwardRef,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
+  NotFoundException,
   OnModuleInit,
   Optional,
 } from '@nestjs/common';
@@ -40,7 +44,7 @@ export class BotService implements OnModuleInit {
   private resolveDryRun(cfg: any, context: string): boolean {
     const value = cfg?.dryRun;
     if (typeof value !== 'boolean') {
-      throw new Error(
+      throw new BadRequestException(
         `Config inválida (${context}): "dryRun" debe especificarse explícitamente como true o false (recibido: ${JSON.stringify(value)}). No se asume modo real por omisión.`,
       );
     }
@@ -196,13 +200,15 @@ export class BotService implements OnModuleInit {
     ownerId?: number,
   ) {
     if (await this.isEmergencyActive()) {
-      throw new Error('Emergency stop activo. No se aceptan nuevos bots.');
+      throw new ConflictException(
+        'Emergency stop activo. No se aceptan nuevos bots.',
+      );
     }
 
     const key = this.getKey(symbol, id);
 
     if (this.activeStrategies.has(key)) {
-      throw new Error(
+      throw new ConflictException(
         `Estrategia ya activa con este símbolo ${symbol} y el id ${id}`,
       );
     }
@@ -326,7 +332,7 @@ export class BotService implements OnModuleInit {
         : null) ?? (await this.botPnlService.findActiveBotRun(id, symbol));
 
     if (!existingRun) {
-      throw new Error(
+      throw new NotFoundException(
         `No existe BotRun previo para ${symbol}/${id} — usar /bot/start.`,
       );
     }
@@ -335,7 +341,7 @@ export class BotService implements OnModuleInit {
     const strategyType = existingRun.strategyType;
 
     if (!config || !strategyType) {
-      throw new Error(
+      throw new InternalServerErrorException(
         `No se pudo recuperar config/strategyType para restart ${symbol}/${id}`,
       );
     }
@@ -366,7 +372,7 @@ export class BotService implements OnModuleInit {
     await new Promise((r) => setTimeout(r, 250));
 
     if (await this.isEmergencyActive()) {
-      throw new Error('Emergency stop activo. No se puede reiniciar.');
+      throw new ConflictException('Emergency stop activo. No se puede reiniciar.');
     }
 
     if (existingRun.status !== BotRunStatus.RUNNING) {
@@ -476,13 +482,17 @@ export class BotService implements OnModuleInit {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['updateOrderLevelPrice'] === 'function') {
-      await strategy['updateOrderLevelPrice'](levelIndex, newPrice);
-      return true;
+      try {
+        await strategy['updateOrderLevelPrice'](levelIndex, newPrice);
+        return true;
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
     }
-    throw new Error(
+    throw new BadRequestException(
       `La estrategia con id ${id} no soporta actualizar precio de nivel`,
     );
   }
@@ -491,13 +501,17 @@ export class BotService implements OnModuleInit {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['removeOrderLevel'] === 'function') {
-      await strategy['removeOrderLevel'](levelIndex);
-      return true;
+      try {
+        await strategy['removeOrderLevel'](levelIndex);
+        return true;
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
     }
-    throw new Error(
+    throw new BadRequestException(
       `La estrategia con id ${id} no soporta eliminar niveles de orden`,
     );
   }
@@ -506,12 +520,16 @@ export class BotService implements OnModuleInit {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['addOrderLevel'] === 'function') {
-      return await strategy['addOrderLevel'](orderLevel);
+      try {
+        return await strategy['addOrderLevel'](orderLevel);
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
     }
-    throw new Error(
+    throw new BadRequestException(
       `La estrategia con id ${id} no soporta agregar niveles de orden`,
     );
   }
@@ -524,14 +542,46 @@ export class BotService implements OnModuleInit {
     const key = this.getKey(symbol, id);
     const strategy = this.activeStrategies.get(key);
     if (!strategy) {
-      throw new Error(`Estrategia con id ${id} no encontrada`);
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
     }
     if (typeof strategy['updateProfitMargin'] === 'function') {
-      strategy['updateProfitMargin'](newProfitMargin);
-      return true;
+      try {
+        strategy['updateProfitMargin'](newProfitMargin);
+        return true;
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
     }
-    throw new Error(
+    throw new BadRequestException(
       `La estrategia con id ${id} no soporta actualización de profit margin`,
+    );
+  }
+
+  /**
+   * Resize en caliente del grid: cambia [lowerPrice, upperPrice] (y opcional
+   * gridCount), cancela solo las órdenes sin llenar fuera de la caja nueva,
+   * y coloca niveles frescos. Nunca toca posiciones ya abiertas — esas
+   * siguen esperando su propio take-profit/stop-loss sin importar el resize.
+   */
+  async resizeGrid(
+    id: string,
+    symbol: string,
+    input: { lowerPrice: number; upperPrice: number; gridCount?: number },
+  ) {
+    const key = this.getKey(symbol, id);
+    const strategy = this.activeStrategies.get(key);
+    if (!strategy) {
+      throw new NotFoundException(`Estrategia con id ${id} no encontrada`);
+    }
+    if (typeof strategy['resizeGrid'] === 'function') {
+      try {
+        return await strategy['resizeGrid'](input);
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
+    }
+    throw new BadRequestException(
+      `La estrategia con id ${id} no soporta resize de grid`,
     );
   }
 
@@ -541,7 +591,8 @@ export class BotService implements OnModuleInit {
   getRuntimeStatus(symbol: string, id: string) {
     const key = this.getKey(symbol, id);
     const strat = this.activeStrategies.get(key);
-    if (!strat) throw new Error(`Estrategia ${symbol}/${id} no está activa`);
+    if (!strat)
+      throw new NotFoundException(`Estrategia ${symbol}/${id} no está activa`);
     if (typeof (strat as any).getRuntimeStatus === 'function') {
       return (strat as any).getRuntimeStatus();
     }
@@ -584,7 +635,7 @@ export class BotService implements OnModuleInit {
         config: persisted.configSnapshot,
       };
     }
-    throw new Error(`No hay config para ${symbol}/${id}`);
+    throw new NotFoundException(`No hay config para ${symbol}/${id}`);
   }
 
   /**
@@ -605,7 +656,7 @@ export class BotService implements OnModuleInit {
       (await this.botPnlService.findActiveBotRun(id, symbol))?.id;
 
     if (!live && !runId) {
-      throw new Error(
+      throw new NotFoundException(
         `No hay estrategia viva ni BotRun activo para ${symbol}/${id}`,
       );
     }

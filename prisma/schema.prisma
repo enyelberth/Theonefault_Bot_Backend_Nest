@@ -463,6 +463,7 @@ model Alert {
   volume    Float? // Volumen negociado opcional
   timestamp DateTime // Momento del registro del precio
   createdAt DateTime @default(now())
+  chatId    BigInt? // Chat de Telegram que creó la alerta; null en alertas legacy/creadas sin chat
 
   @@index([symbol, timestamp])
 }

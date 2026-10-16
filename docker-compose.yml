@@ -18,6 +18,8 @@ services:
     restart: always
     env_file:
       - .env
+    environment:
+      DATABASE_URL: "postgresql://enyelberth:30204334@db:5432/KAIZEN?schema=public"
     ports:
       - "50000:50000"
     depends_on:
